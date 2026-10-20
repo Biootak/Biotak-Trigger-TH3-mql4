@@ -331,15 +331,16 @@ void PnlSpecBuild(const int item)
          PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "valign");
          PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "droplet");
       }
-      else if(g_BkTab == 2)   // SETUP — 7 rows, the 3 leg colours in ONE row
-                              // (P-BK-27 added INFO SIZE to the EXTRAS band)
+      else if(g_BkTab == 2)   // SETUP — the 3 leg colours in ONE row
+                              // (P-BK-27 added INFO SIZE to the EXTRAS band; BKCORNER-ON
+                              // removed the INFO Auto/Show/Corner row — setting 5 stays
+                              // reserved in place so 6/7 never renumber)
       {
          PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "RISK / REWARD", 1);
          PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "target");
          PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "LEG COLORS", 3, "strip");
          PnlSpecAdd(12, PNL_K_CSET, 2, 3);
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 3);
-         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "info");
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 2);
          PnlSpecAdd(12, PNL_K_LEGACY, 7, 1, "textsize");   // P-BK-27 INFO SIZE
          PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "template");
       }

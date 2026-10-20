@@ -396,8 +396,15 @@ int HandleButtonClick(const string clickedObject)
    // same body the Tools menu's feature cells run, so the two surfaces can never
    // drift. The ring's own tail stays here (the Tools tail is ToolsUpdateItemState's).
    int refreshFlags = RingFeatureClick(feat);
-   CircUpdateItemState(idx);
-   UpdateCircularBadges();
+   // P-UI-167's CLOSED/fan halves: the action above may hide the ring (BASEKNOT
+   // arms and calls DeleteMenu, for one). CircUpdateItemState create-if-missing
+   // then resurrected the tapped seat's glyph ALONE over a closed menu — measured
+   // 2026-10-20: `fan open=0 restore=0` → `[P-UI-163] icon heal seat=10 feat=10`.
+   if(g_UI.menuVisible && !g_ToolsOpen)
+   {
+      CircUpdateItemState(idx);
+      UpdateCircularBadges();
+   }
    SaveUIStates();
    return refreshFlags;
 }
@@ -606,7 +613,10 @@ void ToggleMenuVisibility()
       // P-UI-161: the ring's seats are the PLACED ones (the star mask decides),
       // the Tools menu's are the whole catalog.
       if(!g_ToolsOpen)
-         for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);
+      {
+         CircNoteBuilt();   // the create's n is the LIVE set - the opening press keeps the freeze on
+         for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);
+      }
       if(g_ToolsOpen)
          for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
    }

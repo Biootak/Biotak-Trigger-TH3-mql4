@@ -973,6 +973,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
           int kr = BaseKnotFind(bid);
           if(kr >= 0)
           {
+             BaseKnotCornerToastArm();   // BKCORNER-TOAST: a tap on the same box is a new 3 s window
              BaseKnotInfoRearm(bid);   // P-BK-110: "look again" IS the ask — it outranks a
                                     // click-away, and the window restarts with it
              g_bkBoxes[kr].commitMs = GetTickCount();   // the same clock, written by the one owner

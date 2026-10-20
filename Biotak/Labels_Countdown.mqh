@@ -15,6 +15,53 @@
 #ifndef LABELS_COUNTDOWN_MQH
 #define LABELS_COUNTDOWN_MQH
 
+//--- The trade card's face text (moved here from Labels_A, P-SIZE-SPLIT-LBL). -----------
+// The card's two measured rows - ONE text owner each (P-LBL-08). The layout has
+// to MEASURE a row before it can centre it, and the row it draws has to be the
+// same string: two StringFormats of the same thing is how a card ends up
+// centred on a width it never draws (P-UI-30's lesson on the chart side).
+string TradePlanTPRowText(const STradePlan &plan)
+{
+   // TWO spaces between the tokens (2026-09-14 user: "the bottom row reads
+   // stuck together"). The tokens themselves are the professor's format.
+   // P-TP4 (2026-10-19): FOUR targets, and `#SL` left this row. The four legs are
+   // the Eng multiples - `Pricicle` is 5 x Eng, NOT the stop (the witness has it).
+   return StringFormat("#TP1:+%d  #TP2:+%d  #TP3:+%d  #TP4:+%d",
+                       plan.tp1, plan.tp2, plan.tp3, plan.tp4);
+}
+
+// ONE leg formatter for the two 0.1-pip legs (P-TRADEPLAN-DEC, user 2026-09-16):
+// a leg with no tenth prints as the INTEGER the professor's own card shows
+// (`Hunter SL: 44`, `Eng.SL: 600`), and a leg that carries one prints it —
+// XAUUSD M15 `Eng.SL: 16.5` (his unrounded value is 16.515, his card rounds it to
+// 17), EURUSD M1 `Eng.SL: 0.3`. The card's width is MEASURED from this same string
+// (TRexTradeCardLayout), so the variable width is what the centring already
+// expects. The [SNAP]/[TRADEPLAN] logs print DoubleToString(x, 1) instead: a
+// diagnostic shows the value the engine used, not the card's face.
+string TradePlanLegText(const double v)
+{
+   if(MathAbs(v - MathRound(v)) < 0.05) return IntegerToString((int)MathRound(v));
+   return DoubleToString(v, 1);
+}
+
+// P-TP4 (2026-10-19): the card's upper row is FOUR legs now, in the master's
+// own order and with his own names:
+//   `TRex: 4  Trigger: 10  Pricicle: 19  Classic: 46`
+// What each one is:
+//   TRex     = plan.eng      (was `Eng.SL:`)   — the knot's risk, 0.1 pip
+//   Trigger  = plan.hunter   (was `Hunter SL:`) — the ETR/CTR/OTR entry, 0.1 pip
+//   Pricicle = plan.pricicle (was `#SL:-n` in the target row) — whole pips
+//   Classic  = plan.classic  (new)                            — whole pips
+// The two 0.1-pip legs keep TradePlanLegText (P-TRADEPLAN-DEC, user 2026-09-16);
+// the two new legs are whole pips like SL/TP/SB.
+string TradePlanLegsText(const STradePlan &plan)
+{
+   return "TRex: " + TradePlanLegText(plan.eng)
+        + "  Trigger: " + TradePlanLegText(plan.hunter)
+        + "  Pricicle: " + IntegerToString(plan.pricicle)
+        + "  Classic: " + IntegerToString(plan.classic);
+}
+
 // Countdown to the current chart bar close. Default = the long corner form
 // ("Close in : 22d 12h 32m 13s"); compact = the live-candle tag form with no
 // prefix and no spaces ("22d12h32m13s"). Units below the leading non-zero one

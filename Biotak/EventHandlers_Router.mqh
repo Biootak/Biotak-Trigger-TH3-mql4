@@ -7,7 +7,7 @@
 #define EVENT_HANDLERS_ROUTER_MQH
 
 #ifndef BUILD_LITE
-//--- P-UI-138 (2026-10-20): the strip's OWN text fields take the keyboard too.
+//--- P-UI-170 (2026-10-20): the strip's OWN text fields take the keyboard too.
 //--- MT4 delivers the key stream to a focused OBJ_EDIT (the house says so in
 //--- BiotakPanels_PalB.mqh:527), so every letter hotkey fired while the user
 //--- typed a level, a caption, a template name or a level note. The object's
@@ -28,6 +28,9 @@ bool AnyStripTextFieldFocused()
 
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+    // BKCORNER-TOAST: the note's clock stops while the cursor is on it. One int
+    // compare per event; the callee returns on one flag when no toast is up.
+    if(id == CHARTEVENT_MOUSE_MOVE) BaseKnotCornerToastHover((int)lparam, (int)dparam);
     // P-UI-114 (2026-09-23): right-click era deleted — terminal menu untouched,
     // strip toggles on a single click of a drawing (DrawStripClickToggle in DrawStrip.mqh).
 
@@ -177,7 +180,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // hex digits, so every letter hotkey below must stay silent while the
         // user types. ESC/ENTER still reach the palette via HandleUIChartEvent.
         // Same for the Base Box TEXT field (TV-parity 2026-09-07 — any letter
-        // is valid box text) and for the strip's own four text fields (P-UI-138).
+        // is valid box text) and for the strip's own four text fields (P-UI-170).
         if(g_PalHexFocus || g_BkTextFocus || AnyStripTextFieldFocused()) return;
 #endif
         // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
@@ -528,9 +531,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        //  
-        // R key   Reset All Overrides
-        //  
+        //
+        // Reset key (inpResetKey, "Q" by default)   Reset All Overrides
+        //
         if(IsHotkeyPressed(lparam, sparam, inpResetKey))
         {
             // STEPOVERRIDE-OFF: single Step Mode — Q resets the base + levels
@@ -667,8 +670,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 
         //
-        // K key   Toggle Timeframe Lock
-        //  
+        // Lock key (inpLockKey, "G" by default)   Toggle Timeframe Lock
+        //
         if(IsHotkeyPressed(lparam, sparam, inpLockKey))
         {
             bool hadCustomPrice = (ObjectFind(0, g_customPriceHorizontalLineName) >= 0);

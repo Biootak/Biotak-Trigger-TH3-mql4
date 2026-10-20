@@ -407,12 +407,10 @@ void ClearAllLabels(const string objectPrefix) {
 // R-TRADEPLAN: trade-plan math lives ONLY in TradePlanFormulas.mqh.
 // This file renders its values - never recompute coefficients here.
 
-// P-UI-70d: the row's FONT is a parameter, exactly like `CreateTRexPiece`'s —
-// the string this row is CENTRED on is measured at `L.fontSize`, so the size it
-// is DRAWN at must come from the same owner. It used to call SetLabelFont(),
-// which applies the SHARED grid `inpFontSize`: the moment the card's own TRADE
-// SIZE differed from the grid's, the row would be measured at one size and
-// painted at another (the P-UI-30 trap, inside the card).
+// P-UI-70d: the row's FONT is a parameter, exactly like `CreateTRexPiece`'s — the
+// string this row is CENTRED on is measured at `L.fontSize`, so the size it is
+// DRAWN at must come from the same owner (it used to call SetLabelFont(), the
+// SHARED grid `inpFontSize`: measured at one size, painted at another).
 bool CreateATRTradePiece(const string name, const string text, const color textColor,
                          const int fontSize, const int xPos, const int yPos) {
     LblMark(name);   // P-PERF-38g: produced by this pass, even if every write below is skipped
@@ -432,51 +430,8 @@ bool CreateATRTradePiece(const string name, const string text, const color textC
 }
 
 
-// The card's two measured rows - ONE text owner each (P-LBL-08). The layout has
-// to MEASURE a row before it can centre it, and the row it draws has to be the
-// same string: two StringFormats of the same thing is how a card ends up
-// centred on a width it never draws (P-UI-30's lesson on the chart side).
-string TradePlanTPRowText(const STradePlan &plan)
-{
-   // TWO spaces between the tokens (2026-09-14 user: "the bottom row reads
-   // stuck together"). The tokens themselves are the professor's format.
-   // P-TP4 (2026-10-19): FOUR targets, and `#SL` left this row — the stop now
-   // prints as `Pricicle:` in the leg row above, exactly like the master card.
-   return StringFormat("#TP1:+%d  #TP2:+%d  #TP3:+%d  #TP4:+%d",
-                       plan.tp1, plan.tp2, plan.tp3, plan.tp4);
-}
-
-// ONE leg formatter for the two 0.1-pip legs (P-TRADEPLAN-DEC, user 2026-09-16):
-// a leg with no tenth prints as the INTEGER the professor's own card shows
-// (`Hunter SL: 44`, `Eng.SL: 600`), and a leg that carries one prints it —
-// XAUUSD M15 `Eng.SL: 16.5` (his unrounded value is 16.515, his card rounds it to
-// 17), EURUSD M1 `Eng.SL: 0.3`. The card's width is MEASURED from this same string
-// (TRexTradeCardLayout), so the variable width is what the centring already
-// expects. The [SNAP]/[TRADEPLAN] logs print DoubleToString(x, 1) instead: a
-// diagnostic shows the value the engine used, not the card's face.
-string TradePlanLegText(const double v)
-{
-   if(MathAbs(v - MathRound(v)) < 0.05) return IntegerToString((int)MathRound(v));
-   return DoubleToString(v, 1);
-}
-
-// P-TP4 (2026-10-19): the card's upper row is FOUR legs now, in the master's
-// own order and with his own names:
-//   `TRex: 4  Trigger: 10  Pricicle: 19  Classic: 46`
-// What each one is:
-//   TRex     = plan.eng      (was `Eng.SL:`)   — the knot's risk, 0.1 pip
-//   Trigger  = plan.hunter   (was `Hunter SL:`) — the ETR/CTR/OTR entry, 0.1 pip
-//   Pricicle = plan.pricicle (was `#SL:-n` in the target row) — whole pips
-//   Classic  = plan.classic  (new)                            — whole pips
-// The two 0.1-pip legs keep TradePlanLegText (P-TRADEPLAN-DEC, user 2026-09-16);
-// the two new legs are whole pips like SL/TP/SB.
-string TradePlanLegsText(const STradePlan &plan)
-{
-   return "TRex: " + TradePlanLegText(plan.eng)
-        + "  Trigger: " + TradePlanLegText(plan.hunter)
-        + "  Pricicle: " + IntegerToString(plan.pricicle)
-        + "  Classic: " + IntegerToString(plan.classic);
-}
+// The card's row text owners moved to Labels_Countdown.mqh — that file is the split owner
+// for Labels_A's face strings (P-SIZE-SPLIT-LBL). The names below are unchanged.
 
 //+------------------------------------------------------------------+
 //| Bottom-right trade card geometry - ONE owner (P-LBL-06/07/08)    |
@@ -559,6 +514,22 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    int wHunter = PnlRawTextW(TradePlanLegsText(plan), fs);
    int wTP     = PnlRawTextW(TradePlanTPRowText(plan), fs);
    int cardW = MathMax(wBrand, MathMax(L.showTP ? wTP : 0, L.showSL ? wHunter : 0));
+   //--- P-UI-187 (2026-10-20): the card had a HEIGHT budget and no WIDTH budget.
+   //--- The card grows LEFT from the chart's right edge and the leg row grew
+   //--- (P-TP4: 47 characters - ~230px at 8pt/96dpi), so on a narrow chart it ran
+   //--- off the chart's left side. The chart's own box is the budget now, and a row
+   //--- that does not fit is DROPPED - never clipped: half a number is a wrong one.
+   int rightEdge = MathMax(8, inpLabelsMarginLeft);
+   int chartW = GetCachedChartWidth();
+   int availW = (chartW > 0) ? MathMax(60, chartW - rightEdge - 8) : 0;
+   if(availW > 0)
+   {
+      if(L.showSL && wHunter > availW) L.showSL = false;
+      if(L.showTP && wTP > availW) L.showTP = false;
+      wHunter = L.showSL ? wHunter : 0;
+      wTP = L.showTP ? wTP : 0;
+      cardW = MathMax(wBrand, MathMax(wTP, wHunter));
+   }
    if(cardW < 1) cardW = 1;
 
    int rows = inpTrexStampGapRows;
@@ -568,8 +539,7 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    // (`inpLabelsMarginBottom`, group 13 - the label columns use
    // `inpTHLabelsMarginBottom`, so this one is the card's alone). Clamped by
    // hand because the input is applied raw at init: 0 or -5 would push the rows
-   // through the floor, and a mistyped 5000 would park the card mid-screen. The
-   // second bound is the chart's own height, applied with the row clamp above.
+   // through the floor, and a mistyped 5000 would park the card mid-screen.
    int bottom = LabelFloorMargin();
    // The card is 1 (brand) + 0..2 (the two optional rows) tall, so the height
    // budget counts exactly what is drawn: rows <= room/pitch - (drawn - 1).
@@ -603,7 +573,6 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    L.rows      = rows;
    L.cardW     = cardW;
 
-   int rightEdge = MathMax(8, inpLabelsMarginLeft);
    L.xTrade  = rightEdge + (cardW - wTP) / 2;
    L.xHunter = rightEdge + (cardW - wHunter) / 2;
    L.xBrand  = rightEdge + (cardW - wBrand) / 2;
@@ -615,21 +584,17 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    // `ex` box. Both gaps are named in ConstantsAndEnums.mqh — the numbers now
    // read as pieces over the wordmark, and the wordmark keeps its own 0 px.
    L.xSp     = L.xTR + wTR + TREX_BRAND_GAP_SPREAD;   // spread moves to the left of `TR`
-   // P-UI-147/148 (2026-10-13): the brand band's own AIR, both axes — the live user
-   // pointed at it twice («این وسطش خلی چسبیده…» / «از بالا به trex چسبیده»). The two
-   // superscripts clear the wordmark by named gaps (ConstantsAndEnums) and the line
-   // stands TREX_BRAND_GAP_SUPER_TOP above the wordmark's box — it used to sit 4 px
-   // INSIDE it (`yBrand + brandEm - 4`), which is the glue he drew a line under.
+   // P-UI-147/148 (2026-10-13): the brand band's own AIR, both axes (the live user
+   // pointed at it twice). The two superscripts clear the wordmark by named gaps
+   // (ConstantsAndEnums) and the line stands TREX_BRAND_GAP_SUPER_TOP above the
+   // wordmark's box - it used to sit 4 px INSIDE it, which was the glue.
    L.ySp     = L.yBrand + brandEm + TREX_BRAND_GAP_SUPER_TOP;
    L.atrSize = atrSize;                 // ATR superscript: 2 pt above the row font, below brandSize
    L.xATR    = L.xEx - TREX_BRAND_GAP_ATR;            // ATR clears the wordmark's right edge
    L.yATR    = L.ySp;                    // same cap-line height as the spread
-   // P-BK-58 — and the BASE NOTE's row is stacked on TOP of the brand: the row's slot is pushed
-   // in here, while the card's own top row is known, so the shared column keeps ONE order (the
-   // note, then the brand, then the two trade rows) whatever the switches do.
-   // P-UI-148: off the CARD's top (`cardTop`), not the wordmark's — a note parked one brand-em
-   // above the brand would land on the numbers.
-   LabelPushBaseNoteSlot(L.yBrand + cardTop, 0);
+   // BKCORNER-ON (2026-10-20): the base note no longer rides this column — its slot is the
+   // family's top-left, pushed by LabelPushBaseNoteSlotTop. The old bottom-right push is
+   // retired here (the function is kept as the one-line restore).
 }
 
 bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
@@ -748,7 +713,8 @@ static int s_trxFS = -1, s_trxBS = -1;
 static int s_trxXSp = 0, s_trxYSp = 0, s_trxXTR = 0, s_trxXEx = 0, s_trxYBrand = 0;
 static int s_trxXATR = 0, s_trxYATR = 0, s_trxATRSize = -1;
 static bool s_trxInit = false;
-bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
+bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L,
+                           const int structureMinutes) {
     string spName  = labelPrefix + "TREX_Spread";
     string capName = labelPrefix + "TREX_Caption";   // RETIRED (P-LBL-06) - purge only
     string trName  = labelPrefix + "TREX_TR";
@@ -790,12 +756,17 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
         return true;
     }
 
-    // Superscript = live STRUCTURE-TF range in pips + % of current-TF ATR ("260.0 (85.3%)"); structure TF = GetStructureTimeframe() (16x: H1->D1, H4->W1, D1->MN); TREX_Spread is legacy.
+    // Superscript = live STRUCTURE-TF range in pips + % of current-TF ATR ("260.0 (85.3%)").
+    // The structure TF is the one THIS CARD's plan is built on (P-TP4-RUNG, one rung
+    // up: M5->M15, M15->H1, H1->H4) and the range is that TF's LIVE (forming) bar,
+    // shift 0. GetStructureTimeframe() is the 16x/4-rung basis and is NOT this card's
+    // structure: on M5 it read H4 and printed 129.2p (H4) / 400.9% where the card's
+    // M15 was the structure. TREX_Spread is legacy.
     string spText = "--";
     double pip = GetCachedPipSize();
     double atrVal = GetATRForTimeframe(Period());
     if(!IsZero(pip, EPSILON_PRICE)) {
-        ENUM_TIMEFRAMES stf = GetStructureTimeframe();
+        ENUM_TIMEFRAMES stf = CompatTF(structureMinutes);
         double hi = iHigh(NULL, stf, 0), lo = iLow(NULL, stf, 0), rng = hi - lo;
         if(hi > 0 && lo > 0 && hi >= lo)
             spText = DoubleToString(rng / pip, 1) + (atrVal > 0.0 && atrVal != EMPTY_VALUE ? " (" + DoubleToString(rng / atrVal * 100.0, 1) + "%)" : "");
@@ -961,10 +932,8 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     // row flags below, the label card's TRADE PLAN ROWS band) are the ONLY thing
     // that may remove it. The ATR overview gate stays where it belongs: inside
     // DisplayATRLabels, over the ATR columns it actually owns.
-    // P-BK-58: the base note's row lives in THIS column, so its slot is pushed here first —
-    // the family's floor is all that is stacked when the card is off or its plan is cold, and
-    // the card's own layout (below) moves the row above its brand when it IS drawn.
-    LabelPushBaseNoteSlot(LabelFloorMargin(), 0);
+    // BKCORNER-ON (2026-10-20): the base note's slot is the family's top-left, pushed by
+    // LabelPushBaseNoteSlotTop — this column no longer owns it.
     if(!inpShowATRTradeLabels) {
         // Defensive wipe: the relayout callers clear LBL_ first, but a bare
         // toggle path may reach here without a prior clear.
@@ -998,7 +967,7 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     STrexCardLayout L;
     TRexTradeCardLayout(plan, L);
     CreateATRTradeLabel(labelPrefix, plan, L);
-    DisplayTRexTitleBlock(labelPrefix, L);
+    DisplayTRexTitleBlock(labelPrefix, L, plan.strMin);
     DisplayTradePlanTopRows(labelPrefix, plan, L);
 }
 
@@ -1478,7 +1447,7 @@ void TradePlanLiveTick()
     } // end log-level gate (P-LOG-01)
 
     CreateATRTradeLabel(labelPrefix, plan, L);
-    DisplayTRexTitleBlock(labelPrefix, L);
+    DisplayTRexTitleBlock(labelPrefix, L, plan.strMin);
     DisplayTradePlanTopRows(labelPrefix, plan, L);
     } // numeric change: full block above
     else
@@ -1489,7 +1458,7 @@ void TradePlanLiveTick()
        // too because it owns its row's EXISTENCE - a switch flipped while the
        // numbers were frozen must still remove the row (P-LBL-09).
        CreateATRTradeLabel(labelPrefix, plan, L);
-       DisplayTRexTitleBlock(labelPrefix, L);
+       DisplayTRexTitleBlock(labelPrefix, L, plan.strMin);
        DisplayTradePlanTopRows(labelPrefix, plan, L);
     }
     ThrottledChartRedraw();

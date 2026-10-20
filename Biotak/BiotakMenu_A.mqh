@@ -310,7 +310,7 @@ enum ENUM_SUB_MODE
 // A ring item's card used to be its feature code by IDENTITY, which could only hold
 // while no ring item needed a card of its own: the measuring tool opens the Base Box
 // style card (12). With one owner the ring's hold and the Tools cell's hold can
-// never open two different cards. `-1` = "no card of its own" (P-UI-137: the four
+// never open two different cards. `-1` = "no card of its own" (P-UI-169: the four
 // tools that own none) and it keeps the callers' "nothing to open" guard valid.
 int FeaturePanel(const int feat)
 {
@@ -320,7 +320,7 @@ int FeaturePanel(const int feat)
    if(feat == CIR_BASEKNOT)      return 12;   // Base Box style card (a press still arms drawing)
    // P-SESS: CIR_SESSIONS (19) is above the card space (0..17) — its card is 15.
    if(feat == CIR_SESSIONS)      return 15;   // Sessions Zones card (P-SESS)
-   // P-UI-137: the four tools that own NO card - the identity fallback sent a
+   // P-UI-169: the four tools that own NO card - the identity fallback sent a
    // hold on them to somebody else's card, and the release was eaten.
    if(feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE) return -1;
    return feat;                               // every other feature's card IS its code
@@ -818,10 +818,9 @@ void LoadUIState()
    g_ToolsOpen = false;   // P-UI-142b: shut every attach; the MEN snapshot still restores the ring
    if(GlobalVariableCheck(GetGVName("TIPPIN")))
       g_UI.tipPin = (GlobalVariableGet(GetGVName("TIPPIN")) > 0.5);
-    // P-UI-161: the membership mask. CircStarLoad answers every case: a missing
-    // key = the shipped default, and an unstamped (pre-SESSIONS) key gets the
-    // clock starred once — the handoff's ONE writer lives in BiotakMenu_Ring.
-    g_CircStarMask = CircStarLoad(GetGVName("STAR"));
+    // P-UI-161/175: the membership mask is loaded BEFORE the version branch
+    // (InitializeUIStates) - the reset path keeps the key (P-UI-174) and
+    // saves the value it read, never the compile-time default.
    // P-DRAW-89: the plate's transparency setting is retired. Its GV is swept on
    // attach below so a chart that carried the old key cannot resurrect the look.
    GlobalVariableDel(GetGVName("PLATE"));
@@ -898,35 +897,30 @@ void InitializeUIStates()
 {
    DeleteLegacyMenuObjects();
    g_UI.btnPrefix = "BiotakMenuV2_" + IntegerToString(ChartID()) + "_";
-   // P-UI-131e: the KEY carries the SYMBOL, never the chart id. A chart id is handed out
-   // per session and per window, so after a terminal restart (or in a freshly opened
-   // chart) every key was absent: the version check failed, the whole block was wiped
-   // and re-seeded from the defaults — the user's «اندیکاتور خاموش و روشن میکنی …
-   // جاش عوض میشه». Per symbol: durable across restarts, shared by that symbol's windows.
-   g_UI.gvPrefix = "BIOMENU_" + _Symbol + "_";
+    // P-UI-131e: the KEY carries the SYMBOL, never the chart id (an id is handed
+    // out per session): after a restart every key was absent, the version check
+    // failed and the block was wiped and re-seeded from the defaults.
+    g_UI.gvPrefix = "BIOMENU_" + _Symbol + "_";
    RuntimeSettingsSetPersistPrefix(g_UI.gvPrefix);   // OV_ overrides saved under this prefix
    MigrateLegacyUIState();   // P-UI-131e: adopt a pre-131e per-chart block, once
 
-   // Orphan purge: panel/palette objects survive a TF-switch (chart objects
-   // are NOT deleted on REASON_CHARTCHANGE) while our open-state statics
-   // reset — without this a dead, unresponsive panel haunts the chart.
-   // Runs once per init; steady state untouched.
-   ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl");
-   ObjectsDeleteAll(0, g_UI.btnPrefix + "Pal_");
-   // The sub-menu panel (backdrop, header, pager, dots) shares the same fate: it
-   // survives a TF switch (chart objects are NOT deleted on REASON_CHARTCHANGE)
-   // while g_ToolsOpen resets to false, leaving an orphan panel that no longer
-   // answers anything. One sweep, once per init.
-   ObjectsDeleteAll(0, g_UI.btnPrefix + "Sub");
-   // P-UI-144: THE GHOST SWEEP — the same orphan class one level up: objects this
-   // family painted in a PREVIOUS session carry that session's chart id in their
-   // name (measured: `BiotakMenuV2_134342075006101685_CircOrbBg` sitting in
-   // `profiles/default/chart03.chr` at x=70,y=79). MT4 restores them at their
-   // stale absolute pixels on every restart/reopen, and no purge below can see
-   // them because each one only knows the LIVE prefix. Our own family was
-   // already deleted by the paired teardown (or never existed), so one prefix
-   // walk here removes exactly the foreign spellings. Same shape, same owner
-   // law as `DrawStripSweepStale` beside it in the entry's OnInit.
+    // Orphan purge: panel/palette objects survive a TF-switch (chart objects
+    // are NOT deleted on REASON_CHARTCHANGE) while our open-state statics
+    // reset - without this a dead, unresponsive panel haunts the chart.
+    ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl");
+    ObjectsDeleteAll(0, g_UI.btnPrefix + "Pal_");
+    // The sub-menu panel (backdrop, header, pager, dots) shares the same fate: it
+    // survives a TF switch (chart objects are NOT deleted on REASON_CHARTCHANGE)
+    // while g_ToolsOpen resets to false, leaving an orphan panel that no longer
+    // answers anything. One sweep, once per init.
+    ObjectsDeleteAll(0, g_UI.btnPrefix + "Sub");
+    // P-UI-144: THE GHOST SWEEP — the same orphan class one level up: objects this
+    // family painted in a PREVIOUS session carry that session's chart id in their
+    // name (measured: `BiotakMenuV2_134342075006101685_CircOrbBg` sitting in
+    // `profiles/default/chart03.chr` at x=70,y=79). MT4 restores them at their
+    // stale absolute pixels on every restart/reopen, and no purge below can see
+    // them because each one only knows the LIVE prefix - so one prefix walk here
+    // removes exactly the foreign spellings.
    BiotakMenuGhostSweep();
 
    bool versionOk = false;
@@ -937,6 +931,7 @@ void InitializeUIStates()
    }
 
    LoadUIPlaces();   // P-UI-131e: the homes first — the reset branch below must not lose them
+   g_CircStarMask = CircStarLoad(GetGVName("STAR"));   // P-UI-191: read BEFORE either branch can save
    if(versionOk && GlobalVariableCheck(GetGVName("INIT")))
    {
       LoadUIState();
@@ -958,13 +953,18 @@ void ClearAllGVs()
    for(int i = GlobalVariablesTotal() - 1; i >= 0; i--)
    {
       const string name = GlobalVariableName(i);
-      if(StringLen(name) >= len && StringSubstr(name, 0, len) == pfx)
+      //--- P-UI-174/190 (2026-10-20): the reset is a UI-STATE reset - never a
+      //--- reset of where the user put things (HOME_/PNL_/PNLP/STAR) or of what
+      //--- they set (OV_ overrides); both lived in the swept namespace.
+      const bool keep = (StringFind(name, "_HOME_") >= 0 || StringFind(name, "STAR") >= 0 ||
+                         StringSubstr(name, len, 3) == "OV_" || StringSubstr(name, len, 4) == "PNL_" ||
+                         StringSubstr(name, len, 4) == "PNLP");
+      if(StringLen(name) >= len && StringSubstr(name, 0, len) == pfx && !keep)
          GlobalVariableDel(name);
    }
-   // P-PERF-27c: every write-shadow that claims these keys exist is now wrong.
-   // Without this, the version-reset path (ClearAllGVs -> ResetUIToDefaults ->
-   // SaveUIStates) and any later save would compare against deleted keys and
-   // skip the writes that put them back.
+   // P-PERF-27c: the write-shadows that claim these keys exist are now wrong - the
+   // reset path (ClearAllGVs -> ResetUIToDefaults -> SaveUIStates) would compare
+   // against deleted keys and skip the writes that put them back.
    GVShadowsInvalidate();
 }
 

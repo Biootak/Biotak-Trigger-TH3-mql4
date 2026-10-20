@@ -25,6 +25,7 @@ static bool   s_bxpOn = false;
 static string s_bxpObj = "";
 static string s_bxpFilObj = "";
 static string s_bxpMidObj = "";
+static color  s_bxpBorderInk = clrNONE;   // P-UI-175: the master's own ink, for the release
 bool BoxPreviewOwns(const string obj)
 {
    return (s_bxpOn && obj != "" && obj == s_bxpObj);
@@ -36,7 +37,14 @@ bool BoxPreviewEnd()
    string master = s_bxpObj;
    string fil = s_bxpFilObj, mid = s_bxpMidObj;
    s_bxpObj = ""; s_bxpFilObj = ""; s_bxpMidObj = "";
-   if(ObjectFind(0, master) < 0) return true;   // gone mid-gesture: nothing to give back
+   if(ObjectFind(0, master) < 0) { s_bxpBorderInk = clrNONE; return true; }   // gone mid-gesture: nothing to give back
+   //--- P-UI-175 (2026-10-20): the master gave its interior back to the terminal
+   //--- in the INTERIOR's ink, so the release gives it its own ink back.
+   if(s_bxpBorderInk != clrNONE)
+   {
+      ObjectSetInteger(0, master, OBJPROP_COLOR, s_bxpBorderInk);
+      s_bxpBorderInk = clrNONE;
+   }
    int unhid = 0;
    if(fil != "" && ObjectFind(0, fil) >= 0)
    {
@@ -75,7 +83,15 @@ void BoxPreviewArm(const string obj)
    {
       // The child's COLOUR is the rendered interior ink the user tuned (P-DRAW-64a),
       // so the native fill wears the exact pixel the child wore - no second render owner.
-      ObjectSetInteger(0, obj, OBJPROP_BGCOLOR, (color)ObjectGetInteger(0, fil, OBJPROP_COLOR));
+      //--- P-UI-175 (2026-10-20): the property MT4 PAINTS a shape's fill with is
+      //--- OBJPROP_COLOR. OBJPROP_BGCOLOR belongs to OBJ_EDIT / OBJ_BUTTON /
+      //--- OBJ_RECTANGLE_LABEL - a time/price shape has NO such property, so the
+      //--- old write was a silent no-op and the native fill wore the BORDER's ink
+      //--- for the whole gesture (the house measured the same law for the session
+      //--- box: "this build fills a rectangle with its COLOR; BGCOLOR and FILL are
+      //--- both unconsumed"). The master's own ink is remembered and put back.
+      s_bxpBorderInk = (color)ObjectGetInteger(0, obj, OBJPROP_COLOR);
+      ObjectSetInteger(0, obj, OBJPROP_COLOR, (color)ObjectGetInteger(0, fil, OBJPROP_COLOR));
       ObjectSetInteger(0, obj, OBJPROP_FILL, true);
       ObjectSetInteger(0, fil, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
       s_bxpFilObj = fil;
@@ -88,11 +104,11 @@ void BoxPreviewArm(const string obj)
    s_bxpOn = true; s_bxpObj = obj;
    // DIAG-131 style: the write AND its read-back, because «جابجا کردم یک فریم عقب» is
    // unprovable without the value the OBJECT now holds.
-   DrawStripDiagEmit(StringFormat("[drawstrip] BOXPRE view=on obj=\"%s\" fil=\"%s\" mid=\"%s\" fill=%d bgc=%d childtf=%d",
-                                  obj, fil, mid,
-                                  (int)ObjectGetInteger(0, obj, OBJPROP_FILL),
-                                  (int)ObjectGetInteger(0, obj, OBJPROP_BGCOLOR),
-                                  (fil == "") ? -1 : (int)ObjectGetInteger(0, fil, OBJPROP_TIMEFRAMES)));
+    DrawStripDiagEmit(StringFormat("[drawstrip] BOXPRE view=on obj=\"%s\" fil=\"%s\" mid=\"%s\" fill=%d ink=%d childtf=%d",
+                                   obj, fil, mid,
+                                   (int)ObjectGetInteger(0, obj, OBJPROP_FILL),
+                                   (int)ObjectGetInteger(0, obj, OBJPROP_COLOR),
+                                   (fil == "") ? -1 : (int)ObjectGetInteger(0, fil, OBJPROP_TIMEFRAMES)));
 }
 
 #endif // BOX_PREVIEW_MQH

@@ -355,9 +355,9 @@ void CreateMenu()
    // deleted it, CircItemAt refuses it) — rebuilding it here painted both.
    if(!g_ToolsOpen)
    {
-      for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: seats = stars that fit + the door
+      CircNoteBuilt();                             // BEFORE the create: CircLayout's n is this live set (the orb press keeps the freeze on)
+      for(int i = 0; i < CircPlacedCountLive(); i++)
          CircCreateItem(i);
-      CircNoteBuilt();                             // the set CircRelayoutIfNeeded compares against
    }
    if(g_ToolsOpen)
       for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
@@ -420,9 +420,9 @@ void DeleteToolsMenu(const bool restoreRing = true)
    if(restoreRing && g_UI.menuVisible)          // bring the ring back
    {
       // P-UI-161: the ring is rebuilt from the mask the stars just wrote — a star
-      // toggled while the Tools menu was open lands HERE, in the same click.
-      for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);
+      // toggled here (note BEFORE the create: g_OrbDragging is on, the frozen n is the OLD grid).
       CircNoteBuilt();
+      for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);
    }
    // P-UI-168: restore=0 is the tear-down's own close, restore=1 the ring coming back.
    DrawStripDiagEmit(StringFormat("[P-UI-168] fan open=0 restore=%d placed=%d built=%d", (restoreRing ? 1 : 0), CircPlacedCountLive(), s_circBuiltSeats));
@@ -909,7 +909,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          else if(!g_LongPressFired && GetTickCount() - g_LongPressStart >= LONG_PRESS_TIME)
          {
              g_LongPressFired = true;
-             // P-UI-137: a hold that owns NO card must not eat the release.
+             // P-UI-169: a hold that owns NO card must not eat the release.
              if(g_LongPressItem < 0 || g_LongPressItem >= PNL_COUNT) { g_LongPressFired = false; return; }
              PnlOpen(g_LongPressItem);
              UISuppressNextClick();
@@ -972,7 +972,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          int feat = RingFeature(hitIdx);
          if(feat == CIR_TOOLS) return; // tools toggles submenu on click, no long press
          int rp = RingPanel(hitIdx);
-         if(rp < 0) return;             // P-UI-137: this item owns no card - its own click answers
+         if(rp < 0) return;             // P-UI-169: this item owns no card - its own click answers
          g_LongPressItem  = rp;
          g_LongPressStart = GetTickCount();
          g_LongPressX     = mx;

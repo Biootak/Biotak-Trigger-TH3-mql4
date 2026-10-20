@@ -881,7 +881,21 @@ bool DrawStripGearRowTap(const int r)
    {
       int seat = (arg == DRAW_SLOT_MORE) ? DRAW_SLOT_MORE : arg;
       DrawStripVisInit();
-      s_dsVis[s_dsKind][seat] = !s_dsVis[s_dsKind][seat];
+      //--- P-UI-176 (2026-10-20): the MERGED colour seat is ONE cell for TWO
+      //--- roles (P-DRAW-64a): the quick row folds COLOR into FILLCLR and the
+      //--- cell is visible while EITHER role is on. So the row is one control for
+      //--- one cell: its switch reads the CELL and its press flips the CELL, both
+      //--- roles together. Two rows for one cell was the lie - the switch showed
+      //--- a state the row did not have, and hiding one role never hid the cell.
+      bool merged = (seat == DRAW_SLOT_FILLCLR) && DrawStripMergedColor(s_dsKind);
+      if(merged)
+      {
+         bool cellOn = DrawStripSeatVis(s_dsKind, seat, true);
+         s_dsVis[s_dsKind][DRAW_SLOT_FILLCLR] = !cellOn;
+         s_dsVis[s_dsKind][DRAW_SLOT_COLOR]   = !cellOn;
+      }
+      else
+         s_dsVis[s_dsKind][seat] = !s_dsVis[s_dsKind][seat];
       DrawStripLayout();
       DrawStripPaint();
       return true;

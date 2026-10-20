@@ -59,6 +59,7 @@ static bool     s_sessLiveValid[SESS_SLOTS];
 static int      s_sessLiveStamp[SESS_SLOTS];
 static datetime s_sessLiveS[SESS_SLOTS];
 static datetime s_sessLiveE[SESS_SLOTS];
+static datetime s_sessLiveBar[SESS_SLOTS];   // P-SESS-11: the bar the cached H/L was last synced on
 static double   s_sessLiveHi[SESS_SLOTS];
 static double   s_sessLiveLo[SESS_SLOTS];
 
@@ -185,21 +186,31 @@ void SessText(const string nm, const datetime t, const double p, const string tx
 //| a holiday or beyond-history window degrades to NO object, never   |
 //| to a fake one).                                                   |
 //+------------------------------------------------------------------+
-bool SessHiLoFor(const datetime t1, const datetime t2, double &hi, double &lo)
+bool SessHiLoFor(datetime t1, const datetime t2, double &hi, double &lo)
 {
    hi = 0.0; lo = 0.0;
    if(t2 <= t1) return false;
    int bars = iBars(NULL, 0);
    if(bars <= 0) return false;
-   int oldest = iBarShift(NULL, 0, t1, false);
-   int newest = iBarShift(NULL, 0, t2, false);
-   if(oldest < 0 || newest < 0) return false;
-   if(oldest > bars - 1) oldest = bars - 1;
-   if(newest > oldest) newest = oldest;
-   int count = oldest - newest + 1;
+   //--- P-SESS-09: iBarShift(clamp) answers the OLDEST bar for a time before the
+   //--- loaded history, so a window older than the series painted the oldest
+   //--- bar's high/low as its own. Wholly-before-history = NO object (this file's
+   //--- promise); partially-before = scan the part the chart really carries.
+   datetime oldestT = iTime(NULL, 0, bars - 1);
+   if(oldestT <= 0) return false;
+   if(t2 <= oldestT) return false;
+   datetime from = (t1 < oldestT) ? oldestT : t1;   // partial coverage: scan what the chart carries
+   int i1 = iBarShift(NULL, 0, from, false);
+   //--- P-SESS-10: the window's END is exclusive — the bar that OPENS at t2 is the
+   //--- next window's first bar, and counting it inflated every past H/L by one bar.
+   int i2 = iBarShift(NULL, 0, t2 - 1, false);
+   if(i1 < 0 || i2 < 0) return false;
+   if(i1 > bars - 1) i1 = bars - 1;
+   if(i2 > i1) i2 = i1;
+   int count = i1 - i2 + 1;
    if(count < 1) return false;
-   int iH = iHighest(NULL, 0, MODE_HIGH, count, newest);
-   int iL = iLowest(NULL, 0, MODE_LOW, count, newest);
+   int iH = iHighest(NULL, 0, MODE_HIGH, count, i2);
+   int iL = iLowest(NULL, 0, MODE_LOW, count, i2);
    if(iH < 0 || iL < 0) return false;
    hi = iHigh(NULL, 0, iH);
    lo = iLow(NULL, 0, iL);
@@ -217,11 +228,17 @@ void SessWipe()
    ObjectsDeleteAll(0, inpObjectPrefix + SESS_TAG, -1, -1);
 }
 
-//--- rebuild trigger: settings, slots, master, hide (TF is NOT here:
-//--- a timeframe switch must never repaint the family)
+//--- rebuild trigger: settings, slots, master, hide, and the CHART'S OWN
+//--- TIMEFRAME. P-UI-173 (2026-10-20): the session high/low is SCANNED from
+//--- the chart's bars (SessHiLoFor), so the family's numbers ARE timeframe
+//--- derived: a switch left the PAST windows' labels on the old timeframe's
+//--- bars and the live window's number on the old scan plus the new bar. The
+//--- switch is a handoff for this family too - the rebuild below IS its handoff
+//--- (its own wipe-and-repaint, not the level family's staged one).
 long SessViewHash()
 {
    long h = 1181783497276652981;
+   h = h * 31 + (long)Period();
    h = h * 31 + (g_sessMaster ? 1 : 0);
    h = h * 31 + (IsIndicatorHidden() ? 1 : 0);
    h = h * 31 + (long)g_sessHistDays;
@@ -252,7 +269,10 @@ void SessPaintAll(const datetime now, const int bkr)
    s_sessCdText = "";
    s_sessCdMs = 0;
    for(int z = 0; z < SESS_SLOTS; z++)
+   {
       s_sessLiveValid[z] = false;
+      s_sessLiveBar[z] = 0;
+   }
 
    datetime noon = SessServerNoon();
    SessWindow wins[];
@@ -290,8 +310,8 @@ void SessPaintAll(const datetime now, const int bkr)
       //--- a just-opened window on a bar-less stretch degrades to bar 0
       for(int w = n0; w < n; w++)
       {
-         if(wins[w].kk != 0 || wins[w].hasPrice) continue;
-         if(SessWindowState(wins[w], now) != SESS_WS_LIVE) continue;
+         if(wins[w].hasPrice) continue;                                  // P-SESS-07
+         if(SessWindowState(wins[w], now) != SESS_WS_LIVE) continue;     // P-SESS-07: the STATE names the live window
          double h0 = iHigh(NULL, 0, 0), l0 = iLow(NULL, 0, 0);
          if(h0 > 0.0 && l0 > 0.0)
          {
@@ -316,13 +336,13 @@ void SessPaintAll(const datetime now, const int bkr)
          SessRect(nmB, wins[w].sU, wins[w].hi, wins[w].eU, wins[w].lo, ink, fillC, bW, STYLE_SOLID, tip);
          SessText(nmB + "L", wins[w].sU, wins[w].hi, SessZoneTag(s.zone), ink, SESS_PT_LBL,
                   ANCHOR_LEFT_UPPER, tip);
-         if(s.style == SESS_STYLE_MID && wins[w].kk == 0)
+         if(s.style == SESS_STYLE_MID && SessWindowState(wins[w], now) == SESS_WS_LIVE)   // P-SESS-07
          {
             double mid = (wins[w].hi + wins[w].lo) / 2.0;
             SessLine(nmB + "M", wins[w].sU, mid, wins[w].eU, mid, SessBlend(base, SESS_MID_ALPHA),
                      1, STYLE_DOT, tip + " · mid");
          }
-         if(wins[w].kk == 0 && SessWindowState(wins[w], now) == SESS_WS_LIVE)
+         if(SessWindowState(wins[w], now) == SESS_WS_LIVE)   // P-SESS-07: no day-index gate on a live window
          {
             ovOk[sl] = true;
             ovS0[sl] = wins[w].sU; ovE0[sl] = wins[w].eU;
@@ -339,7 +359,7 @@ void SessPaintAll(const datetime now, const int bkr)
       }
       if(wLin >= 0)
       {
-         bool wLinLive = (wins[wLin].kk == 0 && SessWindowState(wins[wLin], now) == SESS_WS_LIVE);   // P-SESS-06
+         bool wLinLive = (SessWindowState(wins[wLin], now) == SESS_WS_LIVE);   // P-SESS-06/07
          //--- the live cache belongs to the WINDOW, not to the H/L lines:
          //--- the box extends per tick even when the lines are off
          if(wLinLive)
@@ -350,6 +370,7 @@ void SessPaintAll(const datetime now, const int bkr)
             s_sessLiveE[sl] = wins[wLin].eU;
             s_sessLiveHi[sl] = wins[wLin].hi;
             s_sessLiveLo[sl] = wins[wLin].lo;
+            s_sessLiveBar[sl] = iTime(NULL, 0, 0);   // P-SESS-11
          }
          string tipL = SessWindowTip(s, wins[wLin].sU, wins[wLin].hi, wins[wLin].lo, true);
          if(g_sessHlLines)
@@ -362,13 +383,13 @@ void SessPaintAll(const datetime now, const int bkr)
          }
          if(g_sessHlLabels)
          {
-            SessText(SessWindowName(sl, wins[wLin].stamp, "HIL"), wins[wLin].eU, wins[wLin].hi,
+            SessText(SessWindowName(sl, wins[wLin].stamp, "HIL"), SessLabelAnchor(wins[wLin].eU, now), wins[wLin].hi,
                      DoubleToString(wins[wLin].hi, _Digits), base, SESS_PT_PRICE, ANCHOR_RIGHT_LOWER, tipL);
-            SessText(SessWindowName(sl, wins[wLin].stamp, "LOL"), wins[wLin].eU, wins[wLin].lo,
+            SessText(SessWindowName(sl, wins[wLin].stamp, "LOL"), SessLabelAnchor(wins[wLin].eU, now), wins[wLin].lo,
                      DoubleToString(wins[wLin].lo, _Digits), base, SESS_PT_PRICE, ANCHOR_RIGHT_UPPER, tipL);
          }
          if(g_sessRangeText)
-            SessText(SessWindowName(sl, wins[wLin].stamp, "R"), wins[wLin].eU, wins[wLin].lo,
+            SessText(SessWindowName(sl, wins[wLin].stamp, "R"), SessLabelAnchor(wins[wLin].eU, now), wins[wLin].lo,
                      IntegerToString(SessPipsIn(wins[wLin].hi, wins[wLin].lo)) + "p",
                      SessBlend(base, SESS_MID_ALPHA), SESS_PT_PRICE, ANCHOR_RIGHT_LOWER,
                      "range of the session · pips");
@@ -401,7 +422,11 @@ void SessPaintAll(const datetime now, const int bkr)
                      + SessHhMmFromMin(s.endMin) + " · upcoming";
          SessRect(nmF, wins[w].sU, bandHi[sl], wins[w].eU, bandLo[sl],
                   SessBlend(base, SESS_GHOST_ALPHA), clrNONE, 1, STYLE_DOT, tipF);
-         SessText(nmF + "L", wins[w].sU, bandHi[sl],
+         //--- P-SESS-08: the tag tail must NOT be "L" here — `_F` + `L` spells `_FL`,
+         //--- the fill-child suffix (FILLCHILD_SUFFIX, Toolbar_A), so the strip's
+         //--- orphan sweep deleted every ghost tag 2 s after it was painted (log
+         //--- witness: ORPHAN drop="THLevelsSESS_2_20261021_FL"). "T" is the tag.
+         SessText(nmF + "T", wins[w].sU, bandHi[sl],
                   SessZoneTag(s.zone) + " " + SessHhMmFromMin(s.startMin),
                   SessBlend(base, SESS_GHOST_ALPHA), SESS_PT_LBL, ANCHOR_LEFT_UPPER, tipF);
       }
@@ -459,7 +484,7 @@ void SessPaintAll(const datetime now, const int bkr)
       StringToUpper(nmU);
       s_sessCdText = nmU + (s_sessCdIsOpen ? " close " : " open ") + SessFmtDur((int)(s_sessCdNext - now));
       if(cdP > 0.0)
-         SessText(nmC, s_sessCdNext, cdP, s_sessCdText, SESS_CD_COLOR, SESS_PT_PRICE,
+         SessText(nmC, SessLabelAnchor(s_sessCdNext, now), cdP, s_sessCdText, SESS_CD_COLOR, SESS_PT_PRICE,
                   ANCHOR_LEFT_LOWER, "next session boundary");
    }
 }
@@ -506,34 +531,64 @@ void SessLiveRepaint(const int sl)
    {
       ObjectSetString(0, SessWindowName(sl, s_sessLiveStamp[sl], "HIL"), OBJPROP_TEXT,
                       DoubleToString(s_sessLiveHi[sl], _Digits));
-      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "HIL"), 0, s_sessLiveE[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "HIL"), 0, SessLabelAnchor(s_sessLiveE[sl], TimeCurrent()), s_sessLiveHi[sl]);
       ObjectSetString(0, SessWindowName(sl, s_sessLiveStamp[sl], "LOL"), OBJPROP_TEXT,
                       DoubleToString(s_sessLiveLo[sl], _Digits));
-      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "LOL"), 0, s_sessLiveE[sl], s_sessLiveLo[sl]);
+      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "LOL"), 0, SessLabelAnchor(s_sessLiveE[sl], TimeCurrent()), s_sessLiveLo[sl]);
    }
    if(g_sessRangeText)
    {
       ObjectSetString(0, SessWindowName(sl, s_sessLiveStamp[sl], "R"), OBJPROP_TEXT,
                       IntegerToString(SessPipsIn(s_sessLiveHi[sl], s_sessLiveLo[sl])) + "p");
-      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "R"), 0, s_sessLiveE[sl], s_sessLiveLo[sl]);
+      ObjectMove(0, SessWindowName(sl, s_sessLiveStamp[sl], "R"), 0, SessLabelAnchor(s_sessLiveE[sl], TimeCurrent()), s_sessLiveLo[sl]);
    }
    ThrottledChartRedraw();
 }
 
 void SessLiveUpdate(const datetime now)
 {
+   datetime bt = iTime(NULL, 0, 0);
    for(int sl = 0; sl < SESS_SLOTS; sl++)
    {
       if(!s_sessLiveValid[sl]) continue;
       if(now < s_sessLiveS[sl] || now >= s_sessLiveE[sl]) continue;
+      //--- P-SESS-11: a bar that CLOSED unobserved (a slow tick, a sleep, a
+      //--- reconnect) was never compared — its printed extreme is inside the
+      //--- window but outside the cache. One scan of the window on the first
+      //--- tick of a new bar answers every bar that passed; the bar-0 compare
+      //--- below still carries the forming bar.
+      bool newBar = (bt > 0 && s_sessLiveBar[sl] > 0 && bt != s_sessLiveBar[sl]);
+      bool grew = false;
+      if(newBar)
+      {
+         double hW = 0.0, lW = 0.0;
+         datetime rEnd = (s_sessLiveE[sl] <= now) ? s_sessLiveE[sl] : now;
+         if(SessHiLoFor(s_sessLiveS[sl], rEnd, hW, lW))
+         {
+            if(hW > s_sessLiveHi[sl]) { s_sessLiveHi[sl] = hW; grew = true; }
+            if(lW < s_sessLiveLo[sl]) { s_sessLiveLo[sl] = lW; grew = true; }
+         }
+      }
+      if(bt > 0) s_sessLiveBar[sl] = bt;
       double h0 = iHigh(NULL, 0, 0);
       double l0 = iLow(NULL, 0, 0);
       if(h0 <= 0.0 || l0 <= 0.0) continue;
-      if(h0 <= s_sessLiveHi[sl] && l0 >= s_sessLiveLo[sl]) continue;
-      if(h0 > s_sessLiveHi[sl]) s_sessLiveHi[sl] = h0;
-      if(l0 < s_sessLiveLo[sl]) s_sessLiveLo[sl] = l0;
-      SessLiveRepaint(sl);
+      if(h0 > s_sessLiveHi[sl]) { s_sessLiveHi[sl] = h0; grew = true; }
+      if(l0 < s_sessLiveLo[sl]) { s_sessLiveLo[sl] = l0; grew = true; }
+      if(grew) SessLiveRepaint(sl);   // a still frame still costs zero writes
    }
+}
+
+//--- P-UI-172 (2026-10-20): an OBJ_TEXT is anchored at the PIXEL of its time, so
+//--- a time in the FUTURE has no pixel inside the chart area: the live session's
+//--- H/L labels, its range caption and the countdown were anchored at the window's
+//--- END (in the future while the session runs) and simply never appeared - the
+//--- switches looked dead exactly when the session was live. ONE owner for the
+//--- anchor: the window's end, clipped to NOW.
+datetime SessLabelAnchor(const datetime endT, const datetime now)
+{
+   if(endT > now) return now;
+   return endT;
 }
 
 //+------------------------------------------------------------------+
@@ -559,11 +614,18 @@ void SessionsTick()
          {
             s_sessWasOpen[z] = false;
             s_sessLiveValid[z] = false;
+            s_sessLiveBar[z] = 0;
          }
          ThrottledChartRedraw(true);
       }
       return;
    }
+
+   //--- P-SESS-12: a TF switch / attach can run this tick before the chart's
+   //--- bars are loaded. SessPaintAll wipes first, so a zero-bar pass left the
+   //--- whole family blank and then stored the built hash — no retry until the
+   //--- next day. Return without wiping; the next 250 ms tick tries again.
+   if(iBars(NULL, 0) <= 0) return;
 
    datetime now = TimeCurrent();
    int bkr = SessModelLiveDeltaMin();

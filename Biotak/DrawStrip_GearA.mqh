@@ -309,8 +309,13 @@ bool DrawStripGearRow(const int kind, const int arg, int &y)
       if(!said)
       {
          said = true;
-         Print("[drawstrip] gear row ceiling reached (", DSTRIP_GLIST_MAX,
-               ") — a row was dropped; tab=", s_dsGear, " kind=", (int)s_dsKind);
+         //--- P-UI-182 (2026-10-20): the witness goes through the FLUSHED channel
+         //--- (P-LOG-3), never `Print`: MT4 buffers the journal in RAM, so the one
+         //--- line that names a dropped row could sit unread for minutes and read
+         //--- as "nothing happened".
+         DrawStripDiagEmit("[drawstrip] gear row ceiling reached (" + IntegerToString(DSTRIP_GLIST_MAX) +
+                           ") - a row was dropped; tab=" + IntegerToString(s_dsGear) +
+                           " kind=" + IntegerToString((int)s_dsKind));
       }
       return false;
    }
@@ -446,36 +451,16 @@ void DrawStripGearSection(const string text, int &y)
 //--- the Paint tab's three settings cost 252px. This registers the caption on the
 //--- row the control then occupies: three settings, 126px, and the card 426 -> 342
 //--- (both on the plate law: 48 + 42k).
-void DrawStripGearCaptionIn(const string text, const int ctlX, int &y)
-{
-   if(s_dsGearSecN < DSTRIP_GEAR_SECTION_MAX)
-   {
-      s_dsGearSecY[s_dsGearSecN] = y;
-      s_dsGearSecCol[s_dsGearSecN] = 0;
-      s_dsGearSecText[s_dsGearSecN] = text;
-      s_dsGearSecCX[s_dsGearSecN] = ctlX;
-      s_dsGearSecN++;
-   }
-   if(s_dsGearBlkN < DSTRIP_GEAR_BLK_MAX) s_dsGearBlkY[s_dsGearBlkN++] = y;
-}
-
+//--- P-UI-186 (2026-10-20): the caption REGISTRAR and the caption->field seat
+//--- owner are GONE with this text: neither had a caller for years (the hex
+//--- fields they served were retired in P-DRAW-118), and the contract's law is
+//--- "no owner without a caller" - a dead function cited as an owner sends the
+//--- next reader after a feature that does not exist.
 //--- P-DRAW-75 (2026-09-28) — A ROW LABEL'S SEAT IS MEASURED, NOT GUESSED. The
 //--- Paint tab's two hex fields sat at a fixed 96 written as "12 x 8", but a row
 //--- label DRAWS at pt 9 and "COLOR" is 46px: 40px of dead air opened between each
 //--- label and its own field, and the band rule was left as a 26px STUB inside it
 //--- (LEVEL 90 no. 4 — a hairline carrying no information; B-06/B-07, a real pad).
-int DrawStripGearCapW()
-{
-   int w = PnlTextW("COLOR", DSTRIP_GEAR_LBL_PT);
-   int f = PnlTextW("FILL",  DSTRIP_GEAR_LBL_PT);
-   if(f > w) w = f;
-   //--- P-DRAW-83: the seat is measured FROM THE CAPTION'S OWN X, which is where
-   //--- `DrawStripGearSectionsPaint` writes the label (`DSTRIP_GEAR_CAP_X`) — the
-   //--- old `w + DSTRIP_ROW_GAP` counted the label's width and forgot the 30px of
-   //--- seat the label itself occupies, so the field was placed inside the caption.
-   int seat = DSTRIP_GEAR_CAP_X + w + DSTRIP_ROW_GAP;
-   return (seat < DSTRIP_PAD) ? DSTRIP_PAD : seat;
-}
 
 //--- P-DRAW-74: the panel's content box AFTER the wide pass — the one width the tab
 //--- row and the foot centre on. It stood written twice, 32 apart: the tabs asked
@@ -630,7 +615,13 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       //--- already standing (the headers above AND below this group) as well as the
       //--- two management rows — the P-DRAW-104 defect (a row refused by a ceiling
       //--- nobody re-derived) re-opened in the new shape.
-      int room = DSTRIP_GLIST_MAX - 2 - s_dsGRN;   // the two rows below are not optional
+      //--- P-UI-178 (2026-10-20): the headers BELOW this group are seats too, and
+      //--- the budget above did not reserve them: at 9 common + 10 custom levels
+      //--- the list took the last row, the closing headers (Look, Row) hit the
+      //--- ceiling and were never built - two groups of five unreachable. The
+      //--- reserve now names every seat the accordion still owes.
+      int below = ng - (navAt + 1);
+      int room = DSTRIP_GLIST_MAX - 2 - below - s_dsGRN;   // the two rows below are not optional
       if(room < 0) room = 0;
       for(int i = 0; i < nl && i < room; i++)
       {
@@ -679,9 +670,16 @@ void DrawStripGearContent(int &y, bool &levelEdit)
    }
    else if(gOpen == DSTRIP_GEAR_STRIP)
    {
+      //--- P-UI-176 (2026-10-20): the MERGED colour is ONE cell for two roles
+      //--- (P-DRAW-64a: the quick row folds COLOR into FILLCLR and the cell is on
+      //--- while EITHER role is on). Two rows for one cell was the lie: the
+      //--- switch showed a state the row did not have, and hiding one role never
+      //--- hid the cell. ONE row for the cell, its switch reads the cell.
+      bool mergedRow = DrawStripMergedColor(k);
       for(int s = 0; s < DRAW_SLOT_N; s++)
       {
          if(s == DRAW_SLOT_MORE) continue;
+         if(mergedRow && s == DRAW_SLOT_COLOR) continue;   // folded into the FILLCLR seat
          if(!DrawSlotAvailable(k, s)) continue;
          if(!DrawStripGearRow(6, s, y)) break;
       }

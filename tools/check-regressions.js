@@ -49,6 +49,7 @@ const ROOT = path.resolve(__dirname, '..');
 const BIOTAK = path.join(ROOT, 'Biotak');
 const LABELS_B = path.join(BIOTAK, 'Labels_B.mqh');
 const LABELS_A = path.join(BIOTAK, 'Labels_A.mqh');
+const EVENT_TAIL = path.join(BIOTAK, 'EventHandlers_Tail.mqh');
 const ROUTER = path.join(BIOTAK, 'EventHandlers_Router.mqh');
 const EVENT_ROUTER = ROUTER;
 const CALC = path.join(BIOTAK, 'EventHandlers_Calc.mqh');
@@ -1525,8 +1526,14 @@ function main() {
       const grpRows = (w.match(/DrawStripGearRow\(DSTRIP_GRK_GROUP, s_dsGearGrp\[/g) || []).length;
       if (grpRows < 2)
         broken.push('both header loops must paint a group row (`DrawStripGearRow(DSTRIP_GRK_GROUP, s_dsGearGrp[..., y)`)');
-      if (!/int room = DSTRIP_GLIST_MAX - 2 - s_dsGRN;/.test(w))
-        broken.push('the level list must reserve the headers\u2019 own seats (`room = DSTRIP_GLIST_MAX - 2 - s_dsGRN`) — P-DRAW-104 in the new shape');
+      //--- P-UI-178 (2026-10-20): the reserve names EVERY seat the accordion still
+      //--- owes: the two management rows AND the headers that close it below. The
+      //--- old formula reserved only the headers ABOVE (they are already standing),
+      //--- so at 9 common + 10 custom levels the closing headers hit the ceiling
+      //--- and two groups of five were never built.
+      if (!/int below = ng - \(navAt \+ 1\);/.test(w) ||
+          !/int room = DSTRIP_GLIST_MAX - 2 - below - s_dsGRN;/.test(w))
+        broken.push('the level list must reserve the headers\u2019 own seats (`room = DSTRIP_GLIST_MAX - 2 - below - s_dsGRN`, `below` = the closing headers) — P-DRAW-104 in the new shape');
       if (!/i % DSTRIP_GEAR_LVLBLK/.test(w))
         broken.push('a long level list must open a block every DSTRIP_GEAR_LVLBLK rows, or the wide pass cannot split inside it');
     }
@@ -3752,6 +3759,52 @@ function main() {
     }
   }
 
+  // P-BK-80 (2026-10-20): THE BASE WALK READS THE BOX' COMMIT TF, NEVER THE OPEN CHART.
+  // The type is read off the base's own class, and the class' span is built from that walk:
+  // a chart-TF `BaseKnotBarCount` moved the span's two ends by a chart candle and made the
+  // same box read M15 on one chart and H1 on another. The inverse that must fail here:
+  // either call losing its `tfMin`, or the walk's series reads going back to chart 0.
+  {
+    const broken = [];
+    const sync = bodyOf(plan || [], 'void BaseKnotSync(');
+    if (!sync) {
+      broken.push('BaseKnotSync is gone from Biotak/BaseKnot_Plan.mqh');
+    } else {
+      if (!/BaseKnotBarCount\(\s*t1,\s*t2,\s*top,\s*bot,\s*sp,\s*tfMin\s*\)/.test(sync.text))
+        broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBarCount (P-BK-80) - the base span, and with it the class and the type, moves with the open chart again');
+      if (!/BaseKnotBaseTFMin\(\s*still,\s*bs1,\s*bs2,\s*top,\s*bot,\s*tfMin\s*\)/.test(sync.text))
+        broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBaseTFMin (P-BK-80) - the class memo can answer from another chart\'s last closed bar');
+      if (!/BaseKnotWriteInfo\([\s\S]*?atCorner,\s*tfMin\s*\)/.test(sync.text))
+        broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotWriteInfo (P-BK-80) - the note and its hover can re-read the class on the chart');
+    }
+    const measureLines = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh')) || [];
+    const count = bodyOf(measureLines, 'int BaseKnotBarCount(');
+    if (!count) {
+      broken.push('BaseKnotBarCount is gone from Biotak/BaseKnot_Measure.mqh');
+    } else {
+      if (!/int BaseKnotBarCount\([^)]*const int readTF = 0\)/.test(codeOf(measureLines)))
+        broken.push('BaseKnotBarCount lost its readTF parameter (P-BK-80)');
+      if (!/iBarShift\(_Symbol,\s*readTF,/.test(count.text) ||
+          !/iBars\(_Symbol,\s*readTF\)/.test(count.text) ||
+          !/iTime\(_Symbol,\s*readTF,/.test(count.text))
+        broken.push('BaseKnotBarCount reads a series that is not readTF (P-BK-80) - a chart-0 shift/time can name a span the box does not own');
+    }
+    const baseTF = bodyOf(nodes || [], 'int BaseKnotBaseTFMin(');
+    if (!baseTF) {
+      broken.push('BaseKnotBaseTFMin is gone from Biotak/BaseKnot_Nodes.mqh');
+    } else {
+      if (!/iTime\(_Symbol,\s*tf,\s*1\)/.test(baseTF.text))
+        broken.push('BaseKnotBaseTFMin no longer keys its memo on the read TF\'s last closed bar (P-BK-80)');
+      if (!/tf == s_bkRungTF/.test(baseTF.text))
+        broken.push('BaseKnotBaseTFMin no longer keeps the read TF in its memo key (P-BK-80) - two charts can share one stale answer');
+    }
+    if (broken.length) {
+      failures.push('P-BK-80: ' + broken.join('; ') + ' (Biotak/BaseKnot_Measure.mqh + Biotak/BaseKnot_Nodes.mqh + Biotak/BaseKnot_Plan.mqh)');
+    } else {
+      console.log('[PASS] P-BK-80 the base walk and its class read the box\'s commit TF: the note, its hover and the type cannot move on a timeframe switch');
+    }
+  }
+
   console.log('');
   // ── P-BK-111 (2026-10-09) — THE SIDE IS THE USER'S TO TURN, AND THE PRICE MAY NOT TAKE IT BACK ──
   // Report: «یک چیزی باشه که کاربر خواست جهت سل و بای گره عوض بکن چ.ن بعضی گره به صورت مارکر
@@ -5298,9 +5351,9 @@ function main() {
         if (!saveBody.text.includes('GVLedgerReport(GV_BLOCK_UI, uiChanged, 13)'))
           broken.push('the ledger total no longer counts the STAR slot — the ledger under-reports the block');
       }
-      const loadBody = bodyOf(menuA, 'void LoadUIState()');
+      const loadBody = bodyOf(menuA, 'void InitializeUIStates()');
       if (!loadBody || !loadBody.text.includes('CircStarLoad(GetGVName("STAR"))'))
-        broken.push('LoadUIState stopped reading the STAR key through CircStarLoad — the persisted ring never comes back (P-SESS-04)');
+        broken.push('InitializeUIStates stopped reading the STAR key through CircStarLoad before the branch — the persisted ring never comes back (P-SESS-04)');
     }
     // -- the built-seat freeze: the frozen half, its readers, the star park ----
     const menuB = linesOf(MENU_B);
@@ -5333,15 +5386,30 @@ function main() {
       const moveItem = bodyOf(menuC, 'void ToolsMoveItem(');
       if (!moveItem || !moveItem.text.includes('ToolsMoveStar('))
         broken.push('ToolsMoveItem stopped moving the star — the mark stays at the old seat while its cell moves');
+      // P-UI-161 (2026-10-20): every CREATE edge notes the LIVE set BEFORE it lays
+      // a seat, because CircLayout() reads CircPlacedCount() and a click's own open
+      // or close still has g_OrbDragging on (the freeze). Measured: the restore
+      // created 10 of 12 seats on the OLD grid; seats 10/11 then healed on the new
+      // one - a mixed ring, and the clicks answered the seats that were painted.
+      const noteFirst161 = (t, loop) => {
+        const a = t.indexOf('CircNoteBuilt();'), b = t.indexOf(loop);
+        return a >= 0 && b >= 0 && a < b;
+      };
       const delTools = bodyOf(menuC, 'void DeleteToolsMenu(');
       if (!delTools) broken.push('DeleteToolsMenu is gone');
       else {
         if (!delTools.text.includes('ObjectDelete(0, ToolsStar(t))'))
-          broken.push('the Tools sweep stopped deleting ToolsStar — the star survives its cell (an orphan paints beside the ring)');
-        if (!delTools.text.includes('CircPlacedCount()') || !delTools.text.includes('CircCreateItem(i)') ||
-            !delTools.text.includes('CircNoteBuilt()'))
-          broken.push('DeleteToolsMenu\'s restore no longer rebuilds the ring from the mask — a star toggled in Tools never reaches the ring');
+          broken.push('the Tools sweep stopped deleting ToolsStar - the star survives its cell (an orphan paints beside the ring)');
+        if (!noteFirst161(delTools.text, 'for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);'))
+          broken.push('DeleteToolsMenu\'s restore no longer rebuilds the ring from the LIVE mask - the create reads the frozen grid, or a star toggled in Tools never reaches the ring');
       }
+      const ringLoop161 = 'for(int i = 0; i < CircPlacedCountLive(); i++)';
+      const createMenu = bodyOf(menuC, 'void CreateMenu()');
+      if (!createMenu || !noteFirst161(createMenu.text, ringLoop161))
+        broken.push('CreateMenu creates before noting the LIVE count - CircLayout\'s frozen n lays the seats out on the old grid');
+      const toggle161 = bodyOf(linesOf(MENU_D) || [], 'void ToggleMenuVisibility(');
+      if (!toggle161 || !noteFirst161(toggle161.text, ringLoop161))
+        broken.push('ToggleMenuVisibility creates before noting the LIVE count - the opening press paints the old grid');
       const subRebuild = bodyOf(menuC, 'void SubRebuild()');
       if (!subRebuild || !subRebuild.text.includes('ObjectDelete(0, ToolsStar(t))'))
         broken.push('SubRebuild\'s sweep stopped deleting ToolsStar — a page reshape leaves a stale star');
@@ -5485,9 +5553,9 @@ function main() {
       }
     }
     if (sessA) {
-      const aLoad = bodyOf(sessA, 'void LoadUIState(');
+      const aLoad = bodyOf(sessA, 'void InitializeUIStates(');
       if (!aLoad || !aLoad.text.includes('CircStarLoad(GetGVName("STAR"))'))
-        broken.push('LoadUIState stopped calling CircStarLoad — the saved mask is read raw again (P-SESS-04)');
+        broken.push('InitializeUIStates stopped calling CircStarLoad before the branch — the saved mask is read raw again (P-SESS-04)');
     }
     const sessGen = linesOf(ICON_GEN);
     if (!sessGen) broken.push('tools/gen-th3-icons.js is gone — the sessions art has no baker');
@@ -5535,8 +5603,10 @@ function main() {
         broken.push('the box width lost the live/past split — the session you are in is no longer bold (P-SESS-06)');
       if (!/SessZoneTag\(s\.zone\), ink, SESS_PT_LBL/.test(p6))
         broken.push('the box tag left the live/past ink — the label keeps full ink on faded past boxes (P-SESS-06)');
-      if (!/bool\s+wLinLive\s*=\s*\(wins\[wLin\]\.kk == 0 && SessWindowState\(wins\[wLin\], now\) == SESS_WS_LIVE\);/.test(p6))
+      if (!/bool\s+wLinLive\s*=\s*\(SessWindowState\(wins\[wLin\], now\) == SESS_WS_LIVE\);/.test(p6))
         broken.push('the live-window test vanished from the H/L block — the live cache and the bold width lost their ONE owner (P-SESS-06)');
+      if (/wins\[w(?:Lin)?\]\.kk == 0 && SessWindowState/.test(p6) || /wins\[w\]\.kk != 0 \|\| !wins\[w\]\.hasPrice/.test(p6))
+        broken.push('a live gate is on the day index again — a window that started before server noon (kk=-1) or after it (kk=+1) loses its live lines, cache and overlap (P-SESS-07)');
       if (!/int\s+lw\s*=\s*wLinLive\s*\?\s*2\s*:\s*1;/.test(p6))
         broken.push("the live window's H/L lines lost their bold width (P-SESS-06)");
       if (!/#define\s+SESS_PAST_ALPHA\s+45\b/.test(p6))
@@ -5549,7 +5619,7 @@ function main() {
     }
   }
 
-  // -- 52b. P-UI-137 (2026-10-20): a HOLD on a card-less tool owns no card -----
+  // -- 52b. P-UI-169 (2026-10-20): a HOLD on a card-less tool owns no card -----
   // The four tools that own no card (Horizontal Ray, Path, Chart Scale, Hide)
   // fell through FeaturePanel's IDENTITY fallback, so a hold opened somebody
   // else's card (15 = Sessions, 16 = Session Editor) or none at all (17/18 are
@@ -5557,12 +5627,13 @@ function main() {
   // cell's own action (arm the ray, the scale-fix, the F mute) never ran.
   {
     const broken = [];
-    const fp = bodyOf(linesOf(MENU_A) || [], 'int FeaturePanel(');
+      const fp = bodyOf(linesOf(MENU_A) || [], 'int FeaturePanel(');
     if (!fp) broken.push('FeaturePanel is gone from BiotakMenu_A.mqh - the feature->card map has no owner');
     else {
-      for (const f of ['CIR_HRAY', 'CIR_PATH', 'CIR_SCALE', 'CIR_HIDE'])
-        if (!fp.text.includes(f)) broken.push(`FeaturePanel stopped answering ${f} - the hold falls through to the identity fallback and opens a card that belongs to somebody else`);
-      if (!/return -1;/.test(fp.text)) broken.push('FeaturePanel never answers -1 - "no card" has no spelling');
+      const cardless = ['CIR_HRAY', 'CIR_PATH', 'CIR_SCALE', 'CIR_HIDE'];
+      const namesAll = cardless.every((f) => fp.text.includes(f));
+      if (!namesAll || !/return -1;/.test(fp.text))
+        broken.push('FeaturePanel stopped answering -1 for the four card-less tools (CIR_HRAY/CIR_PATH/CIR_SCALE/CIR_HIDE) - the hold falls through to the identity fallback and opens a card that belongs to somebody else');
     }
     const mc = codeOf(linesOf(MENU_C) || []);
     if (!/if\(rp < 0\) return;/.test(mc)) broken.push("the ring's hold arm stopped refusing a card-less item - a hold on it opens nothing and eats the release");
@@ -5570,13 +5641,13 @@ function main() {
     if (!/if\(g_LongPressItem < 0 \|\| g_LongPressItem >= PNL_COUNT\) \{ g_LongPressFired = false; return; \}/.test(mc))
       broken.push('the hold FIRE stopped refusing a card-less item - the release is eaten and the cell reads as dead');
     if (broken.length) {
-      failures.push('P-UI-137: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh + Biotak/BiotakMenu_C.mqh)');
+      failures.push('P-UI-169: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh + Biotak/BiotakMenu_C.mqh)');
     } else {
-      console.log('[PASS] P-UI-137 a hold on a card-less tool opens no card and eats no click: FeaturePanel answers -1 for the four tools that own none, both hold arms refuse it, and the fire refuses an out-of-range card without suppressing the release');
+      console.log('[PASS] P-UI-169 a hold on a card-less tool opens no card and eats no click: FeaturePanel answers -1 for the four tools that own none, both hold arms refuse it, and the fire refuses an out-of-range card without suppressing the release');
     }
   }
 
-  // -- 52c. P-UI-138 (2026-10-20): the strip's text fields own the keyboard ----
+  // -- 52c. P-UI-170 (2026-10-20): the strip's text fields own the keyboard ----
   // MT4 delivers the key stream to a focused OBJ_EDIT, so every letter hotkey
   // fired while the user typed into the strip's own four text fields (the level
   // input, the caption, the template name, the level note).
@@ -5595,9 +5666,204 @@ function main() {
         broken.push('the probe stopped reading the field\'s own STATE - a latched flag would swallow the hotkeys for as long as the panel is open');
     }
     if (broken.length) {
-      failures.push('P-UI-138: ' + broken.join('; ') + ' (Biotak/EventHandlers_Router.mqh)');
+      failures.push('P-UI-170: ' + broken.join('; ') + ' (Biotak/EventHandlers_Router.mqh)');
     } else {
-      console.log('[PASS] P-UI-138 the strip\'s own text fields own the keyboard: the KEYDOWN guard asks the fields\' own STATE (the terminal\'s answer, not a latched flag), so a letter typed into a level, a caption, a template name or a level note fires no hotkey');
+      console.log('[PASS] P-UI-170 the strip\'s own text fields own the keyboard: the KEYDOWN guard asks the fields\' own STATE (the terminal\'s answer, not a latched flag), so a letter typed into a level, a caption, a template name or a level note fires no hotkey');
+    }
+  }
+
+  // -- 52d. P-UI-171 (2026-10-20): the DUAL row's width is MEASURED ------------
+  // The width owner reserved a fixed 12px for the last cell's caption while the
+  // cell walk spent the measured advance: the last caption crossed the card's
+  // content edge (52px on card 2's "ATR TARGETS") and the product disagreed with
+  // its own mirror by 64px.
+  {
+    const broken = [];
+    const rows = linesOf(PANELS_ROWS);
+    if (!rows) broken.push('Biotak/BiotakPanels_Rows.mqh is gone - the DUAL row has no geometry owner');
+    else {
+      const rCode = codeOf(rows);
+      if (!/string PnlDualCapAt\(/.test(rCode))
+        broken.push('the DUAL caption owner is gone - the width and the paint read two tables again');
+      const tot = bodyOf(rows, 'int PnlDualTotalW(');
+      if (!tot || !/PnlTextW\(PnlDualCapAt\(item,row,i\),PNL_PT_CAP\) \+ 12/.test(tot.text))
+        broken.push('the DUAL width stopped measuring the last caption - the caption crosses the card edge again (P-UI-171)');
+      const cx = bodyOf(rows, 'int PnlDualCellX(');
+      if (!cx || !cx.text.includes('PnlDualCapAt(item,row,i)'))
+        broken.push('the DUAL cell walk stopped reading the caption owner - the seat and the width drift apart (P-DRAW-77)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-171: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Rows.mqh)');
+    } else {
+      console.log('[PASS] P-UI-171 the DUAL row measures its captions: one owner for the caption text, the width spends the measured advance of the last cell (+ the caption\'s own seat), and the cell walk reads the same owner - the last caption no longer crosses the card edge');
+    }
+  }
+
+  // -- 52e. P-UI-172/173 (2026-10-20): the sessions' labels are ON the chart -----
+  // (a) an OBJ_TEXT is anchored at the pixel of its TIME: a time in the FUTURE has
+  //     no pixel inside the chart area, so the live session's H/L labels, its range
+  //     caption and the countdown (anchored at the window's END) never appeared.
+  // (b) the session high/low is SCANNED from the chart's bars, so the family's
+  //     numbers are timeframe-derived: a switch left them on the old timeframe.
+  {
+    const broken = [];
+    const sd = linesOf(SESS_DRAW);
+    if (!sd) broken.push('Biotak/Sessions_Draw.mqh is gone - the session labels have no renderer');
+    else {
+      const sCode = codeOf(sd);
+      if (!/datetime SessLabelAnchor\(/.test(sCode))
+        broken.push('the label-anchor owner is gone - a label can be anchored in a future time again (P-UI-172)');
+      const anchor = bodyOf(sd, 'datetime SessLabelAnchor(');
+      if (!anchor || !/if\(endT > now\) return now;/.test(anchor.text))
+        broken.push('the label anchor stopped clipping the window END to NOW - a future anchor has no pixel (P-UI-172)');
+      for (const tag of ['"HIL"', '"LOL"', '"R"'])
+        if (!new RegExp('SessText\\(SessWindowName\\(sl, wins\\[wLin\\]\\.stamp, ' + tag + '\\), SessLabelAnchor\\(').test(sCode))
+          broken.push(`the ${tag} label stopped using the anchor owner - it is anchored at the window's future END again (P-UI-172)`);
+      if (!/SessText\(nmC, SessLabelAnchor\(s_sessCdNext, now\)/.test(sCode))
+        broken.push('the countdown stopped using the anchor owner - it is anchored at a future boundary (P-UI-172)');
+      const hash = bodyOf(sd, 'long SessViewHash(');
+      if (!hash || !/\(long\)Period\(\)/.test(hash.text))
+        broken.push('the sessions hash lost the chart period - a timeframe switch leaves the numbers on the old timeframe (P-UI-173)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-172/173: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
+    } else {
+      console.log('[PASS] P-UI-172/173 the sessions\' labels are on the chart: every text anchor is clipped to NOW by the ONE owner (a future anchor has no pixel), and the family\'s hash carries the chart period, so a timeframe switch re-scans the session high/low on the new bars');
+    }
+  }
+
+  // -- 52f. P-UI-174/176..181/183/185/187/188 (2026-10-20): the UI/UX hunt ----
+  // The fixes of the 2026-10-20 audit, one assertion each, so the next edit
+  // that puts them back fails HERE, at the name, before the terminal sees it.
+  {
+    const broken = [];
+    const menuA = linesOf(MENU_A) || [];
+    const menuC = linesOf(MENU_C) || [];
+    const gearA = linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || [];
+    const gearB = linesOf(path.join(BIOTAK, 'DrawStrip_GearB.mqh')) || [];
+    const tap = linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || [];
+    const rows = linesOf(PANELS_ROWS) || [];
+    const palA = linesOf(path.join(BIOTAK, 'BiotakPanels_PalA.mqh')) || [];
+    const pathT = linesOf(path.join(BIOTAK, 'PathTool.mqh')) || [];
+    const hray = linesOf(path.join(BIOTAK, 'HRayTool.mqh')) || [];
+    const tail = linesOf(EVENT_TAIL) || [];
+    const labels = linesOf(LABELS_A) || [];
+
+    // P-UI-174/190: the UI-STATE reset must not take the PLACES or the SETTINGS.
+    const clear = bodyOf(menuA, 'void ClearAllGVs(');
+    if (!clear || !/StringFind\(name, "_HOME_"\)/.test(clear.text) || !/StringFind\(name, "STAR"\)/.test(clear.text) ||
+        !/StringSubstr\(name, len, 3\) == "OV_"/.test(clear.text) ||
+        !/StringSubstr\(name, len, 4\) == "PNL_"/.test(clear.text) ||
+        !/StringSubstr\(name, len, 4\) == "PNLP"/.test(clear.text))
+      broken.push('the UI-state reset wipes the placed surfaces, their panel positions or the OV_ settings again - the surfaces jump and the user\'s settings revert on the next attach (P-UI-174/190)');
+
+    // P-UI-176: the merged colour is ONE cell (one row, one switch, one count).
+    if (!/if\(mergedRow && s == DRAW_SLOT_COLOR\) continue;/.test(codeOf(gearA)))
+      broken.push('the Row group lists the merged colour twice again - two rows for one cell (P-UI-176)');
+    if (!/DrawStripSeatVis\(s_dsKind, arg, DrawStripMergedColor\(s_dsKind\)\)/.test(codeOf(gearB)))
+      broken.push('the Row group\'s switch stopped reading the merged cell - the switch shows a state the row does not have (P-UI-176)');
+    const tapRow = bodyOf(tap, 'bool DrawStripGearRowTap(');
+    if (!tapRow || !/DrawStripSeatVis\(s_dsKind, seat, true\)/.test(tapRow.text) ||
+        !/s_dsVis\[s_dsKind\]\[DRAW_SLOT_COLOR\]   = !cellOn;/.test(tapRow.text))
+      broken.push('the Row group\'s press stopped flipping the merged cell as one unit (P-UI-176)');
+
+    // P-UI-177: the Levels digest states the levels the drawing SHOWS.
+    const digest = bodyOf(gearB, 'string DrawStripGearGroupDigest(');
+    if (!digest || !/int n = DrawLevelCount\(s_dsObj\);/.test(digest.text))
+      broken.push('the Levels digest states the LIST size again - "No levels" leaves it claiming 9 levels (P-UI-177)');
+
+    // P-UI-178: the accordion reserves the headers that close it.
+    if (!/int room = DSTRIP_GLIST_MAX - 2 - below - s_dsGRN;/.test(codeOf(gearA)))
+      broken.push('the level list stopped reserving the closing headers - two groups are never built (P-UI-178)');
+
+    // P-UI-179: the chips ride the swatch strip's line, not the caption's.
+    const chips = bodyOf(rows, 'void PnlChipsGeom(');
+    if (!chips || !/PNL_QSW_Y/.test(chips.text))
+      broken.push('the chips row paints its strip on the caption\'s line again - the caption lies on the swatches (P-UI-179)');
+
+    // P-UI-180: the path's preview dies with EVERY deinit reason.
+    const pde = bodyOf(pathT, 'void PathOnDeinit(');
+    if (!pde || !/PathSessionClear\(\);/.test(pde.text))
+      broken.push('the path\'s preview survives a timeframe switch again - a stray line stays on the chart (P-UI-180)');
+
+    // P-UI-181: the count digit is centred in its pill and paints above it.
+    if (!/x0 \+ w - DSTRIP_SEC_CNT_W \/ 2 - PnlTextW\(cs, lpt\) \/ 2/.test(codeOf(gearB)) ||
+        !/DrawStripSetInt\(clbl, OBJPROP_ZORDER, Z_PANEL_TEXT\)/.test(codeOf(gearB)))
+      broken.push('the count digit is off-centre and paints under its own pill again (P-UI-181)');
+
+    // P-UI-182: the row-ceiling witness goes through the FLUSHED channel.
+    if (/Print\("\[drawstrip\] gear row ceiling reached/.test(codeOf(gearA)))
+      broken.push('the row-ceiling witness is a `Print` again - the journal buffers it (P-UI-182)');
+
+    // P-UI-183: the ray's witness is the flushed file.
+    const hrayCode = codeOf(hray);
+    if (!/void HRayWitness\(const string line\) \{ DrawStripDiagEmit/.test(hrayCode) ||
+        /Print\("\[HRay\] (placed|delete|drag|carry|select|dismiss|object-delete)/.test(hrayCode))
+      broken.push('the Horizontal Ray\'s witness is the journal again - «the ray does nothing» is unprovable (P-UI-183)');
+
+    // P-UI-185: the hotkey is ONE key, and the conflict is named once.
+    const hk = bodyOf(tail, 'bool IsHotkeyPressed(');
+    if (!hk || !/if\(StringLen\(k\) != 1\) return false;/.test(hk.text))
+      broken.push('the hotkey matcher answers the FIRST CHARACTER again - "Ctrl+T" fires as plain T (P-UI-185)');
+    if (!/void HotkeyAudit\(\)/.test(codeOf(tail)) || !/HotkeyAudit\(\);/.test(codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Init.mqh')) || [])))
+      broken.push('the hotkey conflict is not named at the attach - a key that does nothing is silent (P-UI-185)');
+
+    // P-UI-187: the trade card has a WIDTH budget beside its height budget.
+    if (!/int availW = \(chartW > 0\) \? MathMax\(60, chartW - rightEdge - 8\) : 0;/.test(codeOf(labels)))
+      broken.push('the trade card has no width budget again - the wide leg row runs off a narrow chart (P-UI-187)');
+
+    // P-UI-188: the palette keeps its FOOT on the chart.
+    if (!/int maxY=ch-PalFootY\(\)-PAL_FOOT-8;/.test(codeOf(palA)))
+      broken.push('the palette keeps its top on a short chart again - the Done button falls off the bottom (P-UI-188)');
+
+    if (broken.length) {
+      failures.push('P-UI-174/176-181/183/185/187/188/190: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/C.mqh + DrawStrip_GearA/B.mqh + DrawStrip_Tap.mqh + BiotakPanels_Rows/PalA.mqh + PathTool.mqh + HRayTool.mqh + EventHandlers_Tail/Init.mqh + Labels_A.mqh)');
+    } else {
+      console.log('[PASS] P-UI-174/176-181/183/185/187/188/190 the UI/UX hunt is gated: the reset keeps the places and the OV_ settings, the merged colour is one cell, the Levels digest counts what the drawing shows, the accordion reserves the closing headers, the chips ride the swatch line, the path\'s preview dies with every deinit, the count digit is centred above its pill, the ceiling witness and the ray\'s witness are flushed, the hotkey is one key with its conflict named, the trade card has a width budget and the palette keeps its foot on the chart');
+    }
+  }
+
+  // -- 52g. P-SESS-08..12 (2026-10-20): the session family survives its own names +
+  // The 2026-10-20 hunt, one assertion each:
+  // (08) the ghost tag's name is `_F` + `L` = `_FL`, which is FILLCHILD_SUFFIX
+  //      (Toolbar_A.mqh:281), so BoxExtrasPump deleted every ghost tag 2 s after
+  //      SessPaintAll painted it. MEASURED on the live chart: 20+ ORPHAN drop lines
+  //      `THLevelsSESS_<slot>_<stamp>_FL par=THLevelsSESS_<slot>_<stamp>` on every
+  //      timeframe around 14:02-14:07. The tail must not spell another family's child.
+  // (09) iBarShift(exact=false) clamps a time before the series onto the OLDEST
+  //      bar: a window older than the loaded history wore that bar's H/L as its
+  //      own ("no fake object" in this file's own contract).
+  // (10) the window END is exclusive: the bar OPENING at the end is the next
+  //      window's first bar and was counted, inflating every past H/L by one bar.
+  // (11) the live extend only compared bar 0, so a bar that closed unobserved
+  //      (a slow tick, a sleep, a reconnect) kept its extreme out of the window.
+  // (12) SessPaintAll wipes FIRST; a TF switch/attach that ran before the new
+  //      timeframe's bars were loaded wiped the family, painted nothing and then
+  //      stored the built hash, so no retry came until the next day.
+  {
+    const broken = [];
+    const sd = linesOf(SESS_DRAW);
+    if (!sd) broken.push('Biotak/Sessions_Draw.mqh is gone - the session scan has no renderer');
+    else {
+      const sCode = codeOf(sd);
+      if (!/SessText\(nmF \+ "T"/.test(sCode) || /SessText\(nmF \+ "L"/.test(sCode))
+        broken.push('the ghost tag is now `_F` + `L` = `_FL` again - that is the fill-child suffix, so the orphan sweep deletes every ghost tag 2 s after paint (P-SESS-08)');
+      const scan = bodyOf(sd, 'bool SessHiLoFor(');
+      if (!scan || !/iTime\(NULL, 0, bars - 1\)/.test(scan.text) || !/if\(t2 <= oldestT\) return false;/.test(scan.text))
+        broken.push('the bar scan lost its oldest-bar guard - a window older than the loaded history is clamped onto the oldest bar and wears a FAKE high/low (P-SESS-09)');
+      if (!scan || !/iBarShift\(NULL, 0, t2 - 1, false\)/.test(scan.text))
+        broken.push('the bar scan includes the bar that OPENS at the window end - every past window counts one bar too many (P-SESS-10)');
+      const live = bodyOf(sd, 'void SessLiveUpdate(');
+      if (!live || !/s_sessLiveBar\[sl\]/.test(live.text) || !/SessHiLoFor\(/.test(live.text))
+        broken.push('the live extend only compares bar 0 - a bar that closed unobserved keeps its extreme out of the window (P-SESS-11)');
+      const tick = bodyOf(sd, 'void SessionsTick(');
+      if (!tick || !/if\(iBars\(NULL, 0\) <= 0\) return;/.test(tick.text))
+        broken.push('the rebuild can wipe before the chart has bars - a TF switch blanks the session family and stores the built hash (P-SESS-12)');
+    }
+    if (broken.length) {
+      failures.push('P-SESS-08..12: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-08..12 the session scan is the chart\'s own: the ghost tag is not a fill child, a window outside the loaded history paints nothing (never the oldest bar), the window end is exclusive, a new bar rescans the live window, and a zero-bar TF switch keeps the family and retries instead of storing an empty build');
     }
   }
 
@@ -6437,8 +6703,18 @@ function main() {
       broken.push('the arm lost its family fence — a stranger\'s object gets a fill it never had (P-DRAGF4)');
     if (!/ObjectSetInteger\(0, obj, OBJPROP_FILL, true\);/.test(bp))
       broken.push('the interior is never handed to the terminal — the child lag survives (P-DRAGF4)');
-    if (!/OBJPROP_BGCOLOR, \(color\)ObjectGetInteger\(0, fil, OBJPROP_COLOR\)/.test(bp))
+    if (!/OBJPROP_COLOR, \(color\)ObjectGetInteger\(0, fil, OBJPROP_COLOR\)/.test(bp))
       broken.push('the native fill guesses its ink — it must wear the child\'s own rendered colour (P-DRAGF4)');
+    //--- P-UI-175 (2026-10-20): the property MT4 paints a SHAPE's fill with is
+    //--- OBJPROP_COLOR. OBJPROP_BGCOLOR belongs to OBJ_EDIT/OBJ_BUTTON/
+    //--- OBJ_RECTANGLE_LABEL, so the old write was a silent no-op and the native
+    //--- fill wore the BORDER ink for the whole gesture. The master's own ink is
+    //--- remembered and put back at the release.
+    if (/OBJPROP_BGCOLOR/.test(bp))
+      broken.push('the native fill still writes OBJPROP_BGCOLOR on a time/price shape — that property is unconsumed there, so the fill wears the border ink (P-UI-175)');
+    if (!/s_bxpBorderInk = \(color\)ObjectGetInteger\(0, obj, OBJPROP_COLOR\)/.test(bp) ||
+        !/ObjectSetInteger\(0, master, OBJPROP_COLOR, s_bxpBorderInk\)/.test(bp))
+      broken.push('the master\'s own ink is not remembered and given back — the box keeps the interior ink for good (P-UI-175)');
     if (!/ObjectSetInteger\(0, fil, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS\);/.test(bp))
       broken.push('the child is not hidden during the gesture — two interiors paint at once (P-DRAGF4)');
     if (!/ObjectSetInteger\(0, fil, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS\);/.test(bp))
@@ -6840,10 +7116,21 @@ function main() {
       const states67 = bodyOf(menuC67, 'void UpdateCircularItemStates(');
       if (!states67) broken.push('UpdateCircularItemStates is gone — the sync pass has no owner');
       else if (!states67.text.includes('g_UI.menuVisible && !g_ToolsOpen'))
-        broken.push('the sync pass rebuilds the ring while the menu is CLOSED again — CircUpdateItemState re-creates the twelve glyphs with no disc under them (the bare-icon column of the reported frame)');
+        broken.push('the sync pass rebuilds the ring while the menu is CLOSED again - CircUpdateItemState re-creates the twelve glyphs with no disc under them (the bare-icon column of the reported frame)');
+      // P-UI-167 (2026-10-20): the click's ring tail is a SECOND birth path. A seat
+      // action may hide the menu in the same click (arm the base knot), and the tail
+      // then repainted seat 10 alone (`[P-UI-163] icon heal seat=10`, measured).
+      const click67 = bodyOf(linesOf(MENU_D) || [], 'int HandleButtonClick(');
+      if (!click67) broken.push('HandleButtonClick is gone - the ring has no click route');
+      else {
+        const at67 = click67.text.indexOf('int refreshFlags = RingFeatureClick(feat);');
+        const tail67 = at67 < 0 ? '' : click67.text.slice(at67);
+        if (!tail67.includes('if(g_UI.menuVisible && !g_ToolsOpen)') || !tail67.includes('CircUpdateItemState(idx)'))
+          broken.push('the ring click tail repaints a seat the action just hid again - CircUpdateItemState re-creates one bare glyph over a closed menu (the measured seat-10 heal)');
+      }
     }
     if (broken.length) {
-      failures.push('P-UI-167: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh)');
+      failures.push('P-UI-167: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh + BiotakMenu_D.mqh)');
     } else {
       console.log('[PASS] P-UI-167 the seat family is born only while the ring is BUILT: the state sync reads menuVisible AND the fan before it walks a seat, so a closed menu cannot grow bare icons (cost: one bool read, zero writes while the ring is down)');
     }
@@ -7143,6 +7430,69 @@ function main() {
       failures.push('P-UNIFY-4b: ' + brokenU4.join('; ') + ' (Biotak/Toolbar_B.mqh + Toolbar_Tpl.mqh)');
     } else {
       console.log('[PASS] P-UNIFY-4b the kind memory keeps the look: the writer saves the SLOT, birth translates it once (tag first, native second) and the last-look word still carries all three bits');
+    }
+  }
+
+  // -- 70. P-UI-189 (2026-10-20): A BUILT SHAPE IS NOTED ON EVERY EXIT
+  // MEASURED: the non-paged GRID branch of SubChromeCreate returned without
+  // SubNoteBuilt(), so s_SubBuiltMode/Rows/Paged kept the PREVIOUS shape. On a normal
+  // chart CAT_COUNT == SubPageSize() (16) and the grid is non-paged, so every release
+  // and chart change failed SubRelayoutIfNeeded's match and rebuilt all 16 cells under
+  // the pointer (the flushed log carries the bursts with no fan open). The note costs
+  // one compare per build and zero writes while the shape is unchanged.
+  // The inverse is the note removed from that branch.
+  {
+    const broken = [];
+    const menuB70 = linesOf(MENU_B);
+    if (!menuB70) broken.push('Biotak/BiotakMenu_B.mqh is gone - the Tools chrome has no owner');
+    else {
+      const chrome70 = bodyOf(menuB70, 'void SubChromeCreate()');
+      if (!chrome70) broken.push('SubChromeCreate is gone - the Tools panel has no painter');
+      else {
+        const grid70 = chrome70.text.indexOf('if(!SubIsPaged())');
+        const ret70 = grid70 < 0 ? -1 : chrome70.text.indexOf('return;', grid70);
+        const note70 = grid70 < 0 ? -1 : chrome70.text.indexOf('SubNoteBuilt();', grid70);
+        if (grid70 < 0 || ret70 < 0 || note70 < 0 || note70 > ret70)
+          broken.push('the non-paged grid exits without SubNoteBuilt() - the stale shape makes SubRelayoutIfNeeded rebuild all 16 cells on every release');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-189: ' + broken.join('; ') + ' (Biotak/BiotakMenu_B.mqh)');
+    } else {
+      console.log('[PASS] P-UI-189 a built shape is noted on every exit: the non-paged grid records mode/rows/paged before its return, so a still frame keeps SubRelayoutIfNeeded from rebuilding the fan');
+    }
+  }
+
+  // -- 71. P-UI-191 (2026-10-20): A KEPT KEY IS READ BEFORE EITHER BRANCH SAVES
+  // MEASURED (code, not a chart): ClearAllGVs keeps the STAR key (P-UI-174), and the
+  // version-reset branch runs ClearAllGVs -> ResetUIToDefaults -> SaveUIStates(true).
+  // The mask used to be loaded inside LoadUIState() - the OTHER branch - so the reset
+  // saved the compile-time CIRC_STAR_DEFAULT over the kept key: every version bump
+  // silently re-starred the shipped nine. The load now sits before the branch, and
+  // LoadUIState has no second reader.
+  // The inverse is the pre-branch load removed (the reset saves the default again).
+  {
+    const broken = [];
+    const menuA71 = linesOf(MENU_A);
+    if (!menuA71) broken.push('Biotak/BiotakMenu_A.mqh is gone - the menu state has no owner');
+    else {
+      const init71 = bodyOf(menuA71, 'void InitializeUIStates()');
+      if (!init71) broken.push('InitializeUIStates is gone - the reset path has no owner');
+      else {
+        const load71 = init71.text.indexOf('CircStarLoad(');
+        const branch71 = init71.text.indexOf('if(versionOk');
+        const reset71 = init71.text.indexOf('SaveUIStates(true);');
+        if (load71 < 0 || branch71 < 0 || reset71 < 0 || load71 > branch71)
+          broken.push('the star mask is read AFTER the version branch (or not at all) - the reset path saves CIRC_STAR_DEFAULT over a kept STAR key');
+      }
+      const loadUi71 = bodyOf(menuA71, 'void LoadUIState()');
+      if (loadUi71 && loadUi71.text.indexOf('CircStarLoad(') >= 0)
+        broken.push('LoadUIState reads the mask too - two readers, and only the pre-branch one covers the reset path');
+    }
+    if (broken.length) {
+      failures.push('P-UI-191: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh)');
+    } else {
+      console.log('[PASS] P-UI-191 a kept key is read before either branch saves: the star mask loads before the version branch, so the reset path persists the user\'s membership, never the compile-time default');
     }
   }
 

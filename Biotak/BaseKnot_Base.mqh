@@ -88,6 +88,17 @@
 //--- not compile, so a domain-half module that read it would break Lite (P-BUILD-01).
 #define BK_NOTE_EDGE_MARGIN  4     // px the plate keeps from the window's top and left edges
 #define BK_NOTE_BOTTOM_SAFE 20     // px the plate keeps from the bottom edge (the date-scale bar)
+//--- BKCORNER-ON (2026-10-20) — THE NOTE HAS ONE HOME, AND IT WRAPS.
+//--- MT4 truncates every object's text at 63 characters (docs/contract.md:39), and the note's
+//--- own face (side · risk · entry · height · bars · class · type · ATR) is longer than that on
+//--- a normal node — the type at the end was being cut away. The corner readout is therefore
+//--- split on its own " | " boundaries into whole rows, and the plate behind it grows with them.
+#define BK_INFO_TEXT_MAX 63        // MT4's own cap for one OBJ_LABEL's OBJPROP_TEXT
+#define BK_INFO_MAX_ROWS 6         // the family's fixed ceiling (6 × 63 = 378 chars, far past the note)
+#define BK_CORNER_PAD_X  8         // px of plate on each side of the corner readout's ink
+#define BK_CORNER_PAD_Y  4         // px of plate above and below the corner readout's ink
+#define BK_CORNER_ROW_GAP 4        // px between two corner rows (a toast, not a paragraph)
+#define BK_CORNER_TOAST_MS 3000    // the toast's own life: 3 s, then the family goes
 //--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): P-BK-47 below IS RETIRED. It named the type
 //--- by a RUNG DISTANCE, which was a DURATION in disguise; the user replaced it with the
 //--- box' own HEIGHT against the movement abilities (that TF's own TH) — see the
@@ -786,7 +797,7 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
    datetime cs1, cs2;                                    // P-BK-84: the class' span — box ∪ base
    BaseKnotClassSpan(sp, t1, t2, cs1, cs2);
-   tt += BaseKnotBaseLine(sp.still, cs1, cs2, top, bot);   // P-BK-84: the class, off the BASE'S OWN entry..exit (the node's own time, the same on every chart)
+   tt += BaseKnotBaseLine(sp.still, cs1, cs2, top, bot, tfMin);   // P-BK-84: the class, off the BASE'S OWN entry..exit (the node's own time, the same on every chart)
    if(sp.life > 0)   // P-BK-40/41/42: what the note's number is MADE OF, and HOW it is counted
       tt += "\n     " + IntegerToString(sp.life) + " bars = the candles between the ENTRY candle " +
             "and the EXIT candle (entry not counted, exit counted) · " + IntegerToString(sp.still) +

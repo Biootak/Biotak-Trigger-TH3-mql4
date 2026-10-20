@@ -449,6 +449,10 @@ int OnInitHandler() {
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
+    //--- P-UI-185 (2026-10-20): the hotkeys are audited ONCE, here: a shortcut the
+    //--- terminal cannot deliver, or two shortcuts on one key, is named instead of
+    //--- being a key that silently does nothing.
+    HotkeyAudit();
     //--- P-BUILD-08 (2026-09-29, supersedes P-UI-134/134b/134c) — THE LINE IS THE
     //--- CODE, BEFORE ANY CLOCK OR TAG CAN LIE ABOUT IT.
     //--- The old tag was a hand-typed word ("T2") that stayed "T2" across every

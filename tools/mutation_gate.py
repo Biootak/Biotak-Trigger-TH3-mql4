@@ -1291,11 +1291,11 @@ MUTATIONS = [
     {
         "id": "P-DRAGF4-g",
         "gate": "regression",
-        "rule": "the native fill wears the child's own rendered ink",
+        "rule": "the native fill wears the child's own rendered ink (P-UI-175: the property MT4 paints a shape's fill with)",
         "what": "the native fill guesses its ink - the interior flickers to the wrong colour for the gesture",
         "file": "Biotak/BoxPreview.mqh",
-        "find": "      ObjectSetInteger(0, obj, OBJPROP_BGCOLOR, (color)ObjectGetInteger(0, fil, OBJPROP_COLOR));\r\n",
-        "replace": "      // MUTATION: the native fill guesses its ink\r\n",
+        "find": "      ObjectSetInteger(0, obj, OBJPROP_COLOR, (color)ObjectGetInteger(0, fil, OBJPROP_COLOR));\r\n",
+        "replace": "      ObjectSetInteger(0, obj, OBJPROP_COLOR, (color)ObjectGetInteger(0, obj, OBJPROP_COLOR));\r\n      // MUTATION: the native fill guesses its ink\r\n",
         "expect": "P-DRAGF4",
     },
     {
@@ -2802,6 +2802,92 @@ MUTATIONS = [
         "replace": "            int lw = wLinLive ? 1 : 1;   // MUTATION: no bold H/L",
         "expect": "P-SESS",
     },
+    #--- P-SESS-07 (2026-10-20) — THE LIVE WINDOW IS THE STATE'S, NOT THE DAY'S.
+    #--- kk is a ZONE-DAY index against server noon: a live window that started
+    #--- yesterday (western zones before noon) is kk=-1 and one that starts late
+    #--- (eastern zones) is kk=+1. The `kk == 0` gate cost exactly those windows
+    #--- their live cache, bold width, H/L lines and overlap. Each inverse must
+    #--- fail 52e naming P-SESS-07.
+    {
+        "id": "P-SESS-k",
+        "gate": "regression",
+        "rule": "P-SESS-07: the live window is named by SessWindowState — kk is a day index, never a session edge",
+        "what": "the day-index gate returns to the H/L block — a session spanning server noon loses its live lines and cache",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "bool wLinLive = (SessWindowState(wins[wLin], now) == SESS_WS_LIVE);   // P-SESS-06/07",
+        "replace": "bool wLinLive = (wins[wLin].kk == 0 && SessWindowState(wins[wLin], now) == SESS_WS_LIVE);   // MUTATION: day-index gate",
+        "expect": "P-SESS",
+    },
+    #--- P-SESS-08 (2026-10-20) — THE GHOST TAG IS NOT A FILL CHILD. `nmF` ends in
+    #--- `_F`; the tag tail "L" made `_FL`, FILLCHILD_SUFFIX. Measured in the live
+    #--- journal: ORPHAN drop="THLevelsSESS_<slot>_<stamp>_FL" on every timeframe,
+    #--- 20+ times in five minutes. The sweep deleted every ghost tag 2 s after paint.
+    {
+        "id": "P-SESS-l",
+        "gate": "regression",
+        "rule": "P-SESS-08: the ghost tag tail is not 'L' — `_F` + `L` spells the fill-child suffix `_FL`",
+        "what": "the ghost tag is named `_FL` again — BoxExtrasPump deletes it as a stray child of a master that never exists",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "         SessText(nmF + \"T\", wins[w].sU, bandHi[sl],",
+        "replace": "         SessText(nmF + \"L\", wins[w].sU, bandHi[sl],   // MUTATION: _F + L = _FL",
+        "expect": "P-SESS",
+    },
+    #--- P-SESS-09 (2026-10-20) — A WINDOW OLDER THAN THE SERIES PAINTS NOTHING.
+    #--- iBarShift(exact=false) answers the OLDEST bar for any time before the
+    #--- series, so a window beyond the loaded history wore that bar's H/L as its
+    #--- own. The file's contract says NO object, never a fake one.
+    {
+        "id": "P-SESS-m",
+        "gate": "regression",
+        "rule": "P-SESS-09: a window wholly before the loaded history paints NO object — never the oldest bar clamped as its own H/L",
+        "what": "the oldest-bar guard is gone — every window older than the series paints the oldest bar's high/low",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   if(t2 <= oldestT) return false;",
+        "replace": "   // MUTATION: no oldest-bar guard",
+        "expect": "P-SESS",
+    },
+    #--- P-SESS-10 (2026-10-20) — THE WINDOW'S END IS EXCLUSIVE. The bar that
+    #--- OPENS at t2 belongs to the next window; iBarShift(t2) counted it and every
+    #--- past H/L was one bar too wide (measured on H1/H4 around a TF switch).
+    {
+        "id": "P-SESS-n",
+        "gate": "regression",
+        "rule": "P-SESS-10: the bar scan ends at t2 - 1 — the bar opening at the window end is the next window's first bar",
+        "what": "the end-bar exclusion is gone — every past window counts the next window's first bar",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   int i2 = iBarShift(NULL, 0, t2 - 1, false);",
+        "replace": "   int i2 = iBarShift(NULL, 0, t2, false);   // MUTATION: end bar counted",
+        "expect": "P-SESS",
+    },
+    #--- P-SESS-11 (2026-10-20) — A CLOSED BAR IS NOT RE-COMPARED. The extend only
+    #--- read bar 0, so a bar that closed while no tick arrived (sleep, reconnect,
+    #--- a stalled pump) kept its extreme out of the live window for the rest of
+    #--- the session. One rescan on the first tick of a new bar answers it.
+    {
+        "id": "P-SESS-o",
+        "gate": "regression",
+        "rule": "P-SESS-11: a new bar rescans the live window — an unobserved closed bar's extreme still enters the H/L",
+        "what": "the new-bar rescan is gone — the extend compares bar 0 alone again",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "      bool newBar = (bt > 0 && s_sessLiveBar[sl] > 0 && bt != s_sessLiveBar[sl]);\n      bool grew = false;\n      if(newBar)\n      {\n         double hW = 0.0, lW = 0.0;\n         datetime rEnd = (s_sessLiveE[sl] <= now) ? s_sessLiveE[sl] : now;\n         if(SessHiLoFor(s_sessLiveS[sl], rEnd, hW, lW))\n         {\n            if(hW > s_sessLiveHi[sl]) { s_sessLiveHi[sl] = hW; grew = true; }\n            if(lW < s_sessLiveLo[sl]) { s_sessLiveLo[sl] = lW; grew = true; }\n         }\n      }\n",
+        "replace": "      bool grew = false;   // MUTATION: no new-bar rescan\n",
+        "expect": "P-SESS",
+    },
+    #--- P-SESS-12 (2026-10-20) — A ZERO-BAR REBUILD IS NOT A BUILD. SessPaintAll
+    #--- wipes first, so a TF switch/attach that ran before the new timeframe's
+    #--- history was loaded wiped the family, painted nothing, and stored the hash:
+    #--- the sessions stayed blank until the next day. Return and retry on the next
+    #--- 250 ms tick instead.
+    {
+        "id": "P-SESS-p",
+        "gate": "regression",
+        "rule": "P-SESS-12: a rebuild with zero bars keeps the family and retries — never wipe, paint nothing, and store the hash",
+        "what": "the zero-bar guard is gone — a TF switch can blank the sessions and mark the empty build done",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   if(iBars(NULL, 0) <= 0) return;",
+        "replace": "   // MUTATION: a zero-bar rebuild wipes",
+        "expect": "P-SESS",
+    },
     #--- P-UI-162 (2026-10-17) — THE RING'S ART IS THE BOX'S SIZE. MT4 blits a
     #--- bitmap 1:1 from the object's top-left and clips at XSIZE x YSIZE, so the
     #--- taper's smaller box cut the shipped 52px canvas (round tiles shipped as
@@ -3818,6 +3904,249 @@ MUTATIONS = [
         "replace": "                     \" act=\" + \"?\" + \" n=\" + IntegerToString(n) +   // MUTATION",
         "expect": "P-DRAW-135",
     },
+    #--- The UI/UX hunt of 2026-10-20. Each inverse puts ONE defect back and the
+    #--- owning gate must fail WITH ITS OWN MESSAGE (the rule is only gated if the
+    #--- inverse fails - contract 6.14).
+    {
+        "id": "P-DRAW-136",
+        "gate": "regression",
+        "rule": "the Look tab's page walk wears its OWN row kind",
+        "what": "the nav row wears the group header's number again - the header's branch swallows it",
+        "file": "Biotak/DrawStrip_GearA.mqh",
+        "find": "      if(tpages > 1) DrawStripGearRow(DSTRIP_GRK_TPLNAV, 0, y);",
+        "replace": "      if(tpages > 1) DrawStripGearRow(9, 0, y);   // MUTATION: the group header's number",
+        "expect": "nav row",
+    },
+    {
+        "id": "P-UI-169",
+        "gate": "regression",
+        "rule": "a tool that owns NO card answers -1 (the hold opens nobody else's card)",
+        "what": "the card-less tools fall through the identity fallback again",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   if(feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE) return -1;",
+        "replace": "   if(feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE) return feat;   // MUTATION",
+        "expect": "FeaturePanel stopped answering",
+    },
+    {
+        "id": "P-UI-170",
+        "gate": "regression",
+        "rule": "the strip's own text fields own the keyboard",
+        "what": "the KEYDOWN guard stops asking the fields' STATE - a letter typed into a name fires a hotkey",
+        "file": "Biotak/EventHandlers_Router.mqh",
+        "find": "        if(g_PalHexFocus || g_BkTextFocus || AnyStripTextFieldFocused()) return;",
+        "replace": "        if(g_PalHexFocus || g_BkTextFocus) return;   // MUTATION",
+        "expect": "KEYDOWN guard stopped asking",
+    },
+    {
+        "id": "P-UI-171",
+        "gate": "regression",
+        "rule": "the DUAL row MEASURES its last caption",
+        "what": "the width owner goes back to the literal 12 - the last caption crosses the card edge",
+        "file": "Biotak/BiotakPanels_Rows.mqh",
+        "find": "      w = (i == cells-1) ? a + PNL_DUAL_SW_W + 6 + PnlTextW(PnlDualCapAt(item,row,i),PNL_PT_CAP) + 12 : b;",
+        "replace": "      w = (i == cells-1) ? a + PNL_DUAL_SW_W + 6 + 12 : b;   // MUTATION",
+        "expect": "DUAL width stopped measuring",
+    },
+    {
+        "id": "P-UI-172",
+        "gate": "regression",
+        "rule": "a text anchor is clipped to NOW (a future time has no pixel)",
+        "what": "the session labels are anchored at the window's future END again",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "            SessText(SessWindowName(sl, wins[wLin].stamp, \"HIL\"), SessLabelAnchor(wins[wLin].eU, now), wins[wLin].hi,",
+        "replace": "            SessText(SessWindowName(sl, wins[wLin].stamp, \"HIL\"), wins[wLin].eU, wins[wLin].hi,   // MUTATION",
+        "expect": "stopped using the anchor owner",
+    },
+    {
+        "id": "P-UI-173",
+        "gate": "regression",
+        "rule": "the sessions' hash carries the chart period (the numbers are timeframe-derived)",
+        "what": "the period leaves the hash - a switch leaves the session high/low on the old timeframe",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   h = h * 31 + (long)Period();",
+        "replace": "   // MUTATION: the period is gone",
+        "expect": "sessions hash lost the chart period",
+    },
+    {
+        "id": "P-UI-174",
+        "gate": "regression",
+        "rule": "the UI-state reset never takes the PLACED SURFACES with it",
+        "what": "the reset sweeps the home keys again - the surfaces jump to the default on the next attach",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "      const bool keep = (StringFind(name, \"_HOME_\") >= 0 || StringFind(name, \"STAR\") >= 0 ||",
+        "replace": "      const bool keep = (false ||   // MUTATION: the places go with the reset",
+        "expect": "UI-state reset wipes the placed surfaces",
+    },
+    {
+        "id": "P-UI-190",
+        "gate": "regression",
+        "rule": "the UI-state reset never takes the OV_ settings or the panel places",
+        "what": "the reset sweeps OV_ and PNL_ again - a version bump reverts every panel-edited setting",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "                         StringSubstr(name, len, 3) == \"OV_\" || StringSubstr(name, len, 4) == \"PNL_\" ||",
+        "replace": "                         false ||   // MUTATION: the settings go with the reset",
+        "expect": "UI-state reset wipes the placed surfaces, their panel positions or the OV_ settings",
+    },
+    {
+        "id": "P-UI-176",
+        "gate": "regression",
+        "rule": "the merged colour is ONE cell (one row, one switch, one count)",
+        "what": "the Row group lists the merged colour twice again",
+        "file": "Biotak/DrawStrip_GearA.mqh",
+        "find": "         if(mergedRow && s == DRAW_SLOT_COLOR) continue;   // folded into the FILLCLR seat",
+        "replace": "         // MUTATION: the merged colour is listed twice",
+        "expect": "merged colour twice",
+    },
+    {
+        "id": "P-UI-177",
+        "gate": "regression",
+        "rule": "the Levels digest states the levels the drawing SHOWS",
+        "what": "the digest states the LIST size again - 'No levels' leaves it claiming 9 levels",
+        "file": "Biotak/DrawStrip_GearB.mqh",
+        "find": "      int n = DrawLevelCount(s_dsObj);",
+        "replace": "      int n = DrawStripGearLevelCount();   // MUTATION: the list size",
+        "expect": "Levels digest states the LIST size",
+    },
+    {
+        "id": "P-UI-178",
+        "gate": "regression",
+        "rule": "the accordion reserves the headers that close it",
+        "what": "the level list reserves only the headers ABOVE - two groups are never built",
+        "file": "Biotak/DrawStrip_GearA.mqh",
+        "find": "      int room = DSTRIP_GLIST_MAX - 2 - below - s_dsGRN;   // the two rows below are not optional",
+        "replace": "      int room = DSTRIP_GLIST_MAX - 2 - s_dsGRN;   // MUTATION: the closing headers are not reserved",
+        "expect": "stopped reserving the closing headers",
+    },
+    {
+        "id": "P-UI-179",
+        "gate": "regression",
+        "rule": "the chips ride the swatch strip's line, not the caption's",
+        "what": "the chip strip is drawn on the caption's line again - the caption lies on the swatches",
+        "file": "Biotak/BiotakPanels_Rows.mqh",
+        "find": "   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_QSW_Y;",
+        "replace": "   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H;   // MUTATION",
+        "expect": "chips row paints its strip on the caption",
+    },
+    {
+        "id": "P-UI-180",
+        "gate": "regression",
+        "rule": "the path's preview dies with EVERY deinit reason",
+        "what": "the preview survives a timeframe switch again - a stray line stays on the chart",
+        "file": "Biotak/PathTool.mqh",
+        "find": "   PathSessionClear();\n   if(reason == REASON_REMOVE)",
+        "replace": "   // MUTATION: the preview survives\n   if(reason == REASON_REMOVE)",
+        "expect": "path's preview survives a timeframe switch",
+    },
+    {
+        "id": "P-UI-181",
+        "gate": "regression",
+        "rule": "the count digit is centred in its pill and paints above it",
+        "what": "the digit is off-centre and paints under its own pill again",
+        "file": "Biotak/DrawStrip_GearB.mqh",
+        "find": "         dirty |= DrawStripLblAt(clbl, x0 + w - DSTRIP_SEC_CNT_W / 2 - PnlTextW(cs, lpt) / 2,",
+        "replace": "         dirty |= DrawStripLblAt(clbl, x0 + w - DSTRIP_SEC_CNT_W / 2 - 2 + PnlTextW(cs, lpt) / 2,   // MUTATION",
+        "expect": "count digit is off-centre",
+    },
+    {
+        "id": "P-UI-182",
+        "gate": "regression",
+        "rule": "a witness goes through the FLUSHED channel, never Print",
+        "what": "the row-ceiling witness is a Print again - the journal buffers it",
+        "file": "Biotak/DrawStrip_GearA.mqh",
+        "find": "         DrawStripDiagEmit(\"[drawstrip] gear row ceiling reached (\" + IntegerToString(DSTRIP_GLIST_MAX) +",
+        "replace": "         Print(\"[drawstrip] gear row ceiling reached (\" + IntegerToString(DSTRIP_GLIST_MAX) +   // MUTATION",
+        "expect": "row-ceiling witness is a `Print`",
+    },
+    {
+        "id": "P-UI-183",
+        "gate": "regression",
+        "rule": "the Horizontal Ray's witness is the flushed file",
+        "what": "the ray's witness is the journal again - «the ray does nothing» is unprovable",
+        "file": "Biotak/HRayTool.mqh",
+        "find": "void HRayWitness(const string line) { DrawStripDiagEmit(\"[HRay] \" + line); }",
+        "replace": "void HRayWitness(const string line) { Print(\"[HRay] \" + line); }   // MUTATION",
+        "expect": "Horizontal Ray's witness is the journal",
+    },
+    {
+        "id": "P-UI-185",
+        "gate": "regression",
+        "rule": "a hotkey is ONE key, and the conflict is named at the attach",
+        "what": "the matcher answers the FIRST CHARACTER again - 'Ctrl+T' fires as plain T",
+        "file": "Biotak/EventHandlers_Tail.mqh",
+        "find": "    if(StringLen(k) != 1) return false;   // not one key: the terminal cannot deliver it",
+        "replace": "    // MUTATION: the first character answers",
+        "expect": "hotkey matcher answers the FIRST CHARACTER",
+    },
+    {
+        "id": "P-UI-187",
+        "gate": "regression",
+        "rule": "the trade card has a WIDTH budget beside its height budget",
+        "what": "the width budget is gone - the wide leg row runs off a narrow chart",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "   int availW = (chartW > 0) ? MathMax(60, chartW - rightEdge - 8) : 0;",
+        "replace": "   int availW = 0;   // MUTATION: no width budget",
+        "expect": "trade card has no width budget",
+    },
+    {
+        "id": "P-UI-188",
+        "gate": "regression",
+        "rule": "the palette keeps its FOOT on the chart",
+        "what": "the popup keeps its top again - the Done button falls off the bottom",
+        "file": "Biotak/BiotakPanels_PalA.mqh",
+        "find": "    int maxY=ch-PalFootY()-PAL_FOOT-8;",
+        "replace": "    int maxY=ch-h-16;   // MUTATION",
+        "expect": "palette keeps its top on a short chart",
+    },
+    {
+        "id": "P-UI-161e",
+        "gate": "regression",
+        "rule": "a CREATE reads the LIVE seat count, never the frozen paint",
+        "what": "the Tools restore reads the frozen count again - a close with the orb press on restores the old grid",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);",
+        "replace": "for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);   // MUTATION: frozen restore",
+        "expect": "no longer rebuilds the ring from the LIVE mask",
+    },
+    {
+        "id": "P-UI-161f",
+        "gate": "regression",
+        "rule": "a CREATE notes the LIVE set before it lays a seat",
+        "what": "the note lands after the create - CircLayout reads the frozen n and the new seats overlap the old ones",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      CircNoteBuilt();\n      for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);",
+        "replace": "      for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);\n      CircNoteBuilt();   // MUTATION: note after the create",
+        "expect": "the create reads the frozen grid",
+    },
+    {
+        "id": "P-UI-167b",
+        "gate": "regression",
+        "rule": "the ring click tail is a birth path, not a paint",
+        "what": "the click tail repaints a seat the action just hid - one bare glyph over a closed menu",
+        "file": "Biotak/BiotakMenu_D.mqh",
+        "find": "   if(g_UI.menuVisible && !g_ToolsOpen)\n   {\n      CircUpdateItemState(idx);",
+        "replace": "   if(true)   // MUTATION: the tail births over a closed menu\n   {\n      CircUpdateItemState(idx);",
+        "expect": "the ring click tail repaints a seat the action just hid again",
+    },
+    {
+        "id": "P-UI-189",
+        "gate": "regression",
+        "rule": "a built shape is noted on every exit",
+        "what": "the non-paged grid exits without its note - every release rebuilds all 16 cells",
+        "file": "Biotak/BiotakMenu_B.mqh",
+        "find": "      SubNoteBuilt();\n      return;",
+        "replace": "      return;   // MUTATION: no built-shape note",
+        "expect": "the non-paged grid exits without SubNoteBuilt",
+    },
+    {
+        "id": "P-UI-191",
+        "gate": "regression",
+        "rule": "a kept key is read before either branch saves (the STAR mask)",
+        "what": "the mask is read after the version branch - the reset path saves CIRC_STAR_DEFAULT over the kept key",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   g_CircStarMask = CircStarLoad(GetGVName(\"STAR\"));   // P-UI-191: read BEFORE either branch can save",
+        "replace": "   // MUTATION: the mask is read after the branch",
+        "expect": "star mask is read AFTER the version branch",
+    },
 ]
 
 #--- the register's own entries, so "no mutation yet" is a NUMBER and not a feeling.
@@ -3919,7 +4248,15 @@ def main():
         path = os.path.join(ROOT, m["file"])
         with open(path, encoding="utf-8", newline="") as fh:
             orig = fh.read()
-        hits = orig.count(m["find"])
+        #--- the anchor is matched LINE-ENDING INSENSITIVE: the tree mixes CRLF and
+        #--- LF files (a tool writes one, another writes the other), and an anchor
+        #--- spelled with "\n" must not go stale just because the file it names is
+        #--- a CRLF one. The RAW bytes are kept for the restore, so the file comes
+        #--- back byte-identical whatever the mutation did.
+        norm = orig.replace("\r\n", "\n")
+        find = m["find"].replace("\r\n", "\n")
+        repl = m["replace"].replace("\r\n", "\n")
+        hits = norm.count(find)
         label = "%-13s %-11s" % (m["id"], GATES[m["gate"]][2])
         if hits != 1:
             stale.append(m)
@@ -3928,8 +4265,11 @@ def main():
             print("                %s" % m["what"])
             continue
         try:
+            mutated = norm.replace(find, repl)
+            if "\r\n" in orig:
+                mutated = mutated.replace("\n", "\r\n")
             with open(path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(orig.replace(m["find"], m["replace"]))
+                fh.write(mutated)
             rc, out = run_gate(m["gate"])
         finally:
             with open(path, "w", encoding="utf-8", newline="") as fh:

@@ -360,6 +360,7 @@ int BaseKnotBaseTFRead(const int bars, const datetime b1, const datetime b2,
 // new closed bar. P-BK-80: the chart TF is NO LONGER part of the key, because it is no
 // longer part of the question — that is the whole promise, and a key that carried it could
 // only ever hand the same box two different answers on two charts.
+static int      s_bkRungTF     = 0;   // the series the span was read on (the box' commit TF)
 static int      s_bkRungBars   = -1;
 static datetime s_bkRungB1     = 0;   // P-BK-80: the BOX' left anchor
 static datetime s_bkRungB2     = 0;   // ... and its right anchor (never the story's ends)
@@ -370,15 +371,15 @@ static int      s_bkRungAnswer = 0;
 // P-BK-80: the question is the BOX' OWN geometry alone — its two anchors, its band, and the
 // base count it was computed from. No box TF, no chart TF, no chart candle width.
 int BaseKnotBaseTFMin(const int bars, const datetime b1, const datetime b2,
-                      const double top, const double bot)
+                      const double top, const double bot, const int tf = 0)
 {
-   datetime lastClosed = iTime(_Symbol, 0, 1);
-   if(bars == s_bkRungBars && b1 == s_bkRungB1 && b2 == s_bkRungB2 &&
+   datetime lastClosed = iTime(_Symbol, tf, 1);
+   if(tf == s_bkRungTF && bars == s_bkRungBars && b1 == s_bkRungB1 && b2 == s_bkRungB2 &&
       top == s_bkRungTop && bot == s_bkRungBot &&
       lastClosed == s_bkRungBar)
       return s_bkRungAnswer;
    int answer = BaseKnotBaseTFRead(bars, b1, b2, top, bot);
-   s_bkRungBars = bars; s_bkRungB1 = b1; s_bkRungB2 = b2;
+   s_bkRungTF = tf; s_bkRungBars = bars; s_bkRungB1 = b1; s_bkRungB2 = b2;
    s_bkRungTop = top; s_bkRungBot = bot;
    s_bkRungBar = lastClosed; s_bkRungAnswer = answer;
    return answer;
@@ -386,18 +387,18 @@ int BaseKnotBaseTFMin(const int bars, const datetime b1, const datetime b2,
 // Compact note suffix: " · M15 base" / " · H1 base" / " · struct" / "".
 // P-BK-80: `b1..b2` = the BOX' OWN two anchors — the only input the class has.
 string BaseKnotBaseTag(const int bars, const datetime b1, const datetime b2,
-                       const double top, const double bot)
+                       const double top, const double bot, const int readTF = 0)
 {
-   int tf = BaseKnotBaseTFMin(bars, b1, b2, top, bot);
+   int tf = BaseKnotBaseTFMin(bars, b1, b2, top, bot, readTF);
    if(tf == 0) return "";   // unmeasurable — the bars part is omitted too
    if(tf <  0) return " · struct";
    return " · " + BaseKnotTFName(tf) + " base";
 }
 // The same read spelled out for the hover line (the note's full sentence).
 string BaseKnotBaseLine(const int bars, const datetime b1, const datetime b2,
-                        const double top, const double bot)
+                        const double top, const double bot, const int readTF = 0)
 {
-   int tf = BaseKnotBaseTFMin(bars, b1, b2, top, bot);
+   int tf = BaseKnotBaseTFMin(bars, b1, b2, top, bot, readTF);
    if(tf == 0) return "\nBase: size not measurable yet";
    if(tf <  0) return "\nBase: " + IntegerToString(bars) +
                       " bars -> structure (a base needs " + IntegerToString(BK_BASE_MIN_BARS) + " candles inside)";

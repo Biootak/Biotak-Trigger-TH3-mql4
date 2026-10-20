@@ -470,11 +470,13 @@
 //--- P-DRAW-83: A CAPTION THAT SHARES ITS ROW WITH A CONTROL NAMES ITS CONTROL'S
 //--- SEAT. The caption draws at `DSTRIP_GEAR_PAD + 14` (the cards' own row-label
 //--- x, BiotakPanels 6007's `+16+14`) and the field starts at the seat the caption
-//--- measured — 14 was a bare literal in the paint, so `DrawStripGearCapW` never
-//--- counted it: the field began 30px INTO its own caption (label 30..76, field from
-//--- 56), the hex text sat under the word that names it and the caption's own hit box
-//--- covered the field's first 20px. One name for the one number, and the seat is
-//--- `CAP_DX + the label + the gap` so the two can never disagree again.
+//--- measured — 14 was a bare literal in the paint, so the caption->field seat
+//--- owner never counted it: the field began 30px INTO its own caption (label
+//--- 30..76, field from 56), the hex text sat under the word that names it and
+//--- the caption's own hit box covered the field's first 20px. One name for the
+//--- one number, and the seat is `CAP_DX + the label + the gap` so the two can
+//--- never disagree again. (P-UI-186: the seat OWNER that carried this number was
+//--- deleted with its last caller - the two hex fields it served are retired.)
 #define DSTRIP_GEAR_CAP_DX 14
 //--- 14 = the cards' caption x inside the row (PNL_PAD_X + 14 is 30, less the pad
 //--- already in the origin). One owner of the caption's own seat.

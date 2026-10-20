@@ -4,37 +4,26 @@
 
 
 //--- P-DRAW-87 (2026-09-29) — NAME THE OBJECT, DON'T GUESS IT. The tab row's bed
-//--- showed MT4's default blue face on a green build whose every painted colour
-//--- is dark by construction (track #1C222C, plate <= 28,34,44, no blue in the
+//--- showed MT4's default blue face on a green build whose every painted colour is
+//--- dark by construction (track #1C222C, plate <= 28,34,44, no blue in the
 //--- palette, no blue BMP). A colour that cannot come out of this file's pipeline
-//--- is either a foreign object or a rendering the code does not own — and which
-//--- of the two decides the fix. So on every panel OPEN (user action: rare,
-//--- bounded, never on paint) this walks the chart ONCE and prints every object
-//--- whose box touches the tab band, with its type and its stored BGCOLOR. The
-//--- next screenshot of a blue bar arrives WITH its name attached.
-//--- P-DRAW-112 (2026-10-01) — THE CENSUS WALKS THE WHOLE PANEL, AND A LABEL IS
-//--- AN OBJECT WITH A BOX. User report on the Style tab: «تب استایل که میزنم اینطوری
-//--- میشه، خود تب و دکمه حذف و غیره دیده نمیشه» — the head (title, version, close),
-//--- the tab row, the foot and three of the four band CAPTIONS are gone, while the
-//--- chips, the rows, the band dots and the count pills are all there. The census
-//--- above could not have answered it: its band was the TAB ROW only, and its
-//--- `else continue` threw away OBJ_LABEL — the caption labels, the head title, the
-//--- foot words, every one of the missing names. So the band is the panel's own rect
-//--- and a label's own text/colour/z is printed with it. Bounded: one walk per panel
-//--- OPEN (never per paint), the call site is unchanged.
+//--- is either a foreign object or a rendering the code does not own - and which of
+//--- the two decides the fix. So on every panel OPEN (user action: rare, bounded,
+//--- never on paint) this walks the chart ONCE and prints every object whose box
+//--- touches the panel, with its type and its stored BGCOLOR.
+//--- P-DRAW-112 (2026-10-01) — THE CENSUS WALKS THE WHOLE PANEL, AND A LABEL IS AN
+//--- OBJECT WITH A BOX. The tab-row-only band threw away OBJ_LABEL - the caption
+//--- labels, the head title, the foot words, every one of the missing names. The
+//--- band is the panel's own rect and a label's own text/colour/z is printed with
+//--- it. Bounded: one walk per panel OPEN (never per paint).
 //--- P-DRAW-123 (2026-10-01) — WHAT THE PAINT DID, BESIDE WHAT THE TERMINAL HOLDS.
-//--- The report («این هنوز درست نشده», a shot of the open Stroke tab with the SHAPE
-//--- and LAYER captions plus `Behind candles`/`Look`/`Row` painted while both other
-//--- band captions, the `50 % line`/`Extend right`/`Lock` names, every chip and the
-//--- whole left column were bare) could only be closed by EYE, and that is the cost
-//--- this closes: the census answers "what does the chart hold", and it answered it
-//--- CORRECTLY for every object the screen did not show in the P-DRAW-120 case. What
-//--- was missing is the OTHER half — what the paint INTENDED — in a form a machine can
-//--- diff. So while `s_dsDiagArm` is set, the four writers every panel object goes
-//--- through (label, face, rect, button) each print one `[dsdiag] EXPECT` line with the
-//--- object's own name, role, seat, layer and text, at the moment they place it.
-//--- This is the paint's OWN numbers — not a second table recomputed here — so a
-//--- divergence is always the terminal's doing.
+//--- The census answers "what does the chart hold", and it answered it CORRECTLY
+//--- for every object the screen did not show (P-DRAW-120). What was missing is the
+//--- OTHER half - what the paint INTENDED - in a form a machine can diff. So while
+//--- `s_dsDiagArm` is set, the four writers every panel object goes through (label,
+//--- face, rect, button) each print one `[dsdiag] EXPECT` line with the object's own
+//--- name, role, seat, layer and text, at the moment they place it. This is the
+//--- paint's OWN numbers - not a second table recomputed here.
 #ifdef DSTRIP_DIAG
 bool s_dsDiagArm = false;   // P-DRAW-123: the dump's own one-paint latch
 #endif
@@ -590,7 +579,9 @@ bool DrawStripGearRowIsCur(const int r)
    if(kind == 6)
    {
       if(arg == DRAW_SLOT_MORE) return DrawStripVis(s_dsKind, DSTRIP_SLOT_LEVELS);
-      return DrawStripVis(s_dsKind, arg);
+      //--- P-UI-176: the merged colour row reads the CELL (either role on), not
+      //--- one role of it - the quick row's own answer (DrawStripSeatVis).
+      return DrawStripSeatVis(s_dsKind, arg, DrawStripMergedColor(s_dsKind));
    }
    if(kind == 8)
       return ((int)DrawSlotRead(s_dsObj, DRAW_SLOT_GLYPH) == DrawStripGlyphAt(arg % 256));
@@ -628,7 +619,11 @@ string DrawStripGearGroupDigest(const int gid)
    }
    if(gid == DSTRIP_GEAR_LEVELS)
    {
-      int n = DrawStripGearLevelCount();
+      //--- P-UI-177 (2026-10-20): the digest states the levels the drawing SHOWS
+      //--- (the level set on the object), not the size of the LIST. "No levels"
+      //--- empties the set, and the header kept claiming "9 levels".
+      int n = DrawLevelCount(s_dsObj);
+      if(n <= 0) return "no levels";
       return (n == 1) ? "1 level" : (IntegerToString(n) + " levels");
    }
    if(gid == DSTRIP_GEAR_MARK)
@@ -648,14 +643,16 @@ string DrawStripGearGroupDigest(const int gid)
    //--- seat, plus the levels cell on the kinds that have levels).
    if(gid != DSTRIP_GEAR_STRIP) return "";   // P-DRAW-117: the fallback is EMPTY —
                                               // an unknown group states nothing
-   DrawStripVisInit();
-   int on = 0;
-   for(int s = 0; s < DRAW_SLOT_N; s++)
-   {
-      if(s == DRAW_SLOT_MORE) continue;
-      if(!DrawSlotAvailable(s_dsKind, s)) continue;
-      if(DrawStripVis(s_dsKind, s)) on++;
-   }
+    DrawStripVisInit();
+    bool merged = DrawStripMergedColor(s_dsKind);   // P-UI-176: one cell, one count
+    int on = 0;
+    for(int s = 0; s < DRAW_SLOT_N; s++)
+    {
+       if(s == DRAW_SLOT_MORE) continue;
+       if(merged && s == DRAW_SLOT_COLOR) continue;
+       if(!DrawSlotAvailable(s_dsKind, s)) continue;
+       if(DrawStripSeatVis(s_dsKind, s, merged)) on++;
+    }
    if(DrawKindHasLevels(s_dsKind) && DrawStripVis(s_dsKind, DSTRIP_SLOT_LEVELS)) on++;
    return IntegerToString(on) + " cells";
 }
@@ -1129,8 +1126,16 @@ bool DrawStripGearSectionsPaint(const int x, const int w)
          dirty |= DrawStripFaceZ(cchip, x0 + w - DSTRIP_SEC_CNT_W - 2, y + 11,
                                  DSTRIP_SEC_CNT_W + 4, 20,
                                  "::Files\\Icons\\pnl_cntchip.bmp", txt, Z_PANEL_CHIP);
-         dirty |= DrawStripLblAt(clbl, x0 + w - DSTRIP_SEC_CNT_W / 2 - 2 + PnlTextW(cs, lpt) / 2,
+         //--- P-UI-181 (2026-10-20): the digit is CENTRED in the pill and it paints
+         //--- ABOVE it. The pill's centre is x0+w-DSTRIP_SEC_CNT_W/2 and the label
+         //--- is LEFT anchored, so the old x (which added half the text advance to a
+         //--- LEFT edge) put the digit (tw-2)px right of centre - with two digits it
+         //--- crossed the pill's right edge. And the label's rung (Z_STRIP_OVER) was
+         //--- BELOW the chip's (Z_PANEL_CHIP), so the number painted UNDER the pill's
+         //--- own bitmap; the cards put their number on Z_PANEL_TEXT.
+         dirty |= DrawStripLblAt(clbl, x0 + w - DSTRIP_SEC_CNT_W / 2 - PnlTextW(cs, lpt) / 2,
                                  y + 16, cs, DSTRIP_CLR_TITLE, txt, lpt, true);
+         dirty |= DrawStripSetInt(clbl, OBJPROP_ZORDER, Z_PANEL_TEXT);
       }
       else
       {

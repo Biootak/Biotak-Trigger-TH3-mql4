@@ -582,8 +582,10 @@ void PalComputePos()
       int sw = DrawStripPlateW();
       int dx = (sw > 0) ? DrawStripPlateX() + sw + 8 : MathMax(4, cw - w - 24);
       if(dx + w > cw - 4) dx = MathMax(4, (sw > 0 ? DrawStripPlateX() : cw - w - 24) - w - 8);
-      int dy = (sw > 0) ? DrawStripPlateY() : MathMax(4, (ch - h) / 2);
-      int maxDy = ch - h - 16;
+       int dy = (sw > 0) ? DrawStripPlateY() : MathMax(4, (ch - h) / 2);
+      //--- P-UI-188: the floating popup keeps its FOOT on the chart too (the head
+      //--- leaves the top on a chart shorter than the popup - the buttons stay).
+      int maxDy = ch - PalFootY() - PAL_FOOT - 8;
       if(dy > maxDy) dy = MathMax(4, maxDy);
       g_PalX = MathMax(4, dx); g_PalY = dy;
       return;
@@ -592,9 +594,15 @@ void PalComputePos()
     int px=g_PnlX[ai]+PnlPanelW(ai)+8;                    // right of the panel
    if(px+w>cw-4) px=g_PnlX[ai]-w-8;                      // flip left on overflow
    px=MathMax(4,px);
-   int py=g_PnlY[ai];
-   int maxY=ch-h-16;
-   if(py>maxY) py=MathMax(4,maxY);
+    int py=g_PnlY[ai];
+    //--- P-UI-188 (2026-10-20): the popup is TALLER than a short chart, and the
+    //--- placement kept its TOP on the chart - so the FOOT (the Done button and
+    //--- the TR track) fell off the bottom and the user could not close the
+    //--- popup from it. The foot is the escape hatch: the popup keeps its FOOT on
+    //--- the chart now (on a chart shorter than the popup the head leaves the
+    //--- top - the least important band goes first, the buttons stay).
+    int maxY=ch-PalFootY()-PAL_FOOT-8;
+    if(py>maxY) py=MathMax(4,maxY);
    g_PalX=px; g_PalY=py;
 }
 

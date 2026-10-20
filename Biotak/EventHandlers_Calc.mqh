@@ -1186,6 +1186,7 @@ void RedrawAllObjects(bool force_redraw=false)
     // Move outside needLabels block to ensure overlay labels are always correctly positioned
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
+    LabelPushBaseNoteSlotTop();   // BKCORNER-ON: the note's slot, after the mode rows' offset is known
     g_p3MsOverlay = GetTickCount() - g_p3MsLastTick;   // DrawMainLevels + overlay reposition
 
     g_dailyClosePriceForTH = thBasePrice;

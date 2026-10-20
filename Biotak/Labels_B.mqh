@@ -615,6 +615,30 @@ void LabelPushBaseNoteSlot(const int stackY, const int stackEm)
    if(y < 8) y = 8;
    BaseKnotCornerSlotPush(CORNER_RIGHT_LOWER, MathMax(8, inpLabelsMarginLeft), y);
 }
+//+------------------------------------------------------------------+
+//| BKCORNER-ON (2026-10-20) — THE NOTE'S SLOT IS TOP-LEFT.           |
+//|                                                                  |
+//| It clears the same two things GetABCDInfoSafeYDistance clears   |
+//| for the TH3 caption: the ATR stack's top margin, then the mode  |
+//| rows' hardcoded +45 (ApplyModeLabelStyle), plus the lock row.   |
+//| The formula is mirrored here, not called: the TH3 owner is       |
+//| Full-only, and this module is compiled by Lite too.             |
+//+------------------------------------------------------------------+
+void LabelPushBaseNoteSlotTop()
+{
+   int y = MathMax(8, inpLabelsMarginTop);
+   if(inpLabelCornerPosition == LABEL_CORNER_LEFT_TOP)
+      y = MathMax(y, inpLabelsMarginTop + g_modeLabelYOffset + inpSectionGap);
+   if(inpModeLabelCorner == CORNER_LEFT_UPPER)
+   {
+      int modeBlock = GetModeLabelBlockHeight();
+      int modeBottom = inpModeLabelYDistance + g_modeLabelYOffset + 45 +
+                       (modeBlock > 0 ? modeBlock : inpModeLabelFontSize + 6) + 4;
+      if(g_timeframeLocked) modeBottom += inpModeLabelFontSize + 6;
+      if(y < modeBottom) y = modeBottom;
+   }
+   BaseKnotCornerSlotPush(CORNER_LEFT_UPPER, MathMax(8, inpLabelsMarginLeft), y);
+}
 
 //+------------------------------------------------------------------+
 //| Label layout helpers (ported from MT5)                            |

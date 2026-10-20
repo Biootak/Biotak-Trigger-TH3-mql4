@@ -1190,6 +1190,12 @@ void PathOnDeinit(const int reason)
    s_pathArmed = false;
    s_pathDrag = "";
    s_pathSel = "";
+   //--- P-UI-180 (2026-10-20): the PREVIEW and the half-drawn session die with
+   //--- EVERY reason, not only with the indicator's removal: a timeframe switch
+   //--- leaves the preview line and the session's segments on the chart forever
+   //--- (the preview wears HIDDEN, so the user cannot even delete it). The
+   //--- sibling's law (BaseKnotOnDeinit) is the model: every reason, one sweep.
+   PathSessionClear();
    if(reason == REASON_REMOVE)
    {
       string pfx = PathPrefix();

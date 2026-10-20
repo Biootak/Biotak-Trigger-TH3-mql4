@@ -33,7 +33,6 @@
 #include "Biotak\FloatingPointHelper.mqh"
 #include "Biotak\ObjectCountManager.mqh"
 #include "Biotak\PerformanceOptimizations.mqh"
-#include "Biotak\InputValidationEnhanced.mqh"
 
 //                                                                    
 // RUNTIME SETTINGS - single owner of panel-editable setting mirrors.
@@ -63,7 +62,6 @@
 #include "Biotak\ZoneConstants.mqh"
 
 #include "Biotak\ObjectCache.mqh"
-#include "Biotak\PropertyChangeDetector.mqh"
 #include "Biotak\VisibilityManager.mqh"
 
 //                                                                    

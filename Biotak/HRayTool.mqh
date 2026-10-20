@@ -28,6 +28,17 @@
 #define HRAY_DBL_MS 400   // double-click window for dot-delete
 #define HRAY_DBL_PX 6     // ... and its pixel travel
 
+//--- P-UI-183 (2026-10-20): the ray's witness is the FLUSHED file, never `Print`.
+//--- MT4 buffers the journal in RAM (P-DRAW-126), so a `Print` witness reads
+//--- "nothing happened" long after the tap - and «the ray does nothing» is then
+//--- unprovable. `DrawStripDiagEmit` is the channel's ONE owner; the Lite build
+//--- ships no strip, so it keeps the journal (the same shape as PathWitness).
+#ifndef BUILD_LITE
+void HRayWitness(const string line) { DrawStripDiagEmit("[HRay] " + line); }
+#else
+void HRayWitness(const string line) { Print("[HRay] " + line); }
+#endif
+
 static bool   s_hrayArmed    = false;  // arm session live (the menu light reads this)
 static bool   s_hrayLeft     = false;  // mouse edge detector (P-LM-13: update on EVERY move)
 static string s_hrayDrag     = "";     // line name under the hand ("" = no drag)
@@ -245,7 +256,7 @@ void HRayPlace(const datetime t, const double price)
       HRayRegAdd(id);
       HRaySelect(ln);   // the fresh ray is selected, so its dot answers at once
       HRayHandleFollow(ln);
-      Print("[HRay] placed \"", ln, "\" at ", DoubleToString(price, Digits));
+      HRayWitness("placed \"" + ln + "\" at " + DoubleToString(price, Digits));
    }
 }
 // THE lock giver-backer for the carry — every path that drops the drag goes
@@ -258,7 +269,7 @@ void HRayDragRelease()
 }
 void HRayDelete(const string line, const string why)
 {
-   Print("[HRay] delete \"", line, "\" (", why, ")");
+   HRayWitness("delete \"" + line + "\" (" + why + ")");
    if(s_hrayDrag == line) HRayDragRelease();
    ObjectDelete(0, HRayHandleName(line));
    ObjectDelete(0, line);
@@ -332,12 +343,12 @@ void HRayDragStart(const string line)
    s_hraySnapSpan = (int)((datetime)ObjectGetInteger(0, line, OBJPROP_TIME, 1) - s_hraySnapT);
    ChartViewLockAcquire();   // P-HR-03: the carry owns the view (named below)
    HRaySelect(line);
-   Print("[HRay] drag start \"", line, "\"");
+   HRayWitness("drag start \"" + line + "\"");
 }
 void HRayDragEnd()
 {
    if(s_hrayDrag == "") return;
-   Print("[HRay] drag end \"", s_hrayDrag, "\" moved=", (s_hrayMoved ? "yes" : "no"));
+   HRayWitness("drag end \"" + s_hrayDrag + "\" moved=" + (s_hrayMoved ? "yes" : "no"));
    if(s_hrayMoved) s_hrayEndMs = GetTickCount();   // trailing release-click is select-only
    HRayDragRelease();
    ChartRedraw();
@@ -375,7 +386,7 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
    if(id == CHARTEVENT_OBJECT_DELETE && pfx != "" && StringFind(sparam, pfx) == 0)
    {
       if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;   // bulk teardown — nothing to heal
-      Print("[HRay] object-delete seen \"", sparam, "\"");
+      HRayWitness("object-delete seen \"" + sparam + "\"");
       // P-HR-07 (2026-09-28, user: «روی استریپ کلیک میکنم همه پاک میشه»): the
       // cascade is ONE WAY. The dot is the ray's CHILD, so a deleted LINE takes
       // its dot with it — but a deleted DOT takes nothing, because the dot dies
@@ -478,7 +489,7 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
             }
             s_hrayPressX = (int)lparam; s_hrayPressY = (int)dparam;   // the carry's own origin
 HRayDragStart(ln);   // select + carry in one press
-             Print("[HRay] carry ", ln, " why=", GestureTakeWhy());   // P-UI-144: the carry's own half of the proof
+             HRayWitness("carry " + ln + " why=" + GestureTakeWhy());   // P-UI-144: the carry's own half of the proof
              return true;
          }
       }
@@ -534,7 +545,7 @@ HRayDragStart(ln);   // select + carry in one press
          {
             HRaySelect(ln);
             HRayHandleFollow(ln);
-            Print("[HRay] select \"", ln, "\"");
+            HRayWitness("select \"" + ln + "\"");
             s_hrayClick = ln; s_hrayClickMs = now;
             s_hrayClickX = (int)lparam; s_hrayClickY = (int)dparam;
          }
@@ -542,7 +553,7 @@ HRayDragStart(ln);   // select + carry in one press
       }
       if(s_hraySel != "")
       {
-         Print("[HRay] dismiss dot \"", s_hraySel, "\" (line stays)");
+         HRayWitness("dismiss dot \"" + s_hraySel + "\" (line stays)");
          HRaySelect(""); ChartRedraw();
       }
       s_hrayClick = "";

@@ -631,7 +631,7 @@ int CircPlacedCount()
    return CircPlacedCountLive();
 }
 
-void CircNoteBuilt() { s_circBuiltSeats = CircPlacedCountLive(); }   // called with the drag OFF
+void CircNoteBuilt() { s_circBuiltSeats = CircPlacedCountLive(); }   // note BEFORE a create: CircLayout reads this n
 
 int CircBtnSize()  { return CircBtnSizeForN(CircPlacedCount()); }
 
@@ -1327,6 +1327,10 @@ void SubChromeCreate()
       ObjectDelete(0, SubPagerNext());
       ObjectDelete(0, SubPagerTxt());
       for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++) ObjectDelete(0, SubPagerDot(k));
+      // The non-paged grid is a BUILT shape too. Without this note s_SubBuilt*
+      // keeps the previous mode/rows, SubRelayoutIfNeeded never matches, and
+      // every release/chart-change rebuilds all 16 cells under the pointer.
+      SubNoteBuilt();
       return;
    }
 

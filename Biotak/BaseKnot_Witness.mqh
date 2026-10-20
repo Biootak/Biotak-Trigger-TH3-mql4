@@ -149,7 +149,9 @@ void BaseKnotTypeWitness()
       s_bkTw[slot].used = true; s_bkTw[slot].id = id;
       s_bkTw[slot].kind = g_bkBoxes[i].nodeKind; s_bkTw[slot].tf = nodeTF;
       s_bkTw[slot].an = an; s_bkTw[slot].atr = atr; s_bkTw[slot].step = step;
-      DrawStripDiagEmit("[P-BK-107] box=" + id + " type=" + BaseKnotNodeShort(g_bkBoxes[i].nodeKind) +
+      DrawStripDiagEmit("[P-BK-107] box=" + id + " chart=" + BaseKnotTFName(Period()) +
+                        " commit=" + BaseKnotTFName(g_bkBoxes[i].tfMin) +
+                        " type=" + BaseKnotNodeShort(g_bkBoxes[i].nodeKind) +
                         " node=" + BaseKnotTFName(nodeTF) + " anchor=" +
                         (an > 0 ? TimeToString(an, TIME_DATE | TIME_MINUTES) : "live") +
                         " ATR=" + DoubleToString(warm ? BaseKnotToPips(atr) : 0.0, 1) +

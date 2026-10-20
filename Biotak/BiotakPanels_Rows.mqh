@@ -916,6 +916,26 @@ string PnlShortCap(const string l)
    return l;
 }
 
+//--- P-UI-171 (2026-10-20): the DUAL row's cell caption is MEASURED, never a
+//--- literal. The width owner reserved a fixed 12px for the LAST caption while
+//--- the cell walk spent the measured advance, so the last caption crossed the
+//--- card's content edge (the product and its own mirror disagreed by 64px).
+//--- ONE owner for the caption, so the width, the seat and the paint cannot
+//--- drift apart (P-DRAW-77's law).
+string PnlDualCapAt(const int item,const int row,const int cell)
+{
+   int n = PnlRowMembers(item,row);
+   int cells = n + ((PnlRowExt(item,row)=="") ? 0 : 1);
+   if(cell < 0 || cell >= cells) return "";
+   if(cell < n)
+   {
+      string cl,cu,co; int ck,cmn,cmx; double cst;
+      PnlSetDef(item,PnlMemberRow(item,row,cell),ck,cl,cmn,cmx,cst,cu,co);
+      return PnlShortCap(cl);
+   }
+   return PnlRowExt(item,row);
+}
+
 //--- .dual cell geometry — ONE implementation so the renderer and the press
 //--- hit-test can never drift apart (the classic P-UI ghost-target bug).
 //--- Returns the cell's SWITCH left edge; `cell` counts the row's own members
@@ -927,22 +947,12 @@ int PnlDualCells(const int item,const int row)
 }
 int PnlDualCellX(const int item,const int row,const int cell)
 {
-   int n = PnlRowMembers(item,row);
-   string extra = PnlRowExt(item,row);
-   int cells = n + ((extra=="") ? 0 : 1);
+   int cells = PnlDualCells(item,row);
    int x = 0;
    for(int i=0;i<cells;i++)
    {
-      string txt = "";
-      if(i < n)
-      {
-         string cl,cu,co; int ck,cmn,cmx; double cst;
-         PnlSetDef(item,PnlMemberRow(item,row,i),ck,cl,cmn,cmx,cst,cu,co);
-         txt = PnlShortCap(cl);
-      }
-      else txt = extra;
       if(i == cell) return x;
-      x += PNL_DUAL_SW_W + 6 + PnlTextW(txt,PNL_PT_CAP) + 14;   // P-UI-30: real advance
+      x += PNL_DUAL_SW_W + 6 + PnlTextW(PnlDualCapAt(item,row,i),PNL_PT_CAP) + 14;   // P-UI-30: real advance
    }
    return x;
 }
@@ -1012,7 +1022,10 @@ int PnlDualTotalW(const int item,const int row)
    {
       int a = PnlDualCellX(item,row,i);
       int b = PnlDualCellX(item,row,i+1);
-      w = (i == cells-1) ? a + PNL_DUAL_SW_W + 6 + 12 : b;
+      //--- P-UI-171: the LAST cell carries the caption's own advance (+2 for the
+      //--- caption's seat past the switch, -2 from the trailing gap). The old
+      //--- literal 12 left the last caption 52px past the card's content edge.
+      w = (i == cells-1) ? a + PNL_DUAL_SW_W + 6 + PnlTextW(PnlDualCapAt(item,row,i),PNL_PT_CAP) + 12 : b;
    }
    return w;
 }
@@ -1086,7 +1099,11 @@ void PnlChipsGeom(const int item,const int row,int &x0,int &cy,int &cw,int &ch,
    cw=PNL_SCHIP_W; ch=PNL_SCHIP_H; gap=PNL_SCHIP_GAP; n=PnlChipsCount(item,row);
    int total=n*cw+(n-1)*gap;
    x0=PnlRowBaseX(item,row)+PNL_WEL-PNL_PAD_X-total;
-   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H;
+   //--- P-UI-179 (2026-10-20): the chips ride the SWATCH STRIP's line, not the
+   //--- row's top line. The caption sits on the top line (ry+PNL_CAP_Y) and the
+   //--- strip was drawn on the SAME line - so the caption lay on the swatches.
+   //--- The COL row's own pattern is the law: caption above, strip below.
+   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_QSW_Y;
 }
 //--- the value a tap on `cell` writes. The ONE owner of the two tables' tap
 //--- semantics (the press chain reads this, never its own copy).

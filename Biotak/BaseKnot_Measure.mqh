@@ -1115,29 +1115,27 @@ bool BaseKnotInfoVisible(const string id)
 //| is written on a CHANGE (mode, selection, slot, or the box' own    |
 //| Sync), never once per pump round.                                 |
 //+------------------------------------------------------------------+
-bool BaseKnotNoteInCorner() { return (g_bkShowInfo == BK_NOTE_CHART); }
-// The row's object name. ONE row for the whole chart (it is the family's column, not a box
-// child — see BK_NOTE_CORNER).
+// BKCORNER-ON (2026-10-20): the box-side home is retired. The note has ONE face, in the
+// family's column, so this probe is a FACT, not a setting: `inpBKShowInfo` / `g_bkShowInfo`
+// stay compiled (and persisted) but no longer move the note. The box-side writer below is
+// kept as the one-line restore; it is unreachable while this returns true.
+bool BaseKnotNoteInCorner() { return true; }
+// The row's object name. ONE family for the whole chart (it is the family's column, not a box
+// child — see BK_NOTE_CORNER). Row 0 keeps the historical name; the rest carry their ordinal.
 string BaseKnotCornerName()
 {
    if(StringLen(inpObjectPrefix) == 0) return "";
    return inpObjectPrefix + BK_TAG + BK_NOTE_CORNER;
 }
+// The family's row/plate names and its wipes live in BaseKnot_Note.mqh (the note's own home).
 // The pushed slot (-1 = the family has never pushed one, i.e. there is nowhere to draw).
 static int  s_bkCornerSide  = -1;
 static int  s_bkCornerX     = 0;
 static int  s_bkCornerY     = 0;
 static bool s_bkCornerDirty = true;   // a slot write is owed (the row may not exist yet)
 static string s_bkCornerId  = "";     // the box the row currently carries ("" = the sizing box)
-// The row's own wipe (deinit + a mode change): the object goes AND the books are cleared, so the
-// next refresh rebuilds instead of believing the row it just deleted is still there.
-void BaseKnotCornerWipe()
-{
-   string nm = BaseKnotCornerName();
-   if(nm != "" && ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);
-   s_bkCornerId    = "";
-   s_bkCornerDirty = true;
-}
+// The family's two wipes (BaseKnotCornerFamilyWipe / BaseKnotCornerWipe) live in
+// BaseKnot_Note.mqh with the names they delete.
 void BaseKnotCornerSlotPush(const int corner, const int xPos, const int yPos)
 {
    if(corner == s_bkCornerSide && xPos == s_bkCornerX && yPos == s_bkCornerY) return;
@@ -1183,11 +1181,12 @@ void BaseKnotNoteCornerRefresh()
 {
    string nm = BaseKnotCornerName();
    if(nm == "") return;
+   BaseKnotCornerToastTick();   // BKCORNER-TOAST: the 3 s life is served by the same pump
    if(!BaseKnotNoteInCorner())
    {
-      if(ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);   // the box-side home owns the note now
+      BaseKnotCornerFamilyWipe();   // the box-side home owns the note now
       s_bkCornerId    = "";
-      s_bkCornerDirty = false;   // nothing is owed while the rung is not the corner one
+      s_bkCornerDirty = false;      // nothing is owed while the rung is not the corner one
       return;
    }
    if(g_bkState == BK_PREVIEW)
@@ -1199,17 +1198,18 @@ void BaseKnotNoteCornerRefresh()
    if(id != "" && !BaseKnotVisibleNow(id)) id = "";   // a box hidden on this TF claims no row
    if(id == s_bkCornerId && !s_bkCornerDirty)
    {
-      // Steady state: not one chart write. The ONE read left is the heal — something else
-      // (a chart-wide cleanup, the user's own delete) may have taken the row away, and a
-      // readout that silently disappears is the bug this keeper exists for.
-      if(id == "" || ObjectFind(0, nm) >= 0) return;
+      // Steady state: not one chart write. The heal reads the row and its plate — something
+      // else (a chart-wide cleanup, the user's own delete) may have taken the family away,
+      // and a readout that silently disappears is the bug this keeper exists for.
+      if(id == "" || (ObjectFind(0, nm) >= 0 && ObjectFind(0, BaseKnotCornerPlateName()) >= 0)) return;
       s_bkCornerDirty = true;   // rebuild it below
    }
    s_bkCornerId = id;
    s_bkCornerDirty = false;
    if(id == "")
    {
-      if(ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);   // nothing answers: a stale note is worse than none
+      BaseKnotCornerFamilyWipe();   // nothing answers: a stale note is worse than none
+      BaseKnotCornerToastReset();   // a later selection of the same box is a NEW toast
       return;
    }
    BaseKnotSync(id);   // the ONE writer rebuilds the box AND its note — into the row
@@ -1219,10 +1219,10 @@ void BaseKnotNoteCornerRefresh()
 // open and close inside [bot,top], boundary INCLUSIVE, direction-free): wicks may
 // pierce the band, a candle whose BODY is outside is not part of the base.
 // Single definition, so every caller counts the same candle the same way.
-bool BaseKnotBarBodyInside(const int shift, const double top, const double bot)
+bool BaseKnotBarBodyInside(const int shift, const double top, const double bot, const int tf = 0)
 {
-   double o = iOpen(_Symbol, 0, shift);
-   double c = iClose(_Symbol, 0, shift);
+   double o = iOpen(_Symbol, tf, shift);
+   double c = iClose(_Symbol, tf, shift);
    return (o >= bot && o <= top && c >= bot && c <= top);
 }
 //+------------------------------------------------------------------+
@@ -1249,9 +1249,9 @@ bool BaseKnotBarBodyInside(const int shift, const double top, const double bot)
 //| اشتباه بشه همه چیز اشتباه میشه پس باید صد در صد کندل ورود و خروج   |
 //| رو مطمئن باشیم که تعداد درست باشه».                               |
 //+------------------------------------------------------------------+
-bool BaseKnotBarCloseOut(const int shift, const double top, const double bot)
+bool BaseKnotBarCloseOut(const int shift, const double top, const double bot, const int tf = 0)
 {
-   double c = iClose(_Symbol, 0, shift);
+   double c = iClose(_Symbol, tf, shift);
    if(c <= 0) return false;              // series not ready — never a CLAIMED exit
    return (c < bot || c > top);
 }
@@ -1312,17 +1312,17 @@ bool BaseKnotBarCloseOut(const int shift, const double top, const double bot)
 // هستش» — the 13 was the box' own reach, which is no longer part of the base), and the
 // box hover now spells the band, the entry, the exit and the number out, in that order.
 int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, const double bot,
-                     BaseKnotSpan &sp)
+                     BaseKnotSpan &sp, const int readTF = 0)
 {
    BaseKnotSpanClear(sp);
    if(t1 <= 0 || t2 <= 0 || top <= bot) return 0;
-   int sh1 = iBarShift(_Symbol, 0, t1, false);
-   int sh2 = iBarShift(_Symbol, 0, t2, false);
+   int sh1 = iBarShift(_Symbol, readTF, t1, false);
+   int sh2 = iBarShift(_Symbol, readTF, t2, false);
    if(sh1 < 0 || sh2 < 0) return 0;
    // Shift 0 is the LIVE bar, so the box's RIGHT edge (the newer end, where the
    // break is) is the SMALLER shift; walking OLDER increases it.
    int s = (sh1 < sh2 ? sh1 : sh2);
-   int total = Bars;
+   int total = iBars(_Symbol, readTF);
    if(s < 0 || s >= total) return 0;
    // P-BK-34 (2026-09-15) — THE COUNT IS CLOSED-BAR DATA, the same law the node
    // read already obeys (P-BK-29). Shift 0 is the FORMING candle, and iBarShift()
@@ -1377,7 +1377,7 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
    int oldest = 0;   // shift of the OLDEST candle the base lasted (P-BK-37: the start)
    while(s < total && s - edge < BK_BASE_SKIP)
    {
-      if(!BaseKnotBarBodyInside(s, top, bot)) { s++; continue; }   // the break / the dead zone
+      if(!BaseKnotBarBodyInside(s, top, bot, readTF)) { s++; continue; }   // the break / the dead zone
       // P-BK-44 (2026-09-15) — THE BOX' LINES EXTEND FORWARD TOO. «این چرا عقب میارمش
       // فرق میکنه اعداد … 36 تا درست بودش اون نباید 20 باشه … باید امتداده باکس ها به
       // عقب و جلو خطوط شو در نظر بگیر بای کندل ورود و خروج، ملاک که سقف و کف بیس هستش نه
@@ -1394,7 +1394,7 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
          int fup = s - 1, fgap = 0, fprobe = 0, fn = 0;
          while(fup >= 1 && fn + fprobe < BK_BASE_MAX)
          {
-            if(BaseKnotBarBodyInside(fup, top, bot))
+            if(BaseKnotBarBodyInside(fup, top, bot, readTF))
             {
                if(fgap == 0) { fn++; head = fup; }
                else
@@ -1425,7 +1425,7 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
                       // of the box' right edge are inside the number and the class
       while(t < total && n + probe < BK_BASE_MAX)
       {
-         if(BaseKnotBarBodyInside(t, top, bot))
+         if(BaseKnotBarBodyInside(t, top, bot, readTF))
          {
             if(gap == 0)
             {
@@ -1478,7 +1478,7 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
    // only test (P-BK-42/41/81). When nothing closed outside yet, the base simply has NO exit:
    // the end stays the base's OWN right side (`head`, == `tLast`), which is exactly what
    // P-BK-34 asks for — the number stops at the newest closed candle, never one past it.
-   if(!BaseKnotBarCloseOut(end, top, bot)) end = head;
+   if(!BaseKnotBarCloseOut(end, top, bot, readTF)) end = head;
    // P-BK-42 (2026-09-15) — HOW THE TWO ENDS ARE COUNTED: «اول باید سقف و کف بیس یا
    // گره معاملاتی رو مشخص کنیم که ببینم کدوم کندل وارد شده و کدوم کندل خارج شده — کندل
    // ورود جز شمارش حساب نکنیم ولی کندل خروج جز شمارش حساب بکنیم». The band (top/bot) is
@@ -1490,9 +1490,9 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
    // still counts the entry candle, because it is the base's own LENGTH that the size
    // class is read from — P-BK-28/40 — not the note's span.)
    sp.still  = n;                              // P-BK-40: the class's input (entry included)
-   sp.tStart = iTime(_Symbol, 0, oldest);      // the ENTRY candle (not counted)
-   sp.tLast  = iTime(_Symbol, 0, head);        // the base's own right side (both sides)
-   sp.tExit  = iTime(_Symbol, 0, end);         // the EXIT candle (counted)
+   sp.tStart = iTime(_Symbol, readTF, oldest);      // the ENTRY candle (not counted)
+   sp.tLast  = iTime(_Symbol, readTF, head);        // the base's own right side (both sides)
+   sp.tExit  = iTime(_Symbol, readTF, end);         // the EXIT candle (counted)
    sp.life   = oldest - end;                   // P-BK-42: entry out, exit in
    return sp.life;
 }

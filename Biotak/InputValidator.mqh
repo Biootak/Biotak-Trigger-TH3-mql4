@@ -1,4 +1,4 @@
-﻿  //+------------------------------------------------------------------+
+  //+------------------------------------------------------------------+
 //|                                              InputValidator.mqh    |
 //|                                                                  |
 //| Logic for validating user input parameters                       |
@@ -316,11 +316,6 @@ int ValidateInputs()
     }
     
     // Combo Step Mode
-    if(inpComboLevelWidth <= 0 || inpComboLevelWidth > 10) {
-        Print("  ERROR: Combo Level Width (", inpComboLevelWidth, ") out of range");
-        Print("   Valid range: 1 - 10");
-        return INIT_PARAMETERS_INCORRECT;
-    }
     
     // TH3TOOL-ON (2026-09-19): TH3 TOOL + AB=CD validations restored.
 #ifndef BUILD_LITE

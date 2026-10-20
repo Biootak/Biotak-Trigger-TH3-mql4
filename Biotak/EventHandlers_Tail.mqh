@@ -16,10 +16,18 @@ enum ECacheInvalidationFlags {
 };
 
 // Robust hotkey matcher: compares both key code (lparam) and key text (sparam)
+//--- P-UI-185 (2026-10-20): the hotkey is ONE key, and it is compared as ONE key.
+//--- The matcher used the FIRST CHARACTER only, so a two-character hotkey
+//--- ("Ctrl+T") answered as plain T - and the terminal's key stream carries ONE
+//--- virtual key, so a modifier spelling can never be delivered. Two inputs
+//--- sharing a key leave the second one dead (the branches are plain ifs: first
+//--- match wins). The matcher now answers the WHOLE string, and the conflict is
+//--- NAMED once at the attach (HotkeyAudit below).
 bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey) {
     if(StringLen(hotkey) <= 0) return false;
     string k = hotkey;
     StringToUpper(k);
+    if(StringLen(k) != 1) return false;   // not one key: the terminal cannot deliver it
     int code = (int)StringGetCharacter(k, 0);
     if((int)lparam == code) return true;
     if(StringLen(sparam) > 0) {
@@ -28,6 +36,56 @@ bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey
         if((int)StringGetCharacter(sp, 0) == code) return true;
     }
     return false;
+}
+
+//--- P-UI-185: the hotkeys are ONE key each, and a conflict is named. A hotkey
+//--- longer than one character can never be delivered (the key stream carries ONE
+//--- virtual key), and two inputs sharing a key leave the second one dead. The
+//--- audit runs ONCE per attach and says which key is shared by what - so the
+//--- user is not left with a key that does nothing.
+#ifndef BUILD_LITE
+void HotkeyWitness(const string line) { DrawStripDiagEmit("[keys] " + line); }
+#else
+void HotkeyWitness(const string line) { Print("[keys] " + line); }
+#endif
+void HotkeyAudit()
+{
+   string keys[16], names[16];
+   int n = 0;
+   keys[n] = inpHideKey;         names[n] = "Hide/Show all";   n++;
+   keys[n] = inpLinesToggleKey;  names[n] = "Level lines";      n++;
+   keys[n] = inpLockKey;         names[n] = "Timeframe lock";   n++;
+   keys[n] = inpCustomPriceKey;  names[n] = "Custom price";     n++;
+   keys[n] = inpTriggerLevelsKey;names[n] = "Trigger levels";   n++;
+   keys[n] = inpStepModeKey;     names[n] = "Step mode";        n++;
+#ifndef BUILD_LITE
+   keys[n] = inpTH3ToolKey;      names[n] = "TH3 tool";         n++;
+   keys[n] = inpHTFKey;          names[n] = "HTF candles";      n++;
+#endif
+   keys[n] = inpATRLabelsKey;    names[n] = "ATR labels";       n++;
+   keys[n] = inpTHLabelsKey;     names[n] = "TH labels";        n++;
+   keys[n] = inpShowStatusKey;   names[n] = "Show status";      n++;
+   keys[n] = inpResetKey;        names[n] = "Reset overrides";  n++;
+   keys[n] = inpLogDumpKey;      names[n] = "Log dump";         n++;
+   keys[n] = inpCountdownKey;    names[n] = "Countdown tag";    n++;
+   for(int i = 0; i < n; i++)
+   {
+      string k = keys[i];
+      StringToUpper(k);
+      if(StringLen(k) != 1)
+      {
+         HotkeyWitness(names[i] + " key=\"" + keys[i] + "\" is not ONE key - the terminal delivers one virtual key, so this shortcut never fires");
+         continue;
+      }
+      for(int j = i + 1; j < n; j++)
+      {
+         string k2 = keys[j];
+         StringToUpper(k2);
+         if(k2 != k) continue;
+         HotkeyWitness("hotkey \"" + k + "\" is bound twice: " + names[i] + " and " + names[j] +
+                       " - the second one never answers");
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -285,6 +343,7 @@ void RedrawLabelsOnly() {
     LblSweepEnd(objectPrefix);
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
+    LabelPushBaseNoteSlotTop();   // BKCORNER-ON: the note's slot, after the mode rows' offset is known
     ThrottledChartRedraw();
     uint p49tail = GetTickCount() - p49t;
 
