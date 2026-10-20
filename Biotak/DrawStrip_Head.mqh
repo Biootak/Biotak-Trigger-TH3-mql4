@@ -355,6 +355,11 @@
 //--- right-aligned `DSTRIP_GEAR_DG_PAD` in from the cell, and the label is fitted
 //--- against it with the row's own gap between.
 #define DSTRIP_GRK_GROUP  9    // gear row kind 9 = a group header (opens/collapses)
+//--- P-DRAW-136 (2026-10-20): the Look tab's PAGE WALK row wore kind 9 - the same
+//--- number as the group header - and the header's branch is tested FIRST, so the
+//--- page walk was unreachable (a painted row that answered nothing, P-DRAW-84).
+//--- Its own kind now: one number, one row, one branch.
+#define DSTRIP_GRK_TPLNAV 10   // gear row kind 10 = the template page walk (one click turns the page)
 #define DSTRIP_GEAR_DG_PAD 12  // the digest's own inset from the cell's right edge
 //--- P-DRAW-118 (2026-10-01) — THE COLOR ROWS ARE THE CARDS' OWN QUICK ROW.
 //--- User order: «این color fill از همین جا بشه رنگها شو تغییر داد ... کد رنگ

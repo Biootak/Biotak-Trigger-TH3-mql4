@@ -596,6 +596,7 @@ GROUP_AT = {n: g for n, g in zip(TABS, GROUPS)}
 TAB_ACTIVE = len(TABS) - 1             # the screenshot's state (the last group)
 GLIST_MAX = int((re.search(r"#define\s+DSTRIP_GLIST_MAX\s+(\d+)", DS) or [0, "16"])[1])
 GRK_GROUP = int((re.search(r"#define\s+DSTRIP_GRK_GROUP\s+(\d+)", DS) or [0, "9"])[1])
+GRK_TPLNAV = int((re.search(r"#define\s+DSTRIP_GRK_TPLNAV\s+(\d+)", DS) or [0, "10"])[1])
 LVLBLK = int((re.search(r"#define\s+DSTRIP_GEAR_LVLBLK\s+(\d+)", DS) or [0, "5"])[1])
 
 CONTENT = _fn_body(DS, r"void\s+DrawStripGearContent\s*\(")
@@ -874,7 +875,7 @@ def row_label(kind, arg):
         return ROW_TEXT.get("L5_%s" % arg, ROW_TEXT["L5_else"])
     if kind == "7":
         return "New %s wears this look" % DEMO_KIND_NAME
-    if kind == "9":
+    if kind == str(GRK_TPLNAV):
         # the page-nav row's caption — DrawStripTplNavText, its words parsed
         return tpl_nav_text()
     if kind == "6":

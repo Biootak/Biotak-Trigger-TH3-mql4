@@ -516,7 +516,7 @@ string DrawStripGearRowText(const int r)
    }
    if(kind == 7) return "New " + DrawKindName(s_dsKind) + " wears this look";
    if(kind == 8) return "G" + IntegerToString(DrawStripGlyphAt(arg % 256));
-   if(kind == 9) return DrawStripTplNavText(s_dsKind);
+   if(kind == DSTRIP_GRK_TPLNAV) return DrawStripTplNavText(s_dsKind);
    //--- P-DRAW-117: a GROUP HEADER carries its own name — the row's label IS the
    //--- group's word now, so the panel's nav has no second table to drift from.
    if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupText(arg);
@@ -572,7 +572,7 @@ string DrawStripGearRowTip(const int r)
    if(kind == 7) return "Learn the look on the chart as this tool's default (next drawing wears it)";
    if(kind == 8)
       return "Arrow mark: glyph " + IntegerToString(DrawStripGlyphAt(arg % 256)) + " — click to apply" + scope;
-   if(kind == 9) return "More templates" + scope + " — one click turns the page";
+   if(kind == DSTRIP_GRK_TPLNAV) return "More templates" + scope + " — one click turns the page";
    if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupTip(arg);   // P-DRAW-117
    return "";
 }
@@ -1352,7 +1352,7 @@ bool DrawStripGearPaint()
          state = cur ? "::Files\\Icons\\pnl_sw_on_gold.bmp" : "::Files\\Icons\\pnl_sw_off.bmp";
       else if(cur && (k == 2 || k == 8))
          state = "::Files\\Icons\\gl_check_gold.bmp";
-      else if(k == 3 || k == 5 || k == 7 || k == 9)
+      else if(k == 3 || k == 5 || k == 7 || k == DSTRIP_GRK_TPLNAV)
          state = "::Files\\Icons\\gl_nav_m.bmp";   // the level's own stepper / tpl page walk
       //--- P-DRAW-77: the control sits on the cards' own seat — right-aligned
       //--- `px+PNL_SW_X` = contentW-40, at `ry+PNL_SW_Y` = +10, 40x22

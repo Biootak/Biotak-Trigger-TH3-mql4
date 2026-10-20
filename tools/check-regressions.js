@@ -50,6 +50,7 @@ const BIOTAK = path.join(ROOT, 'Biotak');
 const LABELS_B = path.join(BIOTAK, 'Labels_B.mqh');
 const LABELS_A = path.join(BIOTAK, 'Labels_A.mqh');
 const ROUTER = path.join(BIOTAK, 'EventHandlers_Router.mqh');
+const EVENT_ROUTER = ROUTER;
 const CALC = path.join(BIOTAK, 'EventHandlers_Calc.mqh');
 const HTF = path.join(BIOTAK, 'HTFCandles.mqh');
 const VIS = path.join(BIOTAK, 'VisibilityManager.mqh');
@@ -5548,6 +5549,58 @@ function main() {
     }
   }
 
+  // -- 52b. P-UI-137 (2026-10-20): a HOLD on a card-less tool owns no card -----
+  // The four tools that own no card (Horizontal Ray, Path, Chart Scale, Hide)
+  // fell through FeaturePanel's IDENTITY fallback, so a hold opened somebody
+  // else's card (15 = Sessions, 16 = Session Editor) or none at all (17/18 are
+  // past PNL_COUNT) - and the release was eaten by UISuppressNextClick, so the
+  // cell's own action (arm the ray, the scale-fix, the F mute) never ran.
+  {
+    const broken = [];
+    const fp = bodyOf(linesOf(MENU_A) || [], 'int FeaturePanel(');
+    if (!fp) broken.push('FeaturePanel is gone from BiotakMenu_A.mqh - the feature->card map has no owner');
+    else {
+      for (const f of ['CIR_HRAY', 'CIR_PATH', 'CIR_SCALE', 'CIR_HIDE'])
+        if (!fp.text.includes(f)) broken.push(`FeaturePanel stopped answering ${f} - the hold falls through to the identity fallback and opens a card that belongs to somebody else`);
+      if (!/return -1;/.test(fp.text)) broken.push('FeaturePanel never answers -1 - "no card" has no spelling');
+    }
+    const mc = codeOf(linesOf(MENU_C) || []);
+    if (!/if\(rp < 0\) return;/.test(mc)) broken.push("the ring's hold arm stopped refusing a card-less item - a hold on it opens nothing and eats the release");
+    if (!/if\(ToolPanel\(toolHit\) < 0\) return;/.test(mc)) broken.push("the Tools hold arm stopped refusing a card-less item");
+    if (!/if\(g_LongPressItem < 0 \|\| g_LongPressItem >= PNL_COUNT\) \{ g_LongPressFired = false; return; \}/.test(mc))
+      broken.push('the hold FIRE stopped refusing a card-less item - the release is eaten and the cell reads as dead');
+    if (broken.length) {
+      failures.push('P-UI-137: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh + Biotak/BiotakMenu_C.mqh)');
+    } else {
+      console.log('[PASS] P-UI-137 a hold on a card-less tool opens no card and eats no click: FeaturePanel answers -1 for the four tools that own none, both hold arms refuse it, and the fire refuses an out-of-range card without suppressing the release');
+    }
+  }
+
+  // -- 52c. P-UI-138 (2026-10-20): the strip's text fields own the keyboard ----
+  // MT4 delivers the key stream to a focused OBJ_EDIT, so every letter hotkey
+  // fired while the user typed into the strip's own four text fields (the level
+  // input, the caption, the template name, the level note).
+  {
+    const broken = [];
+    const er = linesOf(EVENT_ROUTER);
+    if (!er) broken.push('Biotak/EventHandlers_Router.mqh is gone - the KEYDOWN guard has no home');
+    else {
+      const rCode = codeOf(er);
+      if (!/bool AnyStripTextFieldFocused\(\)/.test(rCode))
+        broken.push('the strip-field focus probe is gone - the hotkeys fire while the user types');
+      if (!/if\(g_PalHexFocus \|\| g_BkTextFocus \|\| AnyStripTextFieldFocused\(\)\) return;/.test(rCode))
+        broken.push('the KEYDOWN guard stopped asking the strip fields - a letter typed into a name toggles a product hotkey');
+      const probe = bodyOf(er, 'bool AnyStripTextFieldFocused(');
+      if (!probe || !probe.text.includes('OBJPROP_STATE') || !probe.text.includes('DrawStripEditName(e)'))
+        broken.push('the probe stopped reading the field\'s own STATE - a latched flag would swallow the hotkeys for as long as the panel is open');
+    }
+    if (broken.length) {
+      failures.push('P-UI-138: ' + broken.join('; ') + ' (Biotak/EventHandlers_Router.mqh)');
+    } else {
+      console.log('[PASS] P-UI-138 the strip\'s own text fields own the keyboard: the KEYDOWN guard asks the fields\' own STATE (the terminal\'s answer, not a latched flag), so a letter typed into a level, a caption, a template name or a level note fires no hotkey');
+    }
+  }
+
   // -- 53. P-UI-162 (2026-10-17): the ring's art is the BOX's size --------------
   // The user's report: «چرا اینطوری میشه این ایکون ها دیگه دایره نیست» — after
   // P-UI-161's taper entered the teens (13 seats -> S=32), every disc read as a
@@ -6587,10 +6640,25 @@ function main() {
     if (!/if\(kind == DSTRIP_MK_TPLNAV\)/.test(tap) ||
         (tap.match(/s_dsTplPage\[s_dsKind\] = \(s_dsTplPage\[s_dsKind\] \+ 1\) % pages;/g) || []).length < 2)
       broken.push('the paged list lost a door: the more popover\u2019s nav row or the Look tab\u2019s (both turn the page with a wrap)');
-    if (!/if\(kind == 9\)/.test(tap))
-      broken.push('the Look tab\u2019s nav row (kind 9) has no branch — the second page is unreachable');
+    if (!/if\(kind == DSTRIP_GRK_TPLNAV\)/.test(tap))
+      broken.push('the Look tab\u2019s nav row (DSTRIP_GRK_TPLNAV) has no branch — the second page is unreachable');
+    //--- P-DRAW-136 (2026-10-20): the nav row's kind must be its OWN. The group
+    //--- header's branch is tested FIRST and swallows every row that shares the
+    //--- header's number, so a nav row that wore kind 9 was painted, hit and
+    //--- answered NOTHING (P-DRAW-84's law, one number over).
+    {
+      const headTxt = fs.readFileSync(STRIP_HEAD, 'utf8');
+      const navDef = headTxt.match(/#define\s+DSTRIP_GRK_TPLNAV\s+(\d+)/);
+      const grpDef = headTxt.match(/#define\s+DSTRIP_GRK_GROUP\s+(\d+)/);
+      if (!navDef) broken.push('DSTRIP_GRK_TPLNAV is gone from DrawStrip_Head.mqh — the template page walk has no kind of its own');
+      else if (grpDef && navDef[1] === grpDef[1])
+        broken.push(`DSTRIP_GRK_TPLNAV (${navDef[1]}) shares the group header's number — the header's branch is tested first and swallows the page walk`);
+      const gearA2 = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
+      if (!/DrawStripGearRow\(DSTRIP_GRK_TPLNAV, 0, y\)/.test(gearA2))
+        broken.push('the Look tab\u2019s nav row is not built with DSTRIP_GRK_TPLNAV — a page the user cannot turn');
+    }
     const gearA = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
-    if (!/string DrawStripTplNavText\(const EDrawKind k\)/.test(gearA) || !/DrawStripGearRow\(9, 0, y\);/.test(gearA))
+    if (!/string DrawStripTplNavText\(const EDrawKind k\)/.test(gearA) || !/DrawStripGearRow\(DSTRIP_GRK_TPLNAV, 0, y\);/.test(gearA))
       broken.push('the nav row\u2019s text or the TPL tab\u2019s own nav row left GearA — a page the user cannot turn');
     const paint = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
     //--- P-DRAW-134: the delete door MOVED — the row's ✕ is its one door now and the

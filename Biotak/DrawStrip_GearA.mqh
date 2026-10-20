@@ -673,7 +673,7 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       int tfrom = s_dsTplPage[k] * DRAW_TPL_PAGE;
       for(int i = tfrom; i < tn && i < tfrom + DRAW_TPL_PAGE; i++)
          if(!DrawStripGearRow(2, i, y)) break;
-      if(tpages > 1) DrawStripGearRow(9, 0, y);
+      if(tpages > 1) DrawStripGearRow(DSTRIP_GRK_TPLNAV, 0, y);
       DrawStripGearRow(3, 0, y);
       DrawStripGearRow(7, 0, y);
    }

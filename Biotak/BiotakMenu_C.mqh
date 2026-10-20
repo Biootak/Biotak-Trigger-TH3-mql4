@@ -908,9 +908,11 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          }
          else if(!g_LongPressFired && GetTickCount() - g_LongPressStart >= LONG_PRESS_TIME)
          {
-            g_LongPressFired = true;
-            PnlOpen(g_LongPressItem);
-            UISuppressNextClick();
+             g_LongPressFired = true;
+             // P-UI-137: a hold that owns NO card must not eat the release.
+             if(g_LongPressItem < 0 || g_LongPressItem >= PNL_COUNT) { g_LongPressFired = false; return; }
+             PnlOpen(g_LongPressItem);
+             UISuppressNextClick();
          }
          return;
       }
@@ -969,7 +971,9 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       {
          int feat = RingFeature(hitIdx);
          if(feat == CIR_TOOLS) return; // tools toggles submenu on click, no long press
-         g_LongPressItem  = RingPanel(hitIdx);
+         int rp = RingPanel(hitIdx);
+         if(rp < 0) return;             // P-UI-137: this item owns no card - its own click answers
+         g_LongPressItem  = rp;
          g_LongPressStart = GetTickCount();
          g_LongPressX     = mx;
          g_LongPressY     = my;

@@ -6,6 +6,26 @@
 #ifndef EVENT_HANDLERS_ROUTER_MQH
 #define EVENT_HANDLERS_ROUTER_MQH
 
+#ifndef BUILD_LITE
+//--- P-UI-138 (2026-10-20): the strip's OWN text fields take the keyboard too.
+//--- MT4 delivers the key stream to a focused OBJ_EDIT (the house says so in
+//--- BiotakPanels_PalB.mqh:527), so every letter hotkey fired while the user
+//--- typed a level, a caption, a template name or a level note. The object's
+//--- own STATE is the terminal's answer to "does this field hold the keyboard
+//--- RIGHT NOW" - a latched flag would swallow F/E/hide-all for as long as the
+//--- panel stayed open (P-UI-130's own lesson).
+bool AnyStripTextFieldFocused()
+{
+   for(int e = 1; e < 5; e++)
+   {
+      string nm = DrawStripEditName(e);
+      if(ObjectFind(0, nm) < 0) continue;
+      if((int)ObjectGetInteger(0, nm, OBJPROP_STATE) != 0) return true;
+   }
+   return false;
+}
+#endif
+
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     // P-UI-114 (2026-09-23): right-click era deleted — terminal menu untouched,
@@ -157,8 +177,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // hex digits, so every letter hotkey below must stay silent while the
         // user types. ESC/ENTER still reach the palette via HandleUIChartEvent.
         // Same for the Base Box TEXT field (TV-parity 2026-09-07 — any letter
-        // is valid box text).
-        if(g_PalHexFocus || g_BkTextFocus) return;
+        // is valid box text) and for the strip's own four text fields (P-UI-138).
+        if(g_PalHexFocus || g_BkTextFocus || AnyStripTextFieldFocused()) return;
 #endif
         // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
 #ifndef BUILD_LITE

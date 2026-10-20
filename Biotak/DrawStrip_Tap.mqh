@@ -837,8 +837,8 @@ bool DrawStripGearRowTap(const int r)
       DrawStripTplNameFocus();   // P-DRAW-131: the second door focuses the field the same way
       return true;
    }
-   if(kind == 9)
-   {
+    if(kind == DSTRIP_GRK_TPLNAV)
+    {
       //--- P-DRAW-132: the Look tab's page walk — the same repeat-the-list turn the
       //--- more-popover's nav row takes, on the tab's own row list.
       int n = DrawTplCount(s_dsKind);

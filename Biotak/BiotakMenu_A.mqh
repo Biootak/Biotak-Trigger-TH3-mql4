@@ -309,20 +309,20 @@ enum ENUM_SUB_MODE
 //--- WHICH CARD DOES ONE FEATURE OPEN? ONE OWNER for both families (P-UI-95).
 // A ring item's card used to be its feature code by IDENTITY, which could only hold
 // while no ring item needed a card of its own: the measuring tool opens the Base Box
-// style card (12) — the answer the Tools cell always gave, and the reason a HOLD on
-// the NEW ring item must not fall through to panel 10 (the retired Factor card).
-// With one owner the ring's hold and the (retired) Tools cell's hold can never open
-// two different cards, and a future item that needs its own changes THIS function.
-// `-1` (an unknown tool index) keeps the callers' own "nothing to open" guard valid.
+// style card (12). With one owner the ring's hold and the Tools cell's hold can
+// never open two different cards. `-1` = "no card of its own" (P-UI-137: the four
+// tools that own none) and it keeps the callers' "nothing to open" guard valid.
 int FeaturePanel(const int feat)
 {
    if(feat == CIR_PIN)           return 8;    // Custom Price Pin card
    if(feat == CIR_STEP_OVERRIDE) return 9;    // Step Mode override card
    // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override card
    if(feat == CIR_BASEKNOT)      return 12;   // Base Box style card (a press still arms drawing)
-   // P-SESS: CIR_SESSIONS (19) is above the card-number space (0..17), so the
-   // identity fallback below cannot answer it — the Sessions card is 15.
+   // P-SESS: CIR_SESSIONS (19) is above the card space (0..17) — its card is 15.
    if(feat == CIR_SESSIONS)      return 15;   // Sessions Zones card (P-SESS)
+   // P-UI-137: the four tools that own NO card - the identity fallback sent a
+   // hold on them to somebody else's card, and the release was eaten.
+   if(feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE) return -1;
    return feat;                               // every other feature's card IS its code
 }
 
