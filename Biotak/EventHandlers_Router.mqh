@@ -260,10 +260,25 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 
         //  
-        // C key   Set Custom Price
+        // C key   Toggle Custom Price (the PIN cell's twin: arm / leave)
         //  
         if(IsHotkeyPressed(lparam, sparam, inpCustomPriceKey))
         {
+            // P-UI-193 (2026-10-20) — THE KEY IS THE SAME TOGGLE THE CELL IS.
+            // MEASURED: the C key could only ARM. Its body re-armed on every press
+            // (deleted the line and re-created it at the middle price), so a chart
+            // with the custom-price line ON had no way out from the keyboard short
+            // of ESC — the exact one-way defect P-UI-45 fixed for the ring's PIN
+            // cell, still live on the key door. The ON test is the PIN branch's own
+            // triple, and the OFF runs the ONE owner ESC and the PIN cell share.
+            bool pinActive = (g_customPriceLineCreated || g_waitingForCustomPriceClick ||
+                              g_customPriceKeyboardOverride);
+            if(pinActive)
+            {
+                DeactivateCustomPriceMode("C key");
+                ThrottledChartRedraw();
+                return;
+            }
             g_waitingForCustomPriceClick = true;
             g_customPriceKeyboardOverride = true;
             _LOG_GATE_D Print("[D][GEN] Press anywhere on the chart to set custom TH start price");

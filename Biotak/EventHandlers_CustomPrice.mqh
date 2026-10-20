@@ -796,6 +796,18 @@ void HideAllTHObjectsPass()
     // A fresh instance with a cold cache falls back to one legacy chart
     // scan for the previous instance's leftovers; steady state never scans.
     VisibilityHideAllCached();
+    // P-UI-194 (2026-10-20) — THE CACHE IS A WHITELIST, THE CHART IS THE TRUTH.
+    // MEASURED «بعد از زدن دکمه f بعضی چیزها روی چارت میمونن»: the cache walk above
+    // only masks the names LevelPipeline/Labels registered. Families whose creators
+    // never touch the cache (the Factor boundary/level lines, the pen's saved rows,
+    // session art) were never masked, so they survived the F press — while the G
+    // lock's own handler already walks EVERY prefixed object (`EventHandlers_Router`
+    // 700-710). This is that same walk, one MASK instead of a delete: every object
+    // carrying `inpObjectPrefix` is hidden, `_BK_` excepted (P-BK-01: the Base/Knot
+    // layer ignores F by design). Cost: one ObjectsTotal+ObjectName pass per hide
+    // TRANSITION (P-PERF-02 memoises the pass; a still frame pays nothing) — the
+    // same walk the lock pays today, not the per-frame spray P-PERF-31 retired.
+    VisibilityHideAllLegacyScan();
     // PERF: Batch special label hide - ObjectSetInteger is no-op if object doesn't exist
     long noPeriodsVal = OBJ_NO_PERIODS;
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
@@ -843,6 +855,34 @@ void HideAllTHObjectsPass()
                       " lm=" + IntegerToString(drawLm) +
                       " hr=" + IntegerToString(drawHr) +
                       " pa=" + IntegerToString(drawPa));
+    // P-UI-160c (2026-10-20) — THE MEASUREMENT BEHIND «بعضی چیزها رو جا میزاره».
+    // The hide pass is a whitelist: the object cache, five named labels, the handsets
+    // and the drawing families. Anything ELSE that carries our prefix was never
+    // masked, so it survives the press and the user reports it as "some things are
+    // left". This walks the chart ONCE PER HIDE TRANSITION (never per frame —
+    // P-PERF-02's law) and names every prefixed object still painted, so the fix is
+    // aimed by evidence instead of guessed. `_BK_` is reported separately: P-BK-01
+    // says the Base/Knot layer ignores F BY DESIGN, so a surviving BK name is the
+    // contract working, not this defect.
+    {
+       const string wpfx = inpObjectPrefix;
+       const int    wlen = StringLen(wpfx);
+       const int    wtotal = ObjectsTotal(0, -1, -1);
+       int wleft = 0, wbk = 0, wshown = 0;
+       string wnames = "";
+       for(int wi = wtotal - 1; wi >= 0; wi--)
+       {
+          const string wn = ObjectName(0, wi, -1, -1);
+          if(wlen <= 0 || StringLen(wn) < wlen || StringSubstr(wn, 0, wlen) != wpfx) continue;
+          if((int)ObjectGetInteger(0, wn, OBJPROP_TIMEFRAMES) == (int)OBJ_NO_PERIODS) continue;
+          wleft++;
+          if(StringFind(wn, "_BK_") >= 0) { wbk++; continue; }
+          if(wshown < 24) { wnames = wnames + " \"" + wn + "\""; wshown++; }
+       }
+       DrawStripDiagEmit("[P-UI-160c] left=" + IntegerToString(wleft) +
+                         " bk=" + IntegerToString(wbk) + " chart=" + IntegerToString(wtotal) +
+                         " names:" + wnames);
+    }
 #endif
 }
 

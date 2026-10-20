@@ -7496,6 +7496,152 @@ function main() {
     }
   }
 
+  // -- 72. P-UI-192 (2026-10-20): a STARRED TOOL's ring seat runs the tool body -
+  // MEASURED (biotak_diag_XAUUSD_134362571361933137.txt): the mask 0x1FDC7 stars
+  // PIN/STEP/GENERAL/HIDE beside the nine features, so the ring seats them; the
+  // seat click ran RingFeatureClick, which knows the nine FEATURE codes only — the
+  // seven TOOL codes fell through to REFRESH_NONE, the disc repainted its light and
+  // nothing acted, while the SAME tool's Tools cell ran its full chain. The HIDE
+  // seat tap at (326,463) t=32353500 emitted no [P-UI-160] in the whole frame
+  // while the orb and the door answered. The chain now lives in ONE body
+  // (ToolFeatureClick) and both surfaces route through it.
+  // The inverse: RingFeatureClick stops delegating the seven tool codes.
+  {
+    const broken = [];
+    const d72 = linesOf(MENU_D);
+    if (!d72) broken.push('Biotak/BiotakMenu_D.mqh is gone — the click route has no home');
+    else {
+      const body72 = bodyOf(d72, 'int ToolFeatureClick(');
+      if (!body72) broken.push('ToolFeatureClick is gone — a starred TOOL\'s press has no body');
+      else {
+        if (!body72.text.includes('ApplyHideAllState') || !body72.text.includes('CircArmHRay()') ||
+            !body72.text.includes('CircArmPath()'))
+          broken.push('the tool body lost an action (the mute owner / the ray / the path arm) — the moved chain must be whole');
+        if (!body72.text.includes('DrawStripDiagEmit(') || !body72.text.includes('[P-UI-160]') ||
+            !body72.text.includes('[P-UI-159]'))
+          broken.push('the tool body lost its FLUSHED witnesses ([P-UI-159]/[P-UI-160]) — a tool press cannot be read back (P-LOG-3)');
+        if (!body72.text.includes('PnlOpen(FeaturePanel(tfeat))'))
+          broken.push('the GENERAL door left the tool body — the click opens no card (P-UI-131)');
+      }
+      const click72 = bodyOf(d72, 'int HandleButtonClick(');
+      if (!click72) broken.push('HandleButtonClick is gone');
+      else {
+        if (!click72.text.includes('ToolFeatureClick(tfeat, toolStopped)'))
+          broken.push('the Tools cell stopped calling the tool body — the fan and the ring drift (P-UI-192)');
+        if (click72.text.includes('g_customPriceLineCreated') || click72.text.includes('CircArmHRay()'))
+          broken.push('the Tools cell grew its own tool chain again — a second copy of the body is the drift this split retired');
+      }
+      const feat72 = bodyOf(d72, 'int RingFeatureClick(');
+      if (!feat72) broken.push('RingFeatureClick is gone — the feature switch has no ONE owner');
+      else if (!feat72.text.includes('if(feat == CIR_PIN || feat == CIR_STEP_OVERRIDE || feat == CIR_GENERAL || feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE)') ||
+               !feat72.text.includes('ToolFeatureClick(feat, toolStopped)'))
+        broken.push('RingFeatureClick stopped delegating the seven tool codes — a starred TOOL seat answers REFRESH_NONE and the disc repaints over the dead press');
+    }
+    if (broken.length) {
+      failures.push('P-UI-192: ' + broken.join('; ') + ' (Biotak/BiotakMenu_D.mqh)');
+    } else {
+      console.log('[PASS] P-UI-192 a starred TOOL\'s ring seat runs the tool\'s own body: the fan chain moved into ONE ToolFeatureClick (both flushed witnesses intact, FeaturePanel(tfeat) for the GENERAL door), the Tools cell calls it and never keeps a second copy, and RingFeatureClick delegates the seven tool codes to it — the ring seat and the fan cell can never drift');
+    }
+  }
+
+  // -- 73. P-UI-193 (2026-10-20): the C key is the SAME toggle the PIN cell is --
+  // MEASURED: the hotkey body could only ARM (delete + re-create the line at the
+  // middle price on every press), so a chart with the custom-price line ON had no
+  // keyboard way out short of ESC — the one-way defect P-UI-45 fixed for the ring's
+  // PIN cell, still live on the key door. The press now reads the PIN branch's own
+  // ON triple and leaves through the ONE owner (DeactivateCustomPriceMode).
+  // The inverse: the key arms unconditionally again.
+  {
+    const broken = [];
+    const r193 = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
+    const c193 = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
+    if (!r193) broken.push('EventHandlers_Router.mqh is gone — the key door has no home');
+    else if (!c193 || !bodyOf(c193, 'void DeactivateCustomPriceMode('))
+      broken.push('DeactivateCustomPriceMode is gone — the OFF has no owner');
+    if (r193) {
+      const at = indexOfLine(r193, 'IsHotkeyPressed(lparam, sparam, inpCustomPriceKey)');
+      if (at < 0) broken.push('the C key branch is gone');
+      else {
+        const win = r193.slice(at, at + 40);
+        const offAt = win.findIndex((l) => l.includes('DeactivateCustomPriceMode("C key")'));
+        const guardAt = win.findIndex((l) => l.includes('g_customPriceLineCreated || g_waitingForCustomPriceClick'));
+        const armAt = win.findIndex((l) => l.includes('g_waitingForCustomPriceClick = true;'));
+        if (offAt < 0) broken.push('the C key cannot LEAVE the mode — it can only arm (the shipped defect)');
+        if (guardAt < 0) broken.push('the C key does not read the mode\'s own ON state — a press with the line up would re-arm');
+        if (armAt >= 0 && offAt >= 0 && offAt > armAt)
+          broken.push('the C key arms before it asks to leave — order is the toggle');
+        if (armAt < 0) broken.push('the C key lost its ARM half — the toggle must still arm');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-193: ' + broken.join('; ') + ' (EventHandlers_Router.mqh)');
+    } else {
+      console.log('[PASS] P-UI-193 the C key is the PIN cell\'s twin toggle: the press reads the mode\'s ON triple, leaves through the ONE owner (DeactivateCustomPriceMode), and still arms when the mode is OFF — the keyboard has the exit P-UI-45 gave the ring');
+    }
+  }
+
+  // -- 74. P-UI-194 (2026-10-20): F masks EVERY prefixed object, not just the cache --
+  // MEASURED «بعد از زدن دکمه f بعضی چیزها روی چارت میمونن»: the hide pass walked the
+  // object cache (a whitelist of registered names) while the G lock's handler already
+  // walked EVERY prefixed object (EventHandlers_Router 700-710). Families whose
+  // creators never registered (Factor lines, the pen's saved rows, session art) were
+  // never masked and survived F. The fix runs the full-prefix walk in BOTH directions,
+  // one mask (never a delete), `_BK_` excepted by P-BK-01.
+  // The inverse: the hide pass returns to the cache-only walk.
+  {
+    const broken = [];
+    const cp194 = linesOf(path.join(BIOTAK, 'EventHandlers_CustomPrice.mqh'));
+    const v194 = linesOf(path.join(BIOTAK, 'VisibilityManager.mqh'));
+    const hide194 = cp194 ? bodyOf(cp194, 'void HideAllTHObjectsPass(') : null;
+    const show194 = v194 ? bodyOf(v194, 'int VisibilityShowAllCached(') : null;
+    const scan194 = v194 ? bodyOf(v194, 'void VisibilityHideAllLegacyScan(') : null;
+    if (!hide194) broken.push('HideAllTHObjectsPass is gone — the hide has no home');
+    else if (!hide194.text.includes('VisibilityHideAllLegacyScan();'))
+      broken.push('the hide pass walks the cache only again — a family that never registered survives F (the shipped defect)');
+    if (!show194) broken.push('VisibilityShowAllCached is gone — the show walk has no home');
+    else if (!show194.text.includes('VisibilityShowAllLegacyScan('))
+      broken.push('the show walk cannot un-mask a family the cache never learned — it would stay hidden until attach');
+    if (!scan194) broken.push('VisibilityHideAllLegacyScan is gone — the full-prefix walk has no home');
+    else if (!scan194.text.includes('_BK_') || !scan194.text.includes('OBJ_NO_PERIODS'))
+      broken.push('the full-prefix walk lost its shape: `_BK_` must stay excluded (P-BK-01) and the mask must be OBJ_NO_PERIODS');
+    if (!cp194 || !cp194.join('\n').includes('[P-UI-160c]'))
+      broken.push('the leftover witness is gone — the next «چیزی جا موند» has no evidence channel');
+    if (broken.length) {
+      failures.push('P-UI-194: ' + broken.join('; ') + ' (EventHandlers_CustomPrice / EventHandlers_Objects / VisibilityManager)');
+    } else {
+      console.log('[PASS] P-UI-194 F masks every prefixed object: the hide pass runs the full-prefix walk beside the cache walk (one mask per transition, never a delete), the show branch un-masks through the same family tree, `_BK_` stays excluded by P-BK-01, and the [P-UI-160c] leftover witness still names what survives');
+    }
+  }
+
+  // -- 75. P-LBL-13 (2026-10-20): the TRex superscript is the STRUCTURE candle's
+  // live TRUE RANGE, and STRUCTURE = TWO fractal rungs up (M15 -> H4).
+  // MEASURED «این چرا لایو تایم ساختار اشتباه نشون میده … 38.3 نشون میده»: the
+  // superscript read `CompatTF(plan.strMin)` (the plan's ONE-rung Eng basis, H1 on
+  // M15) and the bare `iHigh - iLow`, so a 38.3p H1 range sat beside a 76.0p M15
+  // ATR while the user's own structure read was the H4 candle. The inverse: one
+  // rung again, or a high-low that drops the previous close's gap.
+  {
+    const broken = [];
+    const la = linesOf(LABELS_A);
+    const trx = la ? bodyOf(la, 'bool DisplayTRexTitleBlock(') : null;
+    if (!trx) broken.push('DisplayTRexTitleBlock is gone — the superscript has no home');
+    else {
+      if (!trx.text.includes('TradePlanLadderIndex(Period()) + 2'))
+        broken.push('the superscript lost its TWO-rung structure (M15 must read H4, not H1) — the shipped defect');
+      if (!trx.text.includes('iClose(NULL, stf, 1)') || !trx.text.includes('MathAbs(hi - pc)'))
+        broken.push('the read is a bare high-low again: TrueRange must include the previous close (|H-PC|, |L-PC|)');
+      if (!trx.text.includes('rng / pip') || !trx.text.includes('rng / atrVal'))
+        broken.push('the text no longer reports the range in pips with its % of the current-TF ATR');
+      if (!trx.text.includes('iHigh(NULL, stf, 0)') || !trx.text.includes('iLow(NULL, stf, 0)'))
+        broken.push('the LIVE (forming) bar is the read: shift 0 on the structure TF');
+    }
+    if (broken.length) {
+      failures.push('P-LBL-13: ' + broken.join('; ') + ' (Labels_A DisplayTRexTitleBlock)');
+    } else {
+      console.log('[PASS] P-LBL-13 TRex superscript = the structure candle\'s live TrueRange: two fractal rungs up (M15 reads H4), previous-close gap included, in pips with its % of the current-TF ATR');
+    }
+  }
+
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);
     console.log('');

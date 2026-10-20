@@ -117,6 +117,151 @@ void SetHTFVisible(const bool on)
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-192 (2026-10-20) — ONE OWNER for a TOOL's own press.        |
+//|                                                                  |
+//| MEASURED (biotak_diag_XAUUSD_134362571361933137.txt): the mask    |
+//| 0x1FDC7 stars four TOOLS (PIN, Step Mode, General, Hide) beside   |
+//| the nine features, so the ring seats them — and the seat click    |
+//| ran `RingFeatureClick`, which never learned a tool code: the      |
+//| press answered REFRESH_NONE, the disc repainted its light, and    |
+//| nothing acted. The SAME tool's Tools cell ran the full body, so   |
+//| the two surfaces had drifted: the HIDE seat tap at (326,463)      |
+//| t=32353500 emitted no `[P-UI-160]` in the whole frame while the   |
+//| orb and the door answered. The fan's inline chain MOVED here      |
+//| verbatim; both callers run it (the fan cell and the ring seat) —  |
+//| the P-UI-161 lesson, applied to the tools. `stopped` is the fan   |
+//| tail's own fact (the GENERAL door returned early; the tail is     |
+//| skipped then, byte-identical), and `FeaturePanel(tfeat)` is the   |
+//| same card `ToolPanel(tidx)` resolved to (BiotakMenu_A.mqh:330).   |
+//+------------------------------------------------------------------+
+int ToolFeatureClick(const int tfeat, bool &stopped)
+{
+   stopped = false;
+   int tflags = REFRESH_NONE;
+      if(tfeat == CIR_PIN)
+      {
+         // P-UI-45: THE BUTTON IS A TOGGLE. It used to ALWAYS re-arm: every press
+         // deleted the line and re-created it at the market price (and left it
+         // SELECTED), so the light could be switched ON and never OFF and the only
+         // way back to the default start point was the ESC key - a control that
+         // moves its own state in one direction only. OFF runs the SAME owner the
+         // ESC key does, so the two can never drift.
+         if(g_customPriceLineCreated || g_waitingForCustomPriceClick ||
+            g_customPriceKeyboardOverride)
+         {
+            DeactivateCustomPriceMode("ring PIN");
+            tflags = REFRESH_ALL;
+         }
+         else
+         {
+            g_waitingForCustomPriceClick = true;
+            g_customPriceKeyboardOverride = true;
+            ObjectDelete(0, g_customPriceHorizontalLineName);
+            g_customPriceLineCreated = false;
+            // P-UI-98d v2: the line is born where the user is LOOKING — the
+            // vertical middle of the visible chart, wherever they have scrolled
+            // («زمانی که فعال میشه هر جایی که کاربر هست وسط صفحه ظاهر بشه») —
+            // and the market's last price is only the fallback.
+            double currentPrice = ScreenMiddlePrice();
+            if(!(currentPrice > 0.0))
+                currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
+            g_customTHStartPrice = currentPrice;
+            g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+            // P-UI-98e: a FRESH placement wakes the armed/set pair through its
+            // ONE owner - a line the user had SET must not come back inert.
+            HandsetPlacementArm();
+            // P-UI-56: the placement pair has ONE writer, in the domain layer
+            // (`EventHandlers`, included before this file). The keys are chart-scoped
+            // now, so pressing PIN on this chart can no longer move the ladder of
+            // another chart of the same symbol.
+            CustomPricePersistPlacement(currentPrice);
+            // P-UI-48: always grabbable, never pre-SELECTED - the line's drag IS
+            // its SELECTABLE flag, and the interference was a selection that
+            // outlived its gesture (see CreateCustomPriceLine).
+            CreateCustomPriceLine(currentPrice, Digits);
+            g_redrawTHLevelsNeeded = true;
+            tflags = REFRESH_ALL;
+         }
+      }
+       else if(tfeat == CIR_STEP_OVERRIDE)
+       {
+          // STEPOVERRIDE-OFF: single Step Mode — cycle the base 0..3 (same as
+          // the E key and the panel row). OV_ persist rides on REFRESH_ALL.
+          g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
+          // P-UI-40b: this item is the SAME control as the E key (which asks, see
+          // EventHandlers) one surface over. The STEP card's mode row displays this
+          // value and the ring cannot repaint an open card from here.
+          RequestUISync();   // P-UI-40b: the STEP card's mode row displays this value
+          GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
+          UpdateStepModeLabel();   // same confirmation as E / panel (redraw below only repositions it)
+          g_forceClearOnNextDraw = true;
+          g_redrawTHLevelsNeeded = true;
+          tflags = REFRESH_ALL;
+       }
+       else if(tfeat == CIR_GENERAL)   // P-UI-131: a pure door — no switch to invert
+       {
+          // OPEN on the CLICK, the same act the HOLD performs (the long-press path
+          // asks ToolPanel too), so the one gesture the user already knows works and
+          // nothing else in the ladder changes state.
+          UISuppressNextClick();
+          PnlOpen(FeaturePanel(tfeat));
+          stopped = true;
+          return REFRESH_NONE;
+       }
+        else if(tfeat == CIR_HRAY)   // P-HR-01: momentary toggle — the cell light is the session
+        {
+           tflags = CircArmHRay();
+        }
+        else if(tfeat == CIR_PATH)
+        {
+           tflags = CircArmPath();
+        }
+        else if(tfeat == CIR_SCALE)   // P-UI-159 — MT4's own scale-fix as one cell
+        {
+           // ONE live writer of the chart's scale-fix bit (the retired View Lock's
+           // writes are dormant, VIEWLOCK-OFF): read → flip → READ BACK, and the
+           // witness goes through the FLUSHED channel (P-DRAW-126) carrying the
+           // value the CHART holds, not the one we asked for. No recalc — the
+           // cell light below reads the same bit (CircFeatureOn).
+           bool wasFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
+           bool retOk    = ChartSetInteger(0, CHART_SCALEFIX, !wasFixed);
+           bool nowFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
+           DrawStripDiagEmit("[P-UI-159] scale was=" + IntegerToString(wasFixed ? 1 : 0) +
+                             " now=" + IntegerToString(nowFixed ? 1 : 0) +
+                             " ret=" + IntegerToString(retOk ? 1 : 0));
+           ChartRedraw();   // P-DRAW-127: the click owns its frame
+        }
+        else if(tfeat == CIR_HIDE)   // P-UI-160 — the F mute, one surface over
+        {
+           // The cell IS the F key: the same ONE owner (`ApplyHideAllState`,
+           // EventHandlers_Objects), the same target-state rule (read the mute's
+           // own reader and invert, never a delta), and the same follow-ups the
+           // Router's F branch runs (RequestUISync for the panels' family rows,
+           // then the forced paint). The witness carries what the READER holds
+           // after the write, through the FLUSHED channel (P-DRAW-126).
+           bool wasHidden = IsIndicatorHidden();
+           int  hideRet   = ApplyHideAllState(!wasHidden);
+           bool nowHidden = IsIndicatorHidden();
+           DrawStripDiagEmit("[P-UI-160] hide was=" + IntegerToString(wasHidden ? 1 : 0) +
+                             " now=" + IntegerToString(nowHidden ? 1 : 0) +
+                             " ret=" + IntegerToString(hideRet));
+           RequestUISync();               // P-UI-93: the panel's family rows display this mute
+           RepaintForDiscreteAction();    // P-PERF-24: the press paints NOW
+        }
+       else if(tfeat == CIR_BASEKNOT)
+       {
+          // UIBK-OFF (P-UI-95): the MEASURING tool has its own RING slot now
+          // (RING_BASEKNOT) and this cell is retired in place. It can no longer be
+          // reached (ToolFeature no longer maps TOOL_BASEKNOT), and the arm path it
+          // ran is `CircArmBaseKnot`'s own — restore the cell by counting
+          // TOOL_BASEKNOT back into the catalog count and uncommenting these two lines.
+          // UIBK-OFF: ToolsUpdateItemState(tidx);
+          // UIBK-OFF: return CircArmBaseKnot();
+       }
+   return tflags;
+}
+
+//+------------------------------------------------------------------+
 //| Handle Button Click Events                                       |
 //+------------------------------------------------------------------+
 int HandleButtonClick(const string clickedObject)
@@ -218,134 +363,25 @@ int HandleButtonClick(const string clickedObject)
       }
       int tfeat = ToolFeature(tidx);
       int tflags = REFRESH_NONE;
-      if(tfeat == CIR_PIN)
-      {
-         // P-UI-45: THE BUTTON IS A TOGGLE. It used to ALWAYS re-arm: every press
-         // deleted the line and re-created it at the market price (and left it
-         // SELECTED), so the light could be switched ON and never OFF and the only
-         // way back to the default start point was the ESC key - a control that
-         // moves its own state in one direction only. OFF runs the SAME owner the
-         // ESC key does, so the two can never drift.
-         if(g_customPriceLineCreated || g_waitingForCustomPriceClick ||
-            g_customPriceKeyboardOverride)
-         {
-            DeactivateCustomPriceMode("ring PIN");
-            tflags = REFRESH_ALL;
-         }
-         else
-         {
-            g_waitingForCustomPriceClick = true;
-            g_customPriceKeyboardOverride = true;
-            ObjectDelete(0, g_customPriceHorizontalLineName);
-            g_customPriceLineCreated = false;
-            // P-UI-98d v2: the line is born where the user is LOOKING — the
-            // vertical middle of the visible chart, wherever they have scrolled
-            // («زمانی که فعال میشه هر جایی که کاربر هست وسط صفحه ظاهر بشه») —
-            // and the market's last price is only the fallback.
-            double currentPrice = ScreenMiddlePrice();
-            if(!(currentPrice > 0.0))
-                currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
-            g_customTHStartPrice = currentPrice;
-            g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-            // P-UI-98e: a FRESH placement wakes the armed/set pair through its
-            // ONE owner - a line the user had SET must not come back inert.
-            HandsetPlacementArm();
-            // P-UI-56: the placement pair has ONE writer, in the domain layer
-            // (`EventHandlers`, included before this file). The keys are chart-scoped
-            // now, so pressing PIN on this chart can no longer move the ladder of
-            // another chart of the same symbol.
-            CustomPricePersistPlacement(currentPrice);
-            // P-UI-48: always grabbable, never pre-SELECTED - the line's drag IS
-            // its SELECTABLE flag, and the interference was a selection that
-            // outlived its gesture (see CreateCustomPriceLine).
-            CreateCustomPriceLine(currentPrice, Digits);
-            g_redrawTHLevelsNeeded = true;
-            tflags = REFRESH_ALL;
-         }
-      }
-       else if(tfeat == CIR_STEP_OVERRIDE)
-       {
-          // STEPOVERRIDE-OFF: single Step Mode — cycle the base 0..3 (same as
-          // the E key and the panel row). OV_ persist rides on REFRESH_ALL.
-          g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
-          // P-UI-40b: this item is the SAME control as the E key (which asks, see
-          // EventHandlers) one surface over. The STEP card's mode row displays this
-          // value and the ring cannot repaint an open card from here.
-          RequestUISync();   // P-UI-40b: the STEP card's mode row displays this value
-          GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
-          UpdateStepModeLabel();   // same confirmation as E / panel (redraw below only repositions it)
-          g_forceClearOnNextDraw = true;
-          g_redrawTHLevelsNeeded = true;
-          tflags = REFRESH_ALL;
-       }
-       else if(tfeat == CIR_GENERAL)   // P-UI-131: a pure door — no switch to invert
-       {
-          // OPEN on the CLICK, the same act the HOLD performs (the long-press path
-          // asks ToolPanel too), so the one gesture the user already knows works and
-          // nothing else in the ladder changes state.
-          UISuppressNextClick();
-          PnlOpen(ToolPanel(tidx));
-          return REFRESH_NONE;
-       }
-        else if(tfeat == CIR_HRAY)   // P-HR-01: momentary toggle — the cell light is the session
-        {
-           tflags = CircArmHRay();
-        }
-        else if(tfeat == CIR_PATH)
-        {
-           tflags = CircArmPath();
-        }
-        else if(tfeat == CIR_SCALE)   // P-UI-159 — MT4's own scale-fix as one cell
-        {
-           // ONE live writer of the chart's scale-fix bit (the retired View Lock's
-           // writes are dormant, VIEWLOCK-OFF): read → flip → READ BACK, and the
-           // witness goes through the FLUSHED channel (P-DRAW-126) carrying the
-           // value the CHART holds, not the one we asked for. No recalc — the
-           // cell light below reads the same bit (CircFeatureOn).
-           bool wasFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
-           bool retOk    = ChartSetInteger(0, CHART_SCALEFIX, !wasFixed);
-           bool nowFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
-           DrawStripDiagEmit("[P-UI-159] scale was=" + IntegerToString(wasFixed ? 1 : 0) +
-                             " now=" + IntegerToString(nowFixed ? 1 : 0) +
-                             " ret=" + IntegerToString(retOk ? 1 : 0));
-           ChartRedraw();   // P-DRAW-127: the click owns its frame
-        }
-        else if(tfeat == CIR_HIDE)   // P-UI-160 — the F mute, one surface over
-        {
-           // The cell IS the F key: the same ONE owner (`ApplyHideAllState`,
-           // EventHandlers_Objects), the same target-state rule (read the mute's
-           // own reader and invert, never a delta), and the same follow-ups the
-           // Router's F branch runs (RequestUISync for the panels' family rows,
-           // then the forced paint). The witness carries what the READER holds
-           // after the write, through the FLUSHED channel (P-DRAW-126).
-           bool wasHidden = IsIndicatorHidden();
-           int  hideRet   = ApplyHideAllState(!wasHidden);
-           bool nowHidden = IsIndicatorHidden();
-           DrawStripDiagEmit("[P-UI-160] hide was=" + IntegerToString(wasHidden ? 1 : 0) +
-                             " now=" + IntegerToString(nowHidden ? 1 : 0) +
-                             " ret=" + IntegerToString(hideRet));
-           RequestUISync();               // P-UI-93: the panel's family rows display this mute
-           RepaintForDiscreteAction();    // P-PERF-24: the press paints NOW
-        }
-       else if(tfeat == CIR_BASEKNOT)
-       {
-          // UIBK-OFF (P-UI-95): the MEASURING tool has its own RING slot now
-          // (RING_BASEKNOT) and this cell is retired in place. It can no longer be
-          // reached (ToolFeature no longer maps TOOL_BASEKNOT), and the arm path it
-          // ran is `CircArmBaseKnot`'s own — restore the cell by counting
-          // TOOL_BASEKNOT back into the catalog count and uncommenting these two lines.
-          // UIBK-OFF: ToolsUpdateItemState(tidx);
-          // UIBK-OFF: return CircArmBaseKnot();
-       }
+      bool toolStopped = false;   // P-UI-192: the tools body returns early only for the GENERAL
+                                  // door, and the old inline return skipped this tail then
        // P-UI-161: the 9 ring features are catalog cells too — a click on one in
        // the Tools menu runs the SAME switch the ring runs. ONE owner
        // (`RingFeatureClick`), so the two surfaces can never drift.
-       else if(tfeat == CIR_ZONES || tfeat == CIR_TRIGGER || tfeat == CIR_ATR ||
+       if(tfeat == CIR_ZONES || tfeat == CIR_TRIGGER || tfeat == CIR_ATR ||
                tfeat == CIR_TH    || tfeat == CIR_HTF     || tfeat == CIR_TH3 ||
                tfeat == CIR_LEG   || tfeat == CIR_SESSIONS)   // P-SESS
        {
           tflags = RingFeatureClick(tfeat);
        }
+      else
+      {
+         // P-UI-192: the seven TOOLS run the same body the ring seat runs —
+         // one owner, so the fan cell and the seat can never drift.
+         tflags = ToolFeatureClick(tfeat, toolStopped);
+      }
+      if(!toolStopped)
+      {
       // FACTORBTN-OFF:
       //else if(tfeat == CIR_FACTOR_OVERRIDE)
       //{
@@ -364,6 +400,7 @@ int HandleButtonClick(const string clickedObject)
       ToolsUpdateItemState(tidx);
       UpdateCircularBadges();
       SaveUIStates();
+      }
       return tflags;
    }
 
@@ -421,6 +458,14 @@ int HandleButtonClick(const string clickedObject)
 //+------------------------------------------------------------------+
 int RingFeatureClick(const int feat)
 {
+   // P-UI-192: the seven TOOLS are catalog cells too — starr-able with the same
+   // star, and their ring seat must run the SAME body their Tools cell runs.
+   if(feat == CIR_PIN || feat == CIR_STEP_OVERRIDE || feat == CIR_GENERAL || feat == CIR_HRAY || feat == CIR_PATH || feat == CIR_SCALE || feat == CIR_HIDE)
+   {
+      bool toolStopped = false;
+      return ToolFeatureClick(feat, toolStopped);
+   }
+
    // P-UI-93 — THE PRESS ANSWERS WHAT THE LIGHT SHOWED.
    //
    // While the chart is muted the four family lights read OFF (CircFeatureOn

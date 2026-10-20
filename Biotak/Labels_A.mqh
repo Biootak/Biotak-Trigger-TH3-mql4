@@ -756,18 +756,24 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L,
         return true;
     }
 
-    // Superscript = live STRUCTURE-TF range in pips + % of current-TF ATR ("260.0 (85.3%)").
-    // The structure TF is the one THIS CARD's plan is built on (P-TP4-RUNG, one rung
-    // up: M5->M15, M15->H1, H1->H4) and the range is that TF's LIVE (forming) bar,
-    // shift 0. GetStructureTimeframe() is the 16x/4-rung basis and is NOT this card's
-    // structure: on M5 it read H4 and printed 129.2p (H4) / 400.9% where the card's
-    // M15 was the structure. TREX_Spread is legacy.
+    // Superscript = the STRUCTURE candle's live TRUE RANGE in pips + % of the
+    // current-TF ATR ("260.0 (85.3%)"). STRUCTURE = TWO fractal rungs up the
+    // trade-plan ladder (user 2026-10-20: «الان که 15 هستیم مال چهار ساعته رو
+    // باید نشون بده») — M15->H4, M5->H1, H1->D1 — and the read is that TF's LIVE
+    // (forming) bar, shift 0. TrueRange, not the bare high-low: the previous
+    // close's gap is part of the number (ATR_A CalculateTrueRange's own law).
+    // The card's plan structure (`structureMinutes`, P-TP4-RUNG, one rung up) is
+    // NOT this read: it is the plan's Eng/SL basis and is deliberately left alone.
     string spText = "--";
     double pip = GetCachedPipSize();
     double atrVal = GetATRForTimeframe(Period());
     if(!IsZero(pip, EPSILON_PRICE)) {
-        ENUM_TIMEFRAMES stf = CompatTF(structureMinutes);
-        double hi = iHigh(NULL, stf, 0), lo = iLow(NULL, stf, 0), rng = hi - lo;
+        int str2Idx = TradePlanLadderIndex(Period()) + 2;
+        if(str2Idx >= TRADEPLAN_LADDER_SIZE) str2Idx = TRADEPLAN_LADDER_SIZE - 1;
+        ENUM_TIMEFRAMES stf = CompatTF(TradePlanLadderMinutes(str2Idx));
+        double hi = iHigh(NULL, stf, 0), lo = iLow(NULL, stf, 0), pc = iClose(NULL, stf, 1);
+        double rng = hi - lo;
+        if(pc > 0.0) rng = MathMax(rng, MathMax(MathAbs(hi - pc), MathAbs(lo - pc)));
         if(hi > 0 && lo > 0 && hi >= lo)
             spText = DoubleToString(rng / pip, 1) + (atrVal > 0.0 && atrVal != EMPTY_VALUE ? " (" + DoubleToString(rng / atrVal * 100.0, 1) + "%)" : "");
     }

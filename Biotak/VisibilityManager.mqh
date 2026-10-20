@@ -340,6 +340,18 @@ int VisibilityShowAllCached(const bool atrShouldShow, const bool showAtrTargets,
         }
         touched++;
     }
+    // P-UI-194 (2026-10-20) — THE CACHE IS A WHITELIST, THE CHART IS THE TRUTH.
+    // MEASURED «بعد از زدن دکمه f بعضی چیزها روی چارت میمونن»: the hide walked the
+    // cache only, so families whose creators never registered (the Factor boundary
+    // and level lines, the pen's saved rows, session art) were never masked and
+    // survived F — while the G lock's own handler already walked EVERY prefixed
+    // object (EventHandlers_Router 700-710). The same walk now closes the SHOW half:
+    // every prefixed object is judged by the family tree above, `_BK_` excepted
+    // (P-BK-01). Cost: ONE ObjectsTotal+ObjectName pass per show TRANSITION
+    // (P-PERF-02 — the caller is the F edge, never the per-frame path), i.e. the
+    // same walk the lock pays, not the per-frame spray P-PERF-31 retired.
+    VisibilityShowAllLegacyScan(atrShouldShow, showAtrTargets, triggersEnabled,
+                                linesVisible, zonesVisible);
     return touched;
 }
 //|                                                                  |
