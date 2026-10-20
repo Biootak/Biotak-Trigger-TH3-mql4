@@ -440,8 +440,10 @@ string TradePlanTPRowText(const STradePlan &plan)
 {
    // TWO spaces between the tokens (2026-09-14 user: "the bottom row reads
    // stuck together"). The tokens themselves are the professor's format.
-   return StringFormat("#SL:-%d  #TP1+%d  #TP2+%d  #TP3+%d",
-                       plan.sl, plan.tp1, plan.tp2, plan.tp3);
+   // P-TP4 (2026-10-19): FOUR targets, and `#SL` left this row — the stop now
+   // prints as `Pricicle:` in the leg row above, exactly like the master card.
+   return StringFormat("#TP1:+%d  #TP2:+%d  #TP3:+%d  #TP4:+%d",
+                       plan.tp1, plan.tp2, plan.tp3, plan.tp4);
 }
 
 // ONE leg formatter for the two 0.1-pip legs (P-TRADEPLAN-DEC, user 2026-09-16):
@@ -458,16 +460,30 @@ string TradePlanLegText(const double v)
    return DoubleToString(v, 1);
 }
 
-string TradePlanHunterText(const STradePlan &plan)
+// P-TP4 (2026-10-19): the card's upper row is FOUR legs now, in the master's
+// own order and with his own names:
+//   `TRex: 4  Trigger: 10  Pricicle: 19  Classic: 46`
+// What each one is:
+//   TRex     = plan.eng      (was `Eng.SL:`)   — the knot's risk, 0.1 pip
+//   Trigger  = plan.hunter   (was `Hunter SL:`) — the ETR/CTR/OTR entry, 0.1 pip
+//   Pricicle = plan.pricicle (was `#SL:-n` in the target row) — whole pips
+//   Classic  = plan.classic  (new)                            — whole pips
+// The two 0.1-pip legs keep TradePlanLegText (P-TRADEPLAN-DEC, user 2026-09-16);
+// the two new legs are whole pips like SL/TP/SB.
+string TradePlanLegsText(const STradePlan &plan)
 {
-   return "Hunter SL: " + TradePlanLegText(plan.hunter) + " Eng.SL: " + TradePlanLegText(plan.eng);
+   return "TRex: " + TradePlanLegText(plan.eng)
+        + "  Trigger: " + TradePlanLegText(plan.hunter)
+        + "  Pricicle: " + IntegerToString(plan.pricicle)
+        + "  Classic: " + IntegerToString(plan.classic);
 }
 
 //+------------------------------------------------------------------+
 //| Bottom-right trade card geometry - ONE owner (P-LBL-06/07/08)    |
-//| The card is THREE rows, bottom to top: the blue `#SL/TP` row,    |
-//| the red `Hunter SL / Eng.SL` row and the `TR|ex` brand with its  |
-//| live-spread superscript. Every row's Y AND X comes from here.    |
+//| The card is THREE rows, bottom to top: the blue `#TP1..TP4` row,  |
+//| the red `TRex / Trigger / Pricicle / Classic` row and the       |
+//| `TR|ex` brand with its live-spread superscript. Every row's Y    |
+//| AND X comes from here.                                           |
 //|                                                                  |
 //| Y: one PITCH between every pair, growing upward off the row that  |
 //|    owns `inpLabelsMarginBottom` (2026-09-14 user: "why are these   |
@@ -540,7 +556,7 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    int wTR     = PnlRawTextW("TR", brandSize);
    int wEx     = PnlRawTextW("ex", brandSize);
    int wBrand  = wTR + wEx;
-   int wHunter = PnlRawTextW(TradePlanHunterText(plan), fs);
+   int wHunter = PnlRawTextW(TradePlanLegsText(plan), fs);
    int wTP     = PnlRawTextW(TradePlanTPRowText(plan), fs);
    int cardW = MathMax(wBrand, MathMax(L.showTP ? wTP : 0, L.showSL ? wHunter : 0));
    if(cardW < 1) cardW = 1;
@@ -620,7 +636,7 @@ bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
                          const STrexCardLayout &L)
 {
    // Bottom-right card (R-TRADEPLAN): the blue row
-   //   #SL:-<sl>  #TP1+<t1>  #TP2+<t2>  #TP3+<t3>
+   //   #TP1+<t1>  #TP2+<t2>  #TP3+<t3>  #TP4+<t4>
    // is the BOTTOM of the card whose geometry TRexTradeCardLayout owns.
    // The old top row of this block (`Close in : <countdown>`, red) now rides
    // the LIVE PRICE instead (CreateLivePriceCountdown, 2026-09-11 user
@@ -678,17 +694,18 @@ bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan,
       ObjectDelete(0, labelPrefix + "TREX_StrBond");
       return true;
    }
-   if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", TradePlanHunterText(plan),
+   if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", TradePlanLegsText(plan),
                        inpATRTradeHunterColor, L.fontSize, L.xHunter, L.yHunter)) return false;
    return true;
 }
 
 //+------------------------------------------------------------------+
 //| TRex brand piece: `TR` (blue) + `ex` (red) + the pair's LIVE     |
-//| spread superscript in pips. The small number is spread - never a  |
-//| version and never a TH value (the v0.5 daily-TH row is retired in |
-//| 3.x; the green Persian caption row was retired 2026-09-14,       |
-//| P-LBL-06). Both pieces are the TOP of the bottom-right trade card |
+//| structure-TF fill superscript (live structure bar range, pips).   |
+//| The small number is the structure bar's fill - never a version and |
+//| never a TH value (the v0.5 daily-TH row is retired in 3.x; the   |
+//| green Persian caption row was retired 2026-09-14, P-LBL-06).     |
+//| Both pieces are the TOP of the bottom-right trade card            |
 //| (P-LBL-07/08): their Y AND X come from TRexTradeCardLayout(), the  |
 //| ONE owner of that geometry - never re-derived here.                |
 //+------------------------------------------------------------------+
@@ -721,7 +738,7 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
 }
 
 // P-PERF-53: last painted title-block state. DisplayTRexTitleBlock compares
-// first: a still 2 s pass (same spread, same inks, same seats) costs reads
+// first: a still 2 s pass (same fill, same inks, same seats) costs reads
 // only instead of 27 same-value writes.
 static string s_trxPrefix = "";
 static string s_trxSpText = "";
@@ -773,22 +790,21 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
         return true;
     }
 
-    // Superscript = live spread of the pair in pips, 1 decimal ("3.2" style).
+    // Superscript = live STRUCTURE-TF range in pips + % of current-TF ATR ("260.0 (85.3%)"); structure TF = GetStructureTimeframe() (16x: H1->D1, H4->W1, D1->MN); TREX_Spread is legacy.
     string spText = "--";
     double pip = GetCachedPipSize();
+    double atrVal = GetATRForTimeframe(Period());
     if(!IsZero(pip, EPSILON_PRICE)) {
-        double ask = MarketInfo(Symbol(), MODE_ASK);
-        double bid = MarketInfo(Symbol(), MODE_BID);
-        if(ask > 0 && bid > 0 && ask >= bid)
-            spText = DoubleToString((ask - bid) / pip, 1);
+        ENUM_TIMEFRAMES stf = GetStructureTimeframe();
+        double hi = iHigh(NULL, stf, 0), lo = iLow(NULL, stf, 0), rng = hi - lo;
+        if(hi > 0 && lo > 0 && hi >= lo)
+            spText = DoubleToString(rng / pip, 1) + (atrVal > 0.0 && atrVal != EMPTY_VALUE ? " (" + DoubleToString(rng / atrVal * 100.0, 1) + "%)" : "");
     }
     // ATR superscript above `TR`: current-TF weighted ATR in pips, 1 decimal.
     string atrText = "--";
-    double atrPip = GetCachedPipSize();
-    if(!IsZero(atrPip, EPSILON_PRICE)) {
-        double atrVal = GetATRForTimeframe(Period());
+    if(!IsZero(pip, EPSILON_PRICE)) {
         if(atrVal > 0 && atrVal != EMPTY_VALUE)
-            atrText = DoubleToString(NormalizeDouble(atrVal / atrPip, 1), 1);
+            atrText = DoubleToString(NormalizeDouble(atrVal / pip, 1), 1);
     }
     // Every position below comes from the ONE card owner (computed once per pass
     // by the caller): it knows the row pitch, the centring axis and the MEASURED
@@ -1056,6 +1072,62 @@ void TradePlanExportEnd()
     }
 }
 
+//+------------------------------------------------------------------+
+//| P-TP4-WITNESS (2026-10-19) — ONE witness line per chart bar      |
+//|                                                                  |
+//| Why this exists: every comparison in this session stalled on     |
+//| reading a 12-pixel card out of a screenshot, and a card is not   |
+//| evidence we can compute with. This writes the plan's EXACT       |
+//| numbers to the per-symbol auto file the moment a new chart bar   |
+//| opens, so the card never has to be read by eye again.            |
+//|                                                                  |
+//| Cost: one FileOpen + a few lines + FileClose per chart BAR, not  |
+//| per tick, not per 2 s pass. No Print — P-LOG-01 keeps the label  |
+//| pump silent, and this path stays silent too; the file is the     |
+//| only sink. FILE_WRITE truncates by design (P-LOG-02: the file    |
+//| always holds the LATEST dump of that symbol).                    |
+//|                                                                  |
+//| P-TP4-WITNESS-FILE: its OWN file, not tradeplan-auto-<SYM>.log.  |
+//| That one is the on-demand X dump and it truncates on open, so    |
+//| sharing a name meant the next bar silently ate a dump the user   |
+//| had just asked for. Two sinks, two files, neither clobbers the   |
+//| other.                                                           |
+//+------------------------------------------------------------------+
+datetime s_tpWitnessBar = 0;
+
+string TradePlanWitnessFileName()
+{
+    return("tradeplan-witness-" + Symbol() + ".log");
+}
+
+void TradePlanWitness(const STradePlan &plan)
+{
+    if(!plan.valid) return;
+    datetime bar0 = iTime(Symbol(), Period(), 0);
+    if(bar0 == 0 || bar0 == s_tpWitnessBar) return;   // one line set per bar
+    s_tpWitnessBar = bar0;
+
+    int h = FileOpen(TradePlanWitnessFileName(), FILE_WRITE | FILE_TXT | FILE_ANSI);
+    if(h == INVALID_HANDLE) return;
+
+    FileWriteString(h, "P-TP4-WITNESS  build " + TH3_SRC_SHORT +
+                       "  compiled " +
+                       TimeToString(__DATETIME__, TIME_DATE | TIME_MINUTES) + "\r\n");
+    FileWriteString(h, StringFormat("symbol=%s tf=%s bar0=%s  chartMin=%d strMin=%d\r\n",
+                                    Symbol(), GetCurrentTimeframe(),
+                                    TimeToString(bar0, TIME_DATE | TIME_MINUTES),
+                                    plan.chartMin, plan.strMin));
+    FileWriteString(h, StringFormat("ATR own=%.4f str=%.4f  (pips; Eng = own/%.6f)\r\n",
+                                    plan.ownPips, plan.basePips, TRADEPLAN_ENG_DIVISOR));
+    FileWriteString(h, StringFormat("engTrue=%.6f eng=%.1f hunter=%.1f pricicle=%d classic=%d\r\n",
+                                    plan.engTrue, plan.eng, plan.hunter,
+                                    plan.pricicle, plan.classic));
+    FileWriteString(h, StringFormat("slTrue=%.6f sl=%d tp1=%d tp2=%d tp3=%d tp4=%d sb1=%d sb2=%d\r\n",
+                                    plan.slTrue, plan.sl, plan.tp1, plan.tp2,
+                                    plan.tp3, plan.tp4, plan.sb1, plan.sb2));
+    FileClose(h);
+}
+
 void TradePlanLogLegs()
 {
     int legMins[9]; string legNames[9];
@@ -1254,12 +1326,15 @@ void TradePlanPrintRow(STradePlan &plan)
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     TpxLine("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
     TpxLine("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
-          + "  Eng.SL=" + DoubleToString(plan.eng, 1)
-          + "  Hunter=" + DoubleToString(plan.hunter, 1));
+          + "  TRex=" + DoubleToString(plan.eng, 1)
+          + "  Trigger=" + DoubleToString(plan.hunter, 1)
+          + "  Pricicle=" + IntegerToString(plan.pricicle)
+          + "  Classic=" + IntegerToString(plan.classic));
     TpxLine("[TRADEPLAN]   SL=" + IntegerToString(plan.sl)
           + "  TP1=" + IntegerToString(plan.tp1)
           + "  TP2=" + IntegerToString(plan.tp2)
-          + "  TP3=" + IntegerToString(plan.tp3));
+          + "  TP3=" + IntegerToString(plan.tp3)
+          + "  TP4=" + IntegerToString(plan.tp4));
     TpxLine("[TRADEPLAN]   StrBond=" + IntegerToString(plan.sb1)
           + " - " + IntegerToString(plan.sb2));
     TpxLine("[TRADEPLAN]   slTrue=" + DoubleToString(plan.slTrue, 4)
@@ -1279,6 +1354,16 @@ void TradePlanDumpNow()
     if(!TradePlanComputeLive(Period(), plan)) return;
     TradePlanExportBegin();
     TpxLine("[DUMP] ===== " + Symbol() + " " + GetCurrentTimeframe() + " =====");
+    // P-TP4-STAMP: which binary wrote this file. Without it a dump can be read
+    // against the wrong build and every conclusion drawn from it is worthless -
+    // that is exactly what happened on NZDUSD (a correct 22:12 card was judged
+    // against source edited afterwards). TH3_SRC_SHORT is generated by
+    // tools/gen-build-hash.js over every .mq4/.mqh, so a mismatch here means the
+    // terminal is still running an older .ex4 and needs a chart re-attach.
+    TpxLine("[DUMP] build " + TH3_SRC_SHORT + "  files=" + IntegerToString(TH3_SRC_FILES)
+            + "  " + TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES)
+            + "  broker-time");
+
     // Rounding-integrity guard (TradePlanSelfCheck) — the engine computes and
     // displays on the SAME doubles, so this only fires on a real formula/wiring
     // regression. Skipped under the alt formulas: their Hunter leg is TR/1.66666
@@ -1329,6 +1414,8 @@ void TradePlanLiveTick()
     string labelPrefix = GetLevelObjectPrefix() + "LBL_";
     STradePlan plan;
     if(!TradePlanComputeLive(Period(), plan)) return;
+    // P-TP4-WITNESS: exact numbers to the per-symbol file, once per chart bar.
+    TradePlanWitness(plan);
     // ONE card layout for BOTH branches below (P-LBL-09): the drawn-row set and
     // the measured centring axis do not depend on which branch runs, so the
     // steady state costs exactly the same 4 text measurements as the full pass
@@ -1340,9 +1427,12 @@ void TradePlanLiveTick()
     // vs cheap in-place label path; pixels identical either way.
     // %.1f on the two 0.1-pip legs: a change that only moves a decimal (0.3 -> 0.4)
     // MUST re-key the signature, or the card would keep the previous number.
-    string sig = StringFormat("%d|%d|%d|%d|%.1f|%.1f|%d|%d",
-                              plan.sl, plan.tp1, plan.tp2, plan.tp3,
-                              plan.hunter, plan.eng, plan.sb1, plan.sb2);
+    // P-TP4: TP4 / Pricicle / Classic ride it too — a leg the signature does not
+    // carry is a leg the card never repaints.
+    string sig = StringFormat("%d|%d|%d|%d|%d|%.1f|%.1f|%d|%d|%d|%d",
+                              plan.sl, plan.tp1, plan.tp2, plan.tp3, plan.tp4,
+                              plan.hunter, plan.eng, plan.sb1, plan.sb2,
+                              plan.pricicle, plan.classic);
     static string s_sig = "";
     if(sig != s_sig)
     {
@@ -1394,7 +1484,7 @@ void TradePlanLiveTick()
     else
     {
        // Steady state: numerics frozen — only the 1-second countdown and the
-       // live-spread superscript move. All three writers upsert in place, so an
+       // live structure-fill superscript are refreshed. All three writers upsert in place, so an
        // unchanged row costs a compare and no write; the Hunter writer runs here
        // too because it owns its row's EXISTENCE - a switch flipped while the
        // numbers were frozen must still remove the row (P-LBL-09).

@@ -222,9 +222,9 @@
 // layer law: the clamp cannot read a constant the drawing module declares).
 #define BK_TP_PLAN_MAX 3
 
-// The bottom-right trade card (P-LBL-06/07/08): `#SL/TP` row, then the
-// `Hunter SL / Eng.SL` row, then the `TR|ex` brand. TWO clamps on the input
-// that asks for blank rows between the trade row and the Hunter row:
+// The bottom-right trade card (P-LBL-06/07/08): `#TP1..#TP4` row, then the
+// `TRex / Trigger / Pricicle / Classic` row, then the `TR|ex` brand. TWO clamps on the input
+// that asks for blank rows between the trade row and the leg row:
 //   TREX_CARD_MAX_GAP_ROWS  the user bound (what the settings dialog offers)
 //   the chart's own height  the owner's second bound (a 400px chart cannot
 //                           hold 20 rows, so the owner gives what fits)

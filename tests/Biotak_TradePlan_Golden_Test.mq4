@@ -10,7 +10,22 @@
 //|                                                                  |
 //|  PART A - static golden vectors: the professor's XAUUSD table     |
 //|           (Sep-9-2026, live, all 8 TFs) must fall out of the      |
-//|           chain when his Eng ladder is fed in.                    |
+//|           chain when his Eng ladder is fed in. That card is       |
+//|           GENERATION 1 (three targets, base TWO rungs up).        |
+//|                                                                  |
+//|  PART C - GENERATION 2: his Oct-2026 EURUSD cards (four targets,   |
+//|           base ONE rung up — the rule that ships now). Each card   |
+//|           must read as ONE plan: base from TP2/5, on 1.2 x Eng     |
+//|           one rung up, reproducing TP1 and TP3.                    |
+//|                                                                  |
+//|  PART D - THE CLOSED CASE: his NZDUSD H1 card of 2026-10-19 21:43, |
+//|           captured on the SAME chart, SAME minute as ours. His own |
+//|           ATR row is printed beside it (H1 7.8, H4 17.5), so the   |
+//|           whole chain is over-determined: feed the two ATR values  |
+//|           and all EIGHT card cells must come back — four legs and  |
+//|           four targets, TP4 included. This is what turns TP4 = 30x |
+//|           from "fitted" into "pinned", and it is the only sample   |
+//|           where nothing is a guess about the moment.               |
 //|                                                                  |
 //|  PART B - live wiring check on the attached symbol, mirroring the  |
 //|           ONE Eng formula (R-ENGPARITY, 2026-09-10, R-ENGONE):     |
@@ -65,7 +80,9 @@ string LadName(const int i)
    return "??";
 }
 
-//--- trigger = 2 rungs down (floor M1); structure = 2 rungs up (cap MN)
+//--- trigger = 2 rungs down (floor M1); StrIndex = 2 rungs up (cap MN).
+//--- StrIndex is PART A's GENERATION (Sep-2026). The shipped rule is ONE rung
+//--- (P-TP4-RUNG, TradePlanFormulas.mqh) and PART C pins that one.
 int TrigIndex(const int i) { int t = i - 2; return (t < 0 ? 0 : t); }
 int StrIndex (const int i) { int s = i + 2; return (s > LADDER - 1 ? LADDER - 1 : s); }
 
@@ -231,13 +248,16 @@ void OnStart()
    Print("[TPGOLD] ================ TRex trade-plan golden test ================");
 
    //================================================================
-   // PART A - static golden vectors
+   // PART A - static golden vectors, GENERATION 1 (Sep-2026)
+   // His Sep card took the base TWO rungs up. The shipped rule is ONE
+   // (generation 2, P-TP4-RUNG), so this part now pins the OLD chain:
+   // it still proves the arithmetic, and PART C pins what ships.
    //================================================================
    double eng, hunter;   // 0.1 pip legs (RInt1)
    int sl, tp1, tp2, tp3, sb1, sb2;
    int rowsOK = 0;
 
-   Print("[TPGOLD] PART A | professor XAUUSD Sep-9-2026 replay");
+   Print("[TPGOLD] PART A | professor XAUUSD Sep-9-2026 replay (gen 1: base 2 rungs up)");
    Print("[TPGOLD] TF  |   Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
 
    for(int i = 0; i < LADDER; i++)
@@ -275,6 +295,101 @@ void OnStart()
          Print(StringFormat("[TPGOLD] FAIL diagonal %s: Width %d != Hunter(%s) %.1f",
                             LadName(i), width, LadName(StrIndex(i)), huntStr));
       }
+   }
+
+   //================================================================
+   // PART C - GENERATION 2: his Oct-2026 EURUSD cards (FOUR targets,
+   //          base ONE rung up — the shipped rule, P-TP4-RUNG).
+   // Each card is checked as ONE plan, the way a trader reads it:
+   //   base  = TP2 / 5            (ratio 5 is the exact one, so the safest solve)
+   //   gate1 = base sits on 1.2 x Eng(ONE rung up)
+   //   gate2 = that base reproduces his TP1 and TP3 (1 unit, his own rounding)
+   // TP4 is PRINTED, not pinned HERE: these two cards' TP4 (52 and 99) do not
+   // follow 30x their own base, so they cannot gate it. The ratio itself is
+   // settled — by PART D below, on a card whose eight cells all agree.
+   //================================================================
+   string cTF[3]     = {"M5", "M15", "H1"};
+   double cEngStr[3] = {1.58, 3.75, 7.25};   // his Eng one rung up (solved from his legs)
+   int    cTP1[3]    = {5, 10, 20};
+   int    cTP2[3]    = {10, 22, 43};
+   int    cTP3[3]    = {20, 45, 90};
+   int    cTP4[3]    = {52, 99, 260};
+
+   Print("[TPGOLD] PART C | his Oct-2026 EURUSD cards (gen 2: base 1 rung up)");
+   for(int c = 0; c < 3; c++)
+   {
+      double base   = cTP2[c] / 5.0;
+      double rule   = 1.20 * cEngStr[c];
+      int    got1   = RInt(base * 7.0  / 3.0);
+      int    got3   = RInt(base * 31.0 / 3.0);
+      int    got4   = RInt(base * 30.0);
+      bool   okBase = (MathAbs(base - rule) <= 0.60);
+      bool   ok1    = (MathAbs(got1 - cTP1[c]) <= 1);
+      bool   ok3    = (MathAbs(got3 - cTP3[c]) <= 1);
+      if(!okBase || !ok1 || !ok3) g_fail++;
+      Print(StringFormat("[TPGOLD] %-3s | base %.2f vs rule %.2f %s | TP1 %d/%d %s | TP3 %d/%d %s | TP4 %d (his %d, info)",
+                         cTF[c], base, rule, okBase ? "OK" : "FAIL",
+                         got1, cTP1[c], ok1 ? "OK" : "FAIL",
+                         got3, cTP3[c], ok3 ? "OK" : "FAIL",
+                         got4, cTP4[c]));
+   }
+
+   //================================================================
+   // PART D - THE CLOSED CASE: his NZDUSD H1 card, same minute as ours.
+   //
+   // Sample (his screen, 2026-10-19 21:43): his ATR row reads H1 7.8 and
+   // H4 17.5, his card reads TRex 1.8 / Trigger 4.9 / Pricicle 9 /
+   // Classic 22 and #TP1 11 #TP2 25 #TP3 51 #TP4 148.
+   //
+   // Two ATR numbers in, eight card cells out — nothing is free. Every
+   // cell lands on his integer with the shipped constants, so the whole
+   // chain is gated here at ZERO tolerance:
+   //   Eng      = ATR / 4.266666
+   //   legs     = 1x, 8/3x, 5x, 12x  (off the chart's Eng)
+   //   SL       = 1.2 x Eng(one rung up)  [P-TP4-RUNG]
+   //   targets  = SL x 7/3, 5, 31/3, 30
+   //
+   // This is also the sample that CONFIRMS TP4 = 30x: the EURUSD cards of
+   // PART C left it fitted (their TP4 do not follow 30x), and this one
+   // closes it — 30 x 4.921875 = 147.66 -> 148, his number exactly.
+   //================================================================
+   {
+      double atrOwn = 7.8;    // his ATR row, H1 (the chart TF)
+      double atrStr = 17.5;   // his ATR row, H4 (one rung up)
+      double engOwn = atrOwn / ENG_DIVISOR;
+      double slRaw  = 1.20 * (atrStr / ENG_DIVISOR);
+
+      double gotEng   = RInt1(engOwn);
+      double gotHunt  = RInt1(engOwn * 8.0 / 3.0);
+      int    gotPrice = RInt(5.0  * engOwn);
+      int    gotClas  = RInt(12.0 * engOwn);
+      int    gotTP1   = RInt(slRaw * 7.0  / 3.0);
+      int    gotTP2   = RInt(slRaw * 5.0);
+      int    gotTP3   = RInt(slRaw * 31.0 / 3.0);
+      int    gotTP4   = RInt(slRaw * 30.0);
+
+      bool okE = (MathAbs(gotEng   - 1.8) < 0.05);
+      bool okH = (MathAbs(gotHunt  - 4.9) < 0.05);
+      bool okP = (gotPrice == 9);
+      bool okC = (gotClas  == 22);
+      bool ok1 = (gotTP1   == 11);
+      bool ok2 = (gotTP2   == 25);
+      bool ok3 = (gotTP3   == 51);
+      bool ok4 = (gotTP4   == 148);
+
+      if(!okE || !okH || !okP || !okC || !ok1 || !ok2 || !ok3 || !ok4) g_fail++;
+
+      Print("[TPGOLD] PART D | his NZDUSD H1 card, same minute as ours (ATR 7.8 / 17.5)");
+      Print(StringFormat("[TPGOLD]   legs    TRex %.1f/1.8 %s | Trigger %.1f/4.9 %s | Pricicle %d/9 %s | Classic %d/22 %s",
+                         gotEng,  okE ? "OK" : "FAIL",
+                         gotHunt, okH ? "OK" : "FAIL",
+                         gotPrice, okP ? "OK" : "FAIL",
+                         gotClas,  okC ? "OK" : "FAIL"));
+      Print(StringFormat("[TPGOLD]   targets TP1 %d/11 %s | TP2 %d/25 %s | TP3 %d/51 %s | TP4 %d/148 %s",
+                         gotTP1, ok1 ? "OK" : "FAIL",
+                         gotTP2, ok2 ? "OK" : "FAIL",
+                         gotTP3, ok3 ? "OK" : "FAIL",
+                         gotTP4, ok4 ? "OK" : "FAIL"));
    }
 
    //================================================================

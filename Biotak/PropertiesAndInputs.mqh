@@ -279,8 +279,8 @@ input string S21 = "[13] ADVANCED / LABEL LAYOUT";
 // banned from reading `inpLabelRowGap` by `tools/chart-label-audit.py`.
 input int inpLabelsMarginTop = 30;        // Distance from top of chart
 // The bottom-right trade card is (top to bottom): the TRex brand `TR`/`ex`
-// with its live-spread superscript, the red `Hunter SL / Eng.SL` row, and the
-// blue `#SL/TP` row. Their seams are `inpLabelRowGap` each (2026-09-14 user:
+// with its live structure-fill superscript, the red `TRex / Trigger / Pricicle /
+// Classic` row, and the blue `#TP1..#TP4` row. Their seams are `inpLabelRowGap` each (2026-09-14 user:
 // "why are these so far apart" - the old card left a double gap under one row
 // and a single one under the next); this input adds this many EXTRA blank rows
 // between the trade row and the Hunter row when a looser card is wanted.
@@ -302,9 +302,9 @@ input int inpATRTradeLabelFontSize = 0;   // Trade card row font pt (0 = follow 
 // literals the card used to draw with, so this changes no shipped pixel.
 input color inpATRTradeTRColor = clrBlue;       // TRex card: `TR` of the wordmark
 input color inpATRTradeExColor = clrRed;        // TRex card: `ex` of the wordmark
-input color inpATRTradeHunterColor = clrRed;    // TRex card: Hunter SL / Eng.SL row
+input color inpATRTradeHunterColor = clrRed;    // TRex card: TRex / Trigger / Pricicle / Classic row
 input color inpATRTradeRowColor = clrBlue;      // TRex card: #SL/#TP row
-input color inpATRTradeSpreadColor = clrBlack;  // TRex card: spread superscript
+input color inpATRTradeSpreadColor = clrBlack;  // TRex card: live-fill superscript
 // ...and the one naming trap in this group: the card is right-anchored
 // (CORNER_RIGHT_LOWER), so for the CARD this number is the distance from the
 // RIGHT edge; the column stacks are left-anchored, so for THEM it is the

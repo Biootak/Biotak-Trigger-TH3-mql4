@@ -117,9 +117,9 @@ static bool g_PnlPinSpot = false;
 // owner of how many targets exist (PalTgtLabel's names table must match it).
 #define PAL_ATR_TR     20   // TRex card: the `TR` half of the wordmark
 #define PAL_ATR_EX     21   // TRex card: the `ex` half
-#define PAL_ATR_HUNTER 22   // TRex card: the Hunter SL / Eng.SL row
+#define PAL_ATR_HUNTER 22   // TRex card: the TRex / Trigger / Pricicle / Classic row
 #define PAL_ATR_TRADE  23   // TRex card: the #SL/#TP row
-#define PAL_ATR_SPREAD 24   // TRex card: the live-spread superscript
+#define PAL_ATR_SPREAD 24   // TRex card: the live-fill superscript
 // P-UI-131h — the MID ZONE EDGE's TWO HALVES as surfaces of their own. They are palette
 // kinds so the ONE picker, the RECENT ring, the persistence and the row↔kind map all
 // serve them unchanged; clrNONE is AUTO (the derived lit/shaded tone), which is why they

@@ -11,6 +11,9 @@
 //|             constant TRADEPLAN_ENG_DIVISOR — ONE formula, no input)|
 //|   Hunter  = round(8/3 × Eng)                                     |
 //|   Structure = 2 ladder rungs UP; Trigger = 2 rungs DOWN.         |
+//|   TP1..TP4 = round(slTrue × 7/3, 5, 31/3, 30)   (P-TP4, 4 targets)|
+//|   Card legs: TRex=Eng, Trigger=Hunter, Pricicle=5×Eng,           |
+//|              Classic=12×Eng                     (P-TP4)          |
 //|                                                                  |
 //|   Evidence (2026-09-10 evening rig, tools/research/eng_own_window.js):     |
 //|   Eng is a LONG-HORIZON measure per chart TF, not a short trigger |
@@ -52,6 +55,40 @@
 #define TRADEPLAN_TP2_MULT  5.0
 #define TRADEPLAN_TP3_NUM  31.0
 #define TRADEPLAN_TP3_DEN   3.0
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P-TP4 (2026-10-19) — THE FOURTH TARGET, and the card's two extra legs.
+//
+// The master's card carries FOUR targets and FOUR legs:
+//   `#TP1:+20  #TP2:+43  #TP3:+89  #TP4:+259`
+//   `TRex: 4  Trigger: 10  Pricicle: 19  Classic: 46`
+//
+// THE LEGS — solved on TWO cards (EURUSD, his own numbers):
+//   chart  Eng   1×     8/3×   5×     12×    | his card
+//   H1     3.80  3.80   10.13  19.00  45.60  | 4   10   19   46
+//   H4     7.27  7.27   19.39  36.33  87.20  | 7   19   36   87
+// Eight cells, two unknowns, every one on its integer. So the four legs are
+// ONE ruler (the chart's own Eng) times 1, 8/3, 5, 12:
+//   TRex = Eng | Trigger = 8/3 × Eng | Pricicle = 5 × Eng | Classic = 12 × Eng
+// A first reading (Pricicle = 20/9 × slTrue, Classic = 16/3 × slTrue) also hit
+// the H1 card, and the H4 card KILLED it: it printed 86 / 207 where he shows
+// 36 / 87. The legs hang off Eng, never off SL — that is what the second card
+// proved, and it is why these constants are multipliers of Eng.
+//
+// THE TARGETS — CLOSED (2026-10-19 21:43, his NZDUSD H1 card).
+//   His own ATR row on that chart reads H1 7.8 and H4 17.5. Two numbers in,
+//   eight card cells out, every one on his integer:
+//     Eng 7.8/4.266666 = 1.828 -> 1.8 / 4.9 / 9 / 22   (his 1.8 4.9 9 22)
+//     SL  1.2 x 17.5/4.266666 = 4.921875
+//       -> TP 11.48 / 24.61 / 50.86 / 147.66           (his 11 25 51 148)
+//   So TP4 = 30 x slTrue is CONFIRMED, not fitted: it was the only cell the
+//   EURUSD cards of 2026-10-19 could not settle (their TP4 are 52 and 99,
+//   which do not follow 30x their own base — those two cards are excluded).
+//   Pinned at zero tolerance in tests/Biotak_TradePlan_Golden_Test.mq4 PART D.
+// ─────────────────────────────────────────────────────────────────────────────
+#define TRADEPLAN_TP4_MULT  30.0
+#define TRADEPLAN_PRICE_MULT    5.0    // Pricicle = 5 × Eng(chart)
+#define TRADEPLAN_CLASSIC_MULT 12.0    // Classic  = 12 × Eng(chart)
 
 // Unified SL coefficient: SL = 1.20 × Eng(StructureTF).
 // One constant for ALL timeframes — confirmed Sep-9-2026 live XAUUSD.
@@ -129,11 +166,25 @@ int TradePlanTriggerMinutes(const int chartMinutes)
    return TradePlanLadderMinutes(trigIdx);
 }
 
-// Structure TF: 2 rungs up, clamped to rung 7 (MN).
+// Structure TF: TRADEPLAN_STRUCT_RUNGS rungs up, clamped to rung 7 (MN).
+//
+// P-TP4-RUNG (2026-10-19) — ONE RUNG, NOT TWO. The master's Oct-2026 card
+// (four targets) takes its base one rung up; his Sep-2026 card (three targets)
+// took two. Measured on three of his own EURUSD cards, all four targets:
+//   H1 : 1.2 × Eng(H4) 7.25 = 8.70 -> TP 20.3 / 43.5 / 89.9 / 261  vs his 20 / 43 / 90 / 260
+//   M15: 1.2 × Eng(H1) 3.75 = 4.50 -> TP 10.5 / 22.5 / 46.5        vs his 10 / 22 / 45
+//   M5 : 1.2 × Eng(M15)1.58 = 1.90 -> TP  4.4 /  9.5 / 19.6        vs his  5 / 10 / 20
+// Two rungs gives exactly DOUBLE on H1 (40 / 86 / 178 / 516) — the error the
+// user reported. His H4 card is excluded on purpose: its four targets need four
+// different bases (13.3 / 16.0 / 18.4 / 14.3), i.e. that card is not one plan.
+// The Sep table is still pinned in the golden test at rung 2 (generation 1);
+// this constant selects generation 2.
+#define TRADEPLAN_STRUCT_RUNGS 1
+
 int TradePlanStructureMinutes(const int chartMinutes)
 {
    int idx = TradePlanLadderIndex(chartMinutes);
-   int strIdx = idx + 2;
+   int strIdx = idx + TRADEPLAN_STRUCT_RUNGS;
    if(strIdx >= TRADEPLAN_LADDER_SIZE) strIdx = TRADEPLAN_LADDER_SIZE - 1;
    return TradePlanLadderMinutes(strIdx);
 }
@@ -318,15 +369,17 @@ struct STradePlan
 {
    bool   valid;
    int    chartMin;    // floored chart TF (ladder rung)
-   int    strMin;      // structure TF (2 rungs up)
+   int    strMin;      // structure TF (TRADEPLAN_STRUCT_RUNGS up)
    int    trigMin;     // trigger TF for Eng (2 rungs down from chart)
    double basePips;    // Eng(StructureTF) — the input to SL
    double ownPips;     // chart-TF composite ATR (info/display only)
    double slTrue;      // unrounded SL = 1.2 × basePips — EVERY leg from THIS
    double engTrue;     // unrounded Eng (Hunter derives from THIS)
-   int    sl, tp1, tp2, tp3;
+   int    sl, tp1, tp2, tp3, tp4;
    double hunter, eng; // EngSL / HuntSL: 0.1 pip precision (TradePlanRound1)
    int    sb1, sb2;    // StrBond display legs (group layout, see below)
+   int    pricicle;    // card leg 3 — 20/9 × slTrue (P-TP4)
+   int    classic;     // card leg 4 — 16/3 × slTrue (P-TP4)
 };
 
 // MASTER IDENTITY (diagonal theorem, observed Sep-9-2026):
@@ -347,8 +400,9 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    p.strMin   = TradePlanStructureMinutes(p.chartMin);
 
    p.basePips = 0.0; p.ownPips = 0.0; p.slTrue = 0.0; p.engTrue = 0.0;
-   p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
+   p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0; p.tp4 = 0;
    p.hunter = 0.0; p.eng = 0.0; p.sb1 = 0; p.sb2 = 0;
+   p.pricicle = 0; p.classic = 0;
 
    // Own strip ATR first: the alt path below derives EVERYTHING from it.
    p.ownPips = TradePlanStripPips(p.chartMin, anchor);
@@ -378,6 +432,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    p.tp1 = TradePlanRound(p.slTrue * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN);
    p.tp2 = TradePlanRound(p.slTrue * TRADEPLAN_TP2_MULT);
    p.tp3 = TradePlanRound(p.slTrue * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN);
+   p.tp4 = TradePlanRound(p.slTrue * TRADEPLAN_TP4_MULT);
 
    // --- Eng / Hunter (chart's own trigger TF) ---
    if(altForm)
@@ -410,6 +465,12 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    else                          // M1..D1: Width -- Base
       { p.sb2 = bBase; p.sb1 = bWidth; }
 
+   // P-TP4: the card's 3rd and 4th legs — the SAME chart Eng the other two legs
+   // ride (5× and 12×), read off the UNROUNDED engTrue so a small Eng does not
+   // lose its size to the first leg's one-decimal round. Whole pips, like SL/TP.
+   p.pricicle = TradePlanRound(TRADEPLAN_PRICE_MULT   * p.engTrue);
+   p.classic  = TradePlanRound(TRADEPLAN_CLASSIC_MULT * p.engTrue);
+
    p.valid = true;
    return true;
 }
@@ -425,6 +486,9 @@ bool TradePlanSelfCheck(const STradePlan &p)
    if(MathAbs(p.tp1 - p.slTrue * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN) > 0.5001) return false;
    if(MathAbs(p.tp2 - p.slTrue * TRADEPLAN_TP2_MULT) > 0.5001) return false;
    if(MathAbs(p.tp3 - p.slTrue * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN) > 0.5001) return false;
+   if(MathAbs(p.tp4 - p.slTrue * TRADEPLAN_TP4_MULT) > 0.5001) return false;
+   if(MathAbs(p.pricicle - TRADEPLAN_PRICE_MULT   * p.engTrue) > 0.5001) return false;
+   if(MathAbs(p.classic  - TRADEPLAN_CLASSIC_MULT * p.engTrue) > 0.5001) return false;
    if(MathAbs(p.eng - p.engTrue) > 0.0501) return false;   // 0.1 pip legs: half a step
    if(MathAbs(p.hunter - TRADEPLAN_HUNTER_NUM * p.engTrue / TRADEPLAN_HUNTER_DEN) > 0.0501) return false;
    double bBase  = p.slTrue * TRADEPLAN_SBB_NUM / TRADEPLAN_SBB_DEN;
@@ -439,43 +503,29 @@ bool TradePlanSelfCheck(const STradePlan &p)
    return true;
 }
 
-// Slow/fast split with per-bar freeze (professor behavior, observed):
-// SL/TP/SB held STATIC inside one chart bar while Eng/Hunter track the
-// live trigger strip tick-by-tick. So slow legs recompute only on a new
-// chart bar; fast legs (Eng/Hunter) are always fresh. Key includes
-// symbol+period so TF switches and symbol changes recompute at once.
-string s_tpFzKey = "";
-int s_tpFzSL = 0, s_tpFzTP1 = 0, s_tpFzTP2 = 0, s_tpFzTP3 = 0;
-int s_tpFzSB1 = 0, s_tpFzSB2 = 0;
-double s_tpFzSLTrue = 0.0;
-
-// P-BK-79: the freeze key carries the ANCHOR, or an as-of plan would be served the live
-// plan's frozen legs (and vice versa) whenever the two share a bar and a symbol.
+// P-TP4-LIVE (2026-10-19) — THE PER-BAR FREEZE IS GONE.
+//
+// What it did: inside one chart bar it served the bar's OPENING SL/TP/SB plus
+// the two Eng legs, while Eng/Hunter stayed live. That could only ever make the
+// card disagree with itself if the ATR moved intra-bar.
+//
+// It does not, in the default path. `TradePlanCompute` reads the composite at
+// shift 1, which is the last CLOSED bar — constant for the whole chart bar. So
+// the freeze was a no-op in practice: NZDUSD H1 2026-10-19 showed the identical
+// card at 21:43, 22:03 and 22:12, and removing the freeze changed nothing. The
+// earlier theory that it cost 6% on the legs was WRONG and is not the reason.
+//
+// It is still removed, for two honest reasons:
+//   (a) it cannot help — Compute has already run with the current ATR, so the
+//       restore branch can only overwrite fresh integers with older ones;
+//   (b) with `inpUseLegATR` ON the leg anchor CAN grow inside a bar (P-LEGATR),
+//       and then the freeze would split one card across two moments for real.
+//
+// The remaining gap to the master is NOT here: it is the H1 ATR level itself
+// (ours ~8.45 vs his 7.8 on that bar). See TradePlanAutoDump for the witness.
 bool TradePlanComputeLive(const int chartMinutes, STradePlan &p, const datetime anchor = 0)
 {
-   if(!TradePlanCompute(chartMinutes, p, anchor)) return false;
-   datetime bar0 = iTime(Symbol(), Period(), 0);
-   string key = Symbol() + "|" + IntegerToString(Period()) + "|" + TimeToString(bar0) +
-                "|" + IntegerToString((long)anchor);
-   // P-LEGATR: the frozen slow legs were read at the leg anchors, so the anchors
-   // join the key — otherwise a CP that grows inside one chart bar would be
-   // served yesterday's frozen legs. OFF adds nothing (key byte-identical).
-   if(anchor <= 0 && inpUseLegATR)
-      key += "|" + IntegerToString((long)TradePlanLegAnchor(p.chartMin))
-           + "|" + IntegerToString((long)TradePlanLegAnchor(p.strMin));
-   if(key == s_tpFzKey && s_tpFzKey != "")
-   {
-      // Restore frozen slow legs; keep live Eng/Hunter from fresh Compute.
-      p.sl = s_tpFzSL; p.tp1 = s_tpFzTP1; p.tp2 = s_tpFzTP2; p.tp3 = s_tpFzTP3;
-      p.sb1 = s_tpFzSB1; p.sb2 = s_tpFzSB2; p.slTrue = s_tpFzSLTrue;
-   }
-   else
-   {
-      s_tpFzKey    = key;
-      s_tpFzSL     = p.sl;  s_tpFzTP1  = p.tp1; s_tpFzTP2  = p.tp2; s_tpFzTP3  = p.tp3;
-      s_tpFzSB1    = p.sb1; s_tpFzSB2  = p.sb2; s_tpFzSLTrue = p.slTrue;
-   }
-   return true;
+   return TradePlanCompute(chartMinutes, p, anchor);
 }
 
 #endif // TRADE_PLAN_FORMULAS_MQH
