@@ -159,6 +159,7 @@ void BaseKnotRegister(const string id, const int dir, const int tfMin)
    g_bkBoxes[n].nodeKind = BK_NODE_NONE;     // P-BK-29/47: no type published yet
    g_bkBoxes[n].nodeSide = 0;                // P-BK-46/47: no break's side published yet
    g_bkBoxes[n].baseTFMin = 0;               // P-BK-36/49: no class published yet
+   g_bkBoxes[n].ownerTFMin = 0;              // P-BK-114: no owner TF measured yet
    g_bkBoxes[n].biasState = BK_STATE_UNKNOWN;   // P-BK-48/49: no life state measured yet
    g_bkBoxes[n].storyT = 0;                  // P-BK-41/49: no story candle published yet
    g_bkBoxes[n].exitT  = 0;                  // P-BK-81: no exit candle published yet
@@ -694,7 +695,7 @@ bool BaseKnotOffsetIsHunt(const int kind, const int tfMin, const datetime anchor
    if(kind == BK_NODE_FTR || kind == BK_NODE_NONE) return false;
    return (BaseKnotHuntPips(tfMin, anchor) > 0.0);
 }
-string BaseKnotEntryOffsetTag(const bool isHunt) { return (isHunt ? "HuntSL" : "EngSL"); }
+string BaseKnotEntryOffsetTag(const bool isHunt) { return (isHunt ? "Trigger" : "TRex"); }
 // The penetration itself, in PIPS. 0 = nothing pushed for that (TF, anchor) — an ABSENCE
 // the caller turns into the box' own height, exactly like the risk below.
 double BaseKnotEntryOffsetPips(const int kind, const int tfMin, const datetime anchor = 0)

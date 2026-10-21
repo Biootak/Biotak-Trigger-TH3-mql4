@@ -155,12 +155,18 @@ void BaseKnotTypeWitness()
                         " node=" + BaseKnotTFName(nodeTF) + " anchor=" +
                         (an > 0 ? TimeToString(an, TIME_DATE | TIME_MINUTES) : "live") +
                         " ATR=" + DoubleToString(warm ? BaseKnotToPips(atr) : 0.0, 1) +
+                        " pattern=" + DoubleToString(warm ? BaseKnotToPips(pat) : 0.0, 1) +
+                        " structure=" + DoubleToString(warm ? BaseKnotToPips(str) : 0.0, 1) +
                         " bands FTR<" + DoubleToString(BaseKnotToPips((atr + pat) * 0.5), 1) +
                         " ETR<" + DoubleToString(BaseKnotToPips((pat + str) * 0.5), 1) +
                         " CTR<" + DoubleToString(BaseKnotToPips(str), 1) +
                         " stepTH=" + DoubleToString(BaseKnotToPips(step), 1) +
                         " labelATR=" + DoubleToString(label, 1) +
-                        " gap=" + DoubleToString(label > 0.0 ? label - BaseKnotToPips(atr) : 0.0, 1));
+                        " gap=" + DoubleToString(label > 0.0 ? label - BaseKnotToPips(atr) : 0.0, 1) +
+                        " gv=" + (CalcAnchorAt() > 0 ? TimeToString(CalcAnchorAt(), TIME_DATE | TIME_MINUTES) : "live") +
+                        " owner=" + g_calcAnchorOwner +
+                        " last=" + (g_calcAnchorLastTime > 0 ? TimeToString(g_calcAnchorLastTime, TIME_DATE | TIME_MINUTES) : "live") +
+                        " lastOwner=" + g_calcAnchorLastOwner);
    }
 }
 

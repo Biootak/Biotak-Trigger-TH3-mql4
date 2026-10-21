@@ -161,6 +161,7 @@ double PnlDefValSet(const int item,const int row)
               // colour itself, so the reset path goes through PnlSetColor).
               if(row>=14 && row<=18) return 3;
               if(row==19) return (FactoryDefault(FF_USE_LEG_ATR)>0.5)?1.0:0.0;   // P-LEGATR (0 = OFF)
+              if(row==20) return 1.0;   // P-ANCHOR-LAST (shipped ON)
               return (FactoryDefault(FF_USE_LEG_ATR)>0.5)?1.0:0.0;   // trailing answers the TOP address (row 19)
       case 3: if(row==0) return (FactoryDefault(FF_SHOW_TH_LABELS)>0.5)?1.0:0.0;
               if(row==1) return (FactoryDefault(FF_TH_FRACTAL)>0.5)?1.0:0.0;
@@ -410,6 +411,7 @@ double PnlCurrentSet(const int item,const int row)
               if(row==13) return g_tradeMarginBottom;
               if(row>=14 && row<=18) return 0;   // palette-only (P-UI-70d)
               if(row==19) return g_useLegATR?1.0:0.0;   // P-LEGATR (not a visibility family: no mute term)
+              if(row==20) return g_calcAnchorOn?1.0:0.0;   // P-ANCHOR-LAST
               return g_useLegATR?1.0:0.0;   // trailing answers the TOP address (row 19)
       case 3: // P-UI-93: SetTHLabelsVisibility spells its mask
               // `(mode != 0) && !IsIndicatorHidden()`, so the TH family's master
@@ -692,9 +694,11 @@ int PnlApplySet(const int item,const int row,const double v)
          // P-LEGATR (trailing answers the TOP address, row 19): the plan's ATR
          // source. ON = pre-CP leg composite, OFF = the live read (shipped
          // numbers). The relayout re-resolves every plan leg at once.
-         else             { g_useLegATR=(v>0.5);
+         else if(row==19) { g_useLegATR=(v>0.5);
                             RuntimeSettingsSaveOverridesThrottled();   // OV_ALG
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else             { CalcAnchorSetOn(v>0.5);   // P-ANCHOR-LAST
+                            flags=REFRESH_ALL; }
          break;
       case 3:   // TH LABELS — single source of truth is g_thLabelsMode;
                 // flags are derived back from it via SyncTHFlagsFromMode()

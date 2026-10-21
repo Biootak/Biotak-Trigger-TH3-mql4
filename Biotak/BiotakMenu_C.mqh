@@ -109,7 +109,8 @@ void CircBadgePos(const int i, int &x, int &y)
    CircLayout(i, cx, cy);
    double dx, dy;
    CircBadgeDir(i, dx, dy);
-   double off = CircBtnSize() / 2 + CIRC_BADGE_FLOAT;   // P-UI-161: follows the ring's own side
+   // P-UI-161: follows the ring's own side — P-UI-195: the SEAT's own side (two circles).
+   double off = CircSeatSize(i) / 2 + CIRC_BADGE_FLOAT;
    x = (int)MathRound(cx + dx * off - CIRC_BADGE_SIZE / 2.0);
    y = (int)MathRound(cy + dy * off - CIRC_BADGE_SIZE / 2.0);
 }
@@ -168,7 +169,7 @@ void CircCreateItem(const int i)
 {
    int x, y;
    CircLayout(i, x, y);
-   int s  = CircBtnSize();     // P-UI-161: the ring's own side — shrinks as the seat count grows
+   int s  = CircSeatSize(i);   // P-UI-161: the seat's own side — P-UI-195: inner 44 / outer 32
    int bx = x - s / 2;
    int by = y - s / 2;
    int feat = RingFeature(i);
@@ -179,7 +180,7 @@ void CircCreateItem(const int i)
    {
       if(!ObjectCreate(0, bg, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
    }
-   string bgRes = CircBgRes(on);   // P-UI-162: the canvas is the taper's own box size (s + 2*margin)
+   string bgRes = CircBgRes(s, on);   // P-UI-162: the canvas is the seat's own box size (s + 2*margin)
    ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, bx - CIRC_BG_MARGIN);
    ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, by - CIRC_BG_MARGIN);
@@ -540,7 +541,7 @@ void CircMoveItem(const int i)
 {
    int x, y;
    CircLayout(i, x, y);
-   int s  = CircBtnSize();     // P-UI-161: matches CircCreateItem's own side
+   int s  = CircSeatSize(i);   // P-UI-161: matches CircCreateItem's own side — P-UI-195: per circle
    int bx = x - s / 2;
    int by = y - s / 2;
    if(ObjectFind(0, CircIcon(i)) >= 0)
@@ -1119,7 +1120,7 @@ void CircUpdateItemState(const int i)
    string bg = CircBg(i);
    if(ObjectFind(0, bg) >= 0)
    {
-      string res = CircBgRes(on);   // P-UI-162: per-side canvas — box == canvas on this path too
+      string res = CircBgRes(CircSeatSize(i), on);   // P-UI-162: per-side canvas — box == canvas on this path too
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, res);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, res);
       ObjectSetString(0, bg, OBJPROP_TOOLTIP, "");   // P-UI-119   // bg ring keeps a live tooltip too

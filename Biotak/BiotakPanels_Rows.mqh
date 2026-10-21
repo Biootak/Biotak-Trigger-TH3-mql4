@@ -486,12 +486,13 @@ void PnlComputeMenuBounds(int &bx, int &by, int &bw, int &bh)
    {
       // P-UI-161: the seat count and the button size are the BUILT ones — the
       // safe-zone rect must cover the same grid the paint wrote, not the old 44px 9.
+      // P-UI-195: the side is the SEAT's own (the outer circle draws 32px).
       const int n  = CircPlacedCount();
-      const int bs = CircBtnSize();
       for(int i = 0; i < n; i++)
       {
          int ix, iy;
          CircLayout(i, ix, iy);
+         const int bs = CircSeatSize(i);
          mx = MathMin(mx, ix - bs/2);
          my = MathMin(my, iy - bs/2);
          Mx = MathMax(Mx, ix + bs/2);

@@ -559,7 +559,13 @@ double GetATRForTimeframe(const int targetMinutes) {
         #endif
         return 0.0;
     }
-    
+
+    // P-ANCHOR-LAST: the overview and every caller of this owner read the
+    // anchored composite, not the 30-second live cache (the anchor cache is the
+    // only cache keyed by the bar, so a stale live row can never answer here).
+    if(CalcAnchorAt() > 0)
+        return CalculateWeightedATR(CompatTF(targetMinutes));
+
     // AUDIT FIX: Validate current time (use cached frame time)
     datetime currentTime = CacheGetFrameTime();
     if(currentTime == 0) currentTime = TimeCurrent(); // fallback on first frame
@@ -1139,7 +1145,7 @@ double ATRWeightedComposite(const ENUM_TIMEFRAMES tf, const int shift)
     return SafeDivide(weightedSum, (double)totalWeight, 0.0, EPSILON_GENERAL);
 }
 
-double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
+double CalculateWeightedATRLive(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     // If tf is PERIOD_CURRENT, use effective timeframe (respects lock)
     if(tf == PERIOD_CURRENT) {
         tf = CompatTF(GetEffectiveTimeframe());
@@ -1223,7 +1229,7 @@ static int           g_atrAnchorCount = 0;
 double CalculateWeightedATRAt(const ENUM_TIMEFRAMES tf, const datetime anchor)
 {
    ENUM_TIMEFRAMES t = (tf == PERIOD_CURRENT ? CompatTF(GetEffectiveTimeframe()) : tf);
-   if(anchor <= 0) return CalculateWeightedATR(t);   // no anchor: the live read, unchanged
+   if(anchor <= 0) return CalculateWeightedATRLive(t);   // no anchor: the live read, unchanged
 
    int shift = iBarShift(Symbol(), t, anchor, false);
    if(shift <= 0) shift = 1;   // the anchor IS the forming bar (or lies ahead): the newest CLOSED bar
@@ -1258,6 +1264,20 @@ double CalculateWeightedATRAt(const ENUM_TIMEFRAMES tf, const datetime anchor)
    g_atrAnchorCache[slot].atr    = result;
    g_atrAnchorCache[slot].valid  = true;
    return result;
+}
+
+//+------------------------------------------------------------------+
+//| P-ANCHOR-LAST — the live read becomes an AS-OF read while a       |
+//| LegMeasure/BaseKnot owns the calculation anchor (ATR card's LAST  |
+//| OBJECT switch). The check is two compares; OFF calls the old body |
+//| byte-identically, and the anchored branch rides the existing      |
+//| 48-row (TF,bar) cache. Internal detectors that must stay live     |
+//| call `CalculateWeightedATRLive` explicitly.                       |
+//+------------------------------------------------------------------+
+double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
+    datetime fa = CalcAnchorAt();
+    if(fa > 0) return CalculateWeightedATRAt(tf, fa);
+    return CalculateWeightedATRLive(tf);
 }
 
 //+------------------------------------------------------------------+

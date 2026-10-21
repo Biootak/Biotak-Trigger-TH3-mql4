@@ -3774,7 +3774,7 @@ function main() {
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBarCount (P-BK-80) - the base span, and with it the class and the type, moves with the open chart again');
       if (!/BaseKnotBaseTFMin\(\s*still,\s*bs1,\s*bs2,\s*top,\s*bot,\s*tfMin\s*\)/.test(sync.text))
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBaseTFMin (P-BK-80) - the class memo can answer from another chart\'s last closed bar');
-      if (!/BaseKnotWriteInfo\([\s\S]*?atCorner,\s*tfMin\s*\)/.test(sync.text))
+      if (!/BaseKnotWriteInfo\([\s\S]*?atCorner,\s*tfMin\s*(?:,|\))/.test(sync.text))
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotWriteInfo (P-BK-80) - the note and its hover can re-read the class on the chart');
     }
     const measureLines = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh')) || [];
@@ -5288,8 +5288,10 @@ function main() {
   // the starred subset in catalog order with the CIR_TOOLS door LAST (the only
   // place a star exists must never be unreachable). Growth: S(n) holds the shipped
   // 44 through nine seats (byte-identical), tapers 43→35 and floors at 35 (P-UI-166
-  // raised the floor from 30), seats twelve at most, the radius follows the chord
-  // law, the fit cap still rules, and excess stays in Tools with its star ON. What
+  // raised the floor from 30) — but the RING no longer shrinks: it is TWO circles
+  // (P-UI-195), nine inner at 44 and the rest on a 32px outer ring; the 35/12 law
+  // survives for the near-edge TRAIN. The radius follows the chord law, the fit cap
+  // still rules both circles, and excess stays in Tools with its star ON. What
   // a green compile cannot see, and this entry
   // locks: the mask's persistence slot (12, ledger 13), the orphan sweep (a name
   // a PREVIOUS larger mask wrote must not survive the star that removed its
@@ -5334,8 +5336,8 @@ function main() {
       if (!btnN || !btnN.text.includes('return CIRC_BTN_SIZE') || !btnN.text.includes('return CIRC_BTN_MIN'))
         broken.push('CircBtnSizeForN lost the shipped 44 or the 35 floor — the growth law is not the one that was measured');
       const live = bodyOf(menuRing, 'int CircPlacedCountLive()');
-      if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRadiusForN(k) <= fit') || !live.text.includes('CircRailShape('))
-        broken.push('CircPlacedCountLive lost the fit walk or the shape decision — the ring can stack past the fit, or a fitting train is rebuilt as nine (P-UI-164)');
+      if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRailShape(') || !live.text.includes('s_liveR = n;'))
+        broken.push('CircPlacedCountLive lost the shape decision or the two-circle capacity — the ring seats a count its layout does not draw, or a fitting train is rebuilt as nine (P-UI-164/P-UI-195)');
     }
     // -- the persistence: slot 12 + the ledger at 13, owned by BiotakMenu_A ----
     const menuA = linesOf(MENU_A);
@@ -5366,8 +5368,8 @@ function main() {
       if (!btn || !btn.text.includes('CircBtnSizeForN(CircPlacedCount())'))
         broken.push('CircBtnSize no longer reads the placed count — the paint and the hit test can disagree about the side');
       const layout = bodyOf(menuB, 'void CircLayout(');
-      if (!layout || !layout.text.includes('CircPlacedCount()') || !layout.text.includes('CircBtnSize()'))
-        broken.push('CircLayout went back to a constant side — every seat sits on the old grid while the ring shrank');
+      if (!layout || !layout.text.includes('CircBtnSize()') || !layout.text.includes('CircSeatOuter(') || !layout.text.includes('CircRing2Radius()'))
+        broken.push('CircLayout lost the two-circle law — every seat sits on one grid while the outer circle is drawn (P-UI-195), or on the old constant side');
       const park = bodyOf(menuB, 'void SubParkItem(');
       if (!park || !park.text.includes('ToolsMoveStar('))
         broken.push('SubParkItem no longer parks the star — a starred off-page cell leaves its star floating over the page');
@@ -5387,8 +5389,9 @@ function main() {
       if (!moveItem || !moveItem.text.includes('ToolsMoveStar('))
         broken.push('ToolsMoveItem stopped moving the star — the mark stays at the old seat while its cell moves');
       // P-UI-161 (2026-10-20): every CREATE edge notes the LIVE set BEFORE it lays
-      // a seat, because CircLayout() reads CircPlacedCount() and a click's own open
-      // or close still has g_OrbDragging on (the freeze). Measured: the restore
+      // a seat, because the layout reads the placed count (the train's side, the
+      // ring's two circles) and a click's own open or close still has
+      // g_OrbDragging on (the freeze). Measured: the restore
       // created 10 of 12 seats on the OLD grid; seats 10/11 then healed on the new
       // one - a mixed ring, and the clicks answered the seats that were painted.
       const noteFirst161 = (t, loop) => {
@@ -5473,7 +5476,7 @@ function main() {
     if (broken.length) {
       failures.push('P-UI-161: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/B/C/D.mqh + BiotakMenu_Ring.mqh + ConstantsAndEnums.mqh + tools/gen-th3-icons.js)');
     } else {
-      console.log('[PASS] P-UI-161 the ring grows by shrinking: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the taper floors at 35 and the ring seats twelve at most (P-UI-166) with the fit walk and the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
+      console.log('[PASS] P-UI-161 the ring membership: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the two-circle ring (P-UI-195) seats every starred item with the door last, the near-edge train still tapers to 35 and caps at twelve (P-UI-166) with the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
     }
   }
 
@@ -5907,6 +5910,12 @@ function main() {
         sides = [...new Set([...numeric, minDef])].filter((v) => Number.isFinite(v) && v > 0 && v < 44);
         if (!sides.length) broken.push('CircBtnSizeForN no longer returns any numeric taper side below 44 — the art set cannot be derived from the one list');
       }
+      // P-UI-195: the OUTER circle draws a side the taper table no longer names —
+      // its own define is the second source of baked art, and its pair must exist.
+      const ring2Def = Number((codeOf(menuALinesForMin || []).match(/#define\s+CIRC_RING2_BTN_SIZE\s+(\d+)/) || [])[1]);
+      if (!ring2Def) broken.push('CIRC_RING2_BTN_SIZE is gone — the second circle has no side identity (P-UI-195)');
+      else if (ring2Def >= 44) broken.push(`CIRC_RING2_BTN_SIZE is ${ring2Def} — the user's order is a SECOND circle SMALLER than the first`);
+      else sides = [...new Set([...sides, ring2Def])].filter((v) => Number.isFinite(v) && v > 0 && v < 44);
       // the canvases: one baked pair per side, at exactly s + 2*CIRC_BG_MARGIN
       for (const s of sides) {
         const w = s + 8;
@@ -6101,8 +6110,8 @@ function main() {
       if (!shape || !shape.text.includes('CircRingFits()') || !shape.text.includes('CIRC_EDGE_TRIGGER'))
         broken.push('CircRailShape is gone or no longer rides the near-edge trigger with the ring-fit gate — the paint and the capacity can disagree again');
       const ringFits = bodyOf(menuRing, 'bool CircRingFits()');
-      if (!ringFits || !ringFits.text.includes('CircChordRadiusForN(n)') || !ringFits.text.includes('CircChordRadiusForN(9)'))
-        broken.push('CircRingFits lost the chord gate — the squeeze band draws a capped circle BELOW its chord (44px seats 32px apart, the P-UI-13 stack)');
+      if (!ringFits || !ringFits.text.includes('CircChordRadiusForN(n1)') || !ringFits.text.includes('CircFitLimitOuter()'))
+        broken.push('CircRingFits stopped proving BOTH circles — the squeeze band draws a capped circle BELOW its chord (44px seats 32px apart, the P-UI-13 stack) or an outer ring past the chart edge');
       const cap = bodyOf(menuRing, 'int CircRailCapacity(');
       if (!cap || !cap.text.includes('CircBtnSizeForN(k)') || !cap.text.includes('CIRC_PAD') || !cap.text.includes('return 1'))
         broken.push('CircRailCapacity lost its own-side walk or its door-alone floor — a seat measured at a side it is not drawn at, or a door that can vanish with the tail');
@@ -6197,55 +6206,68 @@ function main() {
     }
   }
 
-  // -- 57. P-UI-166 (2026-10-17): twelve seats at most, 35px at least -----------
-  // The user's report («ایکون ها یک ذره کوچیک شدن اگر تعداد ایتم ها زیاد بشه باز
-  // خیلی کوچیک میشن»): every star past the ninth shrank the WHOLE circle —
-  // 43→39→35→32→30 — so a full catalog seated sixteen 30px discs beside a 28px
-  // glyph and the ring read as a debris field while a drag to an edge could seat
-  // a longer tail on the train. The law this entry locks: the ladder now ENDS on
-  // the 35 floor (CIRC_BTN_MIN is the one owner of it) and the surface seats at
-  // most CIRC_SEAT_CAP (12, door included) — in the ring AND on the train — with
-  // the excess staying in the Tools menu, its star ON (P-UI-13's degrade, now at
-  // the cap boundary instead of the fit boundary).
+  // -- 57. P-UI-195 (2026-10-21): TWO CIRCLES, by the user's own order ----------
+  // «این رینگ‌ها پیش فرض ۹ تا اصلی باشه و بقیه دورش از یک طرف شروع به چینش در
+  // دایره دوم بکنه ولی از دایره اول کوچیک‌تر باشه» + «شعاع بزرگ‌تر ولی بین دو
+  // ایتم اصلی … سایز کوچیک‌تر از سایز دکمه های اولی» + «بالا (۱۲ ساعت)، ساعتگرد».
+  // P-UI-161's taper (the ring grew by shrinking) and P-UI-166's twelve-seat cap
+  // are RETIRED for the ring: the first circle is the shipped nine at 44px/r80 and
+  // the rest — plus the Tools door, still the LAST seat — ride a second circle at
+  // 32px on a bigger radius, half an inner step clockwise from 12 o'clock, so each
+  // outer seat sits BETWEEN two inner seats. The train keeps the 35 floor and the
+  // twelve cap (P-UI-166): it is the near-edge degrade, not the default surface.
   {
     const broken = [];
-    const menuALines166 = linesOf(MENU_A);
-    const minDef166 = Number((codeOf(menuALines166 || []).match(/#define\s+CIRC_BTN_MIN\s+(\d+)/) || [])[1]);
-    if (!(minDef166 >= 35))
-      broken.push(`CIRC_BTN_MIN is ${minDef166 || '?'} — a side below 35 reads as a glyph in a frame, not an icon`);
-    const ringLines166 = linesOf(MENU_RING);
-    if (!ringLines166) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the seat cap has no owner');
+    const menuA195 = linesOf(MENU_A);
+    const aCode195 = codeOf(menuA195 || []);
+    const r1Def = Number((aCode195.match(/#define\s+CIRC_RING1_SEATS\s+(\d+)/) || [])[1]);
+    const r2Def = Number((aCode195.match(/#define\s+CIRC_RING2_BTN_SIZE\s+(\d+)/) || [])[1]);
+    if (r1Def !== 9)
+      broken.push(`CIRC_RING1_SEATS is ${r1Def || 'missing'}, not 9 — the first circle is the shipped nine, not whatever a later edit says`);
+    if (!(r2Def > 0 && r2Def < 44))
+      broken.push(`CIRC_RING2_BTN_SIZE is ${r2Def || 'missing'} — the second circle must be SMALLER than the first (the user's own order)`);
+    const ringLines195 = linesOf(MENU_RING);
+    if (!ringLines195) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the two-circle law has no owner');
     else {
-      const ringCode166 = codeOf(ringLines166);
-      const capDef166 = Number((ringCode166.match(/#define\s+CIRC_SEAT_CAP\s+(\d+)/) || [])[1]);
-      if (capDef166 !== 12)
-        broken.push(`CIRC_SEAT_CAP is ${capDef166 || 'missing'}, not 12 — the count the user measured is not the count that ships`);
-      const btn166 = bodyOf(ringLines166, 'int CircBtnSizeForN(');
-      if (!btn166) broken.push('CircBtnSizeForN is gone — the taper has no owner');
-      else {
-        const numeric166 = (btn166.text.match(/return\s+\d+;/g) || []).map((m) => Number(m.match(/\d+/)[0]));
-        const low166 = numeric166.filter((v) => v < 35);
-        if (low166.length)
-          broken.push(`CircBtnSizeForN still returns ${low166.join(', ')} — a side below the 35 floor shrinks the ring again`);
-        if (!btn166.text.includes('return CIRC_BTN_MIN'))
-          broken.push('CircBtnSizeForN no longer ends on CIRC_BTN_MIN — the floor has a second owner');
-      }
-      const fits166 = bodyOf(ringLines166, 'bool CircRingFits()');
-      if (!fits166 || !fits166.text.includes('MathMin(RingCount(), CIRC_SEAT_CAP)'))
-        broken.push('CircRingFits lost the seat cap — the shape gate tests counts the ring will never draw');
-      const live166 = bodyOf(ringLines166, 'int CircPlacedCountLive()');
-      if (!live166) broken.push('CircPlacedCountLive is gone — the capacity has no owner');
-      else {
-        if (!live166.text.includes('int top = MathMin(n, CIRC_SEAT_CAP)'))
-          broken.push('the ring\'s fit walk lost the seat cap — a fuller mask re-seats the tiny circle (the reported defect)');
-        if (!live166.text.includes('CircRailCapacity(MathMin(n, CIRC_SEAT_CAP)'))
-          broken.push('the train walk stopped honouring the cap — a drag to an edge seats a thirteenth tail the ring would not');
-      }
+      const c1 = bodyOf(ringLines195, 'int CircRing1Count()');
+      if (!c1 || !c1.text.includes('RingCount()') || !c1.text.includes('CIRC_RING1_SEATS'))
+        broken.push('CircRing1Count no longer caps the FIRST circle at CIRC_RING1_SEATS — ten seats spill into the main ring again (P-UI-161/166)');
+      const outer = bodyOf(ringLines195, 'bool CircSeatOuter(');
+      if (!outer || !outer.text.includes('CircRing1Count()'))
+        broken.push('CircSeatOuter lost the first circle\'s own count — the paint and the size read two different splits');
+      const start = bodyOf(ringLines195, 'double CircRing2StartDeg()');
+      if (!start || !start.text.includes('-90.0') || !start.text.includes('step / 2.0'))
+        broken.push('CircRing2StartDeg lost 12 o\'clock or the half inner step — the outer seats sit radially behind the inner ones instead of BETWEEN them');
+      const r2 = bodyOf(ringLines195, 'double CircRing2Radius()');
+      if (!r2 || !r2.text.includes('CIRC_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_RING2_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_GAP'))
+        broken.push('CircRing2Radius lost the inner-disc clearance or the chord floor — the outer circle cuts into the first (two discs on one pixel)');
+      const size195 = bodyOf(ringLines195, 'int CircSeatSize(');
+      if (!size195 || !size195.text.includes('CircSeatOuter(i)') || !size195.text.includes('CIRC_RING2_BTN_SIZE') || !size195.text.includes('CIRC_BTN_SIZE'))
+        broken.push('CircSeatSize no longer answers the two circles (outer 32 / inner 44) — a 32px skin inside a 44px box clips the disc (P-UI-162)');
+      const live195 = bodyOf(ringLines195, 'int CircPlacedCountLive()');
+      if (!live195 || !live195.text.includes('s_liveR = n;'))
+        broken.push('CircPlacedCountLive no longer seats every starred item on the two circles — the tail (door included) drops again');
+      const cap195 = Number((codeOf(ringLines195).match(/#define\s+CIRC_SEAT_CAP\s+(\d+)/) || [])[1]);
+      if (cap195 !== 12)
+        broken.push(`CIRC_SEAT_CAP is ${cap195 || 'missing'}, not 12 — the TRAIN's cap (P-UI-166) must survive the two-circle law`);
+      if (!live195 || !live195.text.includes('CircRailCapacity(MathMin(n, CIRC_SEAT_CAP)'))
+        broken.push('the train walk stopped honouring the twelve-seat cap — a drag to an edge seats a thirteenth tail');
+      const minDef195 = Number((aCode195.match(/#define\s+CIRC_BTN_MIN\s+(\d+)/) || [])[1]);
+      if (!(minDef195 >= 35))
+        broken.push(`CIRC_BTN_MIN is ${minDef195 || '?'} — the train's taper floor (P-UI-166) is below 35`);
     }
+    // the paint: the layout must read the same split AND the same side owner
+    const menuB195 = linesOf(MENU_B);
+    const layout195 = bodyOf(menuB195 || [], 'void CircLayout(');
+    if (!layout195 || !layout195.text.includes('CircSeatOuter(i)'))
+      broken.push('CircLayout does not ask CircSeatOuter — the paint draws one circle while the hit test answers two');
+    const create195 = bodyOf(linesOf(MENU_C) || [], 'void CircCreateItem(');
+    if (!create195 || !create195.text.includes('CircSeatSize(i)'))
+      broken.push('CircCreateItem stopped reading CircSeatSize — the outer seat is born at the inner side and its skin clips (P-UI-162)');
     if (broken.length) {
-      failures.push('P-UI-166: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_BTN_MIN + BiotakMenu_Ring.mqh CIRC_SEAT_CAP/CircBtnSizeForN/CircRingFits/CircPlacedCountLive)');
+      failures.push('P-UI-195: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_RING1_SEATS/CIRC_RING2_BTN_SIZE + BiotakMenu_Ring.mqh CircRing1Count/CircSeatOuter/CircRing2StartDeg/CircRing2Radius/CircSeatSize + BiotakMenu_B.mqh CircLayout + BiotakMenu_C.mqh CircCreateItem)');
     } else {
-      console.log('[PASS] P-UI-166 twelve seats at most, 35px at least: the taper\'s ladder ends on the 35 floor, the ring and the train both cap at CIRC_SEAT_CAP, and the excess stays in the Tools menu with its star ON (P-UI-13)');
+      console.log('[PASS] P-UI-195 two circles: the first is the shipped nine at 44px/r80, the rest + the door ride a 32px outer ring on a bigger radius, half an inner step clockwise from 12 o\'clock (between two inner seats), and the train keeps its twelve/35 law');
     }
   }
 
@@ -7639,6 +7661,58 @@ function main() {
       failures.push('P-LBL-13: ' + broken.join('; ') + ' (Labels_A DisplayTRexTitleBlock)');
     } else {
       console.log('[PASS] P-LBL-13 TRex superscript = the structure candle\'s live TrueRange: two fractal rungs up (M15 reads H4), previous-close gap included, in pips with its % of the current-TF ATR');
+    }
+  }
+
+  // -- 76. P-ANCHOR-LAST (2026-10-21): the ATR card's LAST OBJECT switch --
+  // The anchor is written by a committed LegMeasure or BaseKnot and read by the
+  // ONE composite ATR entry point. Its inverse is a silent live read: the switch
+  // would paint, persist and do nothing, or deletion would leave the chart stuck
+  // on a ghost bar. The detector that finds PRE-CP compression is not a display
+  // read and must stay LIVE.
+  {
+    const broken = [];
+    const atr = linesOf(path.join(BIOTAK, 'ATR_A.mqh'));
+    const anchor = linesOf(path.join(BIOTAK, 'CalcAnchor.mqh'));
+    const bkDrag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const spec = linesOf(path.join(BIOTAK, 'BiotakPanels_PalSpec.mqh'));
+    const apply = linesOf(APPLY);
+    const legDraw = TH3TOOL_C ? bodyOf(linesOf(TH3TOOL_C), 'string LegMeasureDraw(') : null;
+    const legDel = TH3TOOL_C ? bodyOf(linesOf(TH3TOOL_C), 'void LegMeasureDelete(') : null;
+    const bkCommit = bkDrag ? bodyOf(bkDrag, 'void BaseKnotCommit(') : null;
+    const bkDel = bkDrag ? bodyOf(bkDrag, 'void BaseKnotDelete(') : null;
+    const bkPlan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    if (!anchor || !anchor.join('\n').includes('CalcAnchorSetOn'))
+      broken.push('CalcAnchor.mqh is gone - the switch has no owner');
+    if (!anchor || !anchor.join('\n').includes('g_calcAnchorOn = true;'))
+      broken.push('the switch no longer ships ON - the feature is inert on a fresh chart');
+    if (!atr || !atr.join('\n').includes('datetime fa = CalcAnchorAt();') ||
+        !atr.join('\n').includes('CalculateWeightedATRAt(tf, fa)'))
+      broken.push('CalculateWeightedATR no longer routes to the anchor - the switch is inert');
+    if (!atr || !atr.join('\n').includes('CalculateWeightedATRLive(tf)'))
+      broken.push('the live fallback is gone - OFF or a deleted owner would freeze the ATR');
+    if (!atr || !atr.join('\n').includes('if(CalcAnchorAt() > 0)'))
+      broken.push('GetATRForTimeframe lost its early anchor branch - the live cache can win');
+    if (!legDraw || !legDraw.text.includes('CalcAnchorRemember') || !legDel || !legDel.text.includes('CalcAnchorForget'))
+      broken.push('a LegMeasure no longer arms/clears the anchor - the newest drawn leg is not the owner');
+    if (!bkCommit || !bkCommit.text.includes('CalcAnchorRemember') || !bkDel || !bkDel.text.includes('CalcAnchorForget'))
+      broken.push('a BaseKnot no longer arms/clears the anchor - the newest drawn box is not the owner');
+    if (!bkPlan || !bkPlan.join('\n').includes('g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast)'))
+      broken.push('BaseKnotSync no longer re-anchors the active owner on the story it publishes - a freshly drawn box keeps the live read');
+    if (!spec || !spec.join('\n').includes('PnlSpecAdd(2, PNL_K_LEGACY, 20, 1, "gauge")'))
+      broken.push('the ATR card lost row 20 - the switch is not painted');
+    if (!linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh')) ||
+        !linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh')).join('\n').includes('nd.abStrRead && nd.abStr > 0.0 && tfs[owner] == up2'))
+      broken.push('the note prints the owner TF even when it repeats a printed ATR/% row - the duplicate info bar is back');
+    if (!apply || !apply.join('\n').includes('CalcAnchorSetOn(v>0.5)'))
+      broken.push('PnlApplySet lost row 20 - the painted switch cannot write');
+    if (!linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh')) ||
+        !linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh')).join('\n').includes('CalculateWeightedATRLive(tf)'))
+      broken.push('the PRE-CP detector was anchored - compression would be measured on the owner bar, not live');
+    if (broken.length) {
+      failures.push('P-ANCHOR-LAST: ' + broken.join('; ') + ' (ATR_A / CalcAnchor / TH3Tool_C / BaseKnot_Drag / panels)');
+    } else {
+      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the ATR card row 20 writes it, CalculateWeightedATR and GetATRForTimeframe read it, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
     }
   }
 

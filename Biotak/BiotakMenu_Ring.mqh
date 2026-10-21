@@ -169,30 +169,62 @@ int RingFeature(const int ringIdx)
    return ToolFeature(CircStarCatAtSeat(ringIdx));
 }
 
-//| P-UI-161 (2026-10-17) — THE RING GROWS BY SHRINKING, NEVER BY     |
-//| STACKING. P-UI-166 (2026-10-17) — THE SHRINKING STOPS AT 35 AND   |
-//| THE SURFACE STOPS AT TWELVE.                                      |
+//| P-UI-195 (2026-10-21) — TWO CIRCLES. P-UI-161's taper (the ring  |
+//| grew by SHRINKING) is RETIRED for the ring: the first circle is  |
+//| always the shipped nine at 44px, and everything else rides a     |
+//| SECOND circle — bigger radius, smaller discs — instead of        |
+//| squeezing the whole ring. The taper survives ONLY on the TRAIN   |
+//| (the near-edge degrade), which keeps P-UI-166's law: the ladder  |
+//| ends on the 35 floor and the train seats CIRC_SEAT_CAP (12).     |
 //|                                                                  |
-//| The button side S(n) holds the shipped 44 through nine seats      |
-//| (byte-identical — a pre-sessions star mask still seats nine at    |
-//| 44), tapers 43→35 entering the teens and floors at 35 (the floor  |
-//| was 30: sixteen 30px discs beside a 28px glyph read as debris,    |
-//| and every star past the ninth shrank the whole circle). The       |
-//| circle seats at most CIRC_SEAT_CAP (12, door included) — in the   |
-//| ring AND on the train, so a drag to an edge never seats a         |
-//| thirteenth tail; the excess stays in the Tools menu with its      |
-//| star ON. P-SESS stars SESSIONS by default, so a fresh catalog     |
-//| seats TEN (9 stars + the door) and the taper's first leg — 43px — |
-//| is now the fresh default look. The radius follows the chord law   |
-//| (S+CIRC_GAP)/(2·sin(π/n)) — exactly the SubChordRadius invariant  |
-//| applied to a full circle, so the pitch is never lost; at the cap  |
-//| it is 79.2px, inside the shipped 80. The fit cap still rules (a   |
-//| menu near an edge pulls the ring in, exactly as before), and      |
-//| when the capped circle cannot seat every starred item, the excess |
-//| stays in the Tools menu with its star ON (P-UI-13: degrade to the |
-//| previous surface, never to a stack).                              |
+//| FIRST circle: seats 0..min(RingCount(),9)-1 — the first nine       |
+//| SEATS in catalog order (eight stars + the door are still nine),    |
+//| 44px at CIRC_RADIUS (80).                                          |
+//| SECOND circle: every seat past the ninth — the extra stars and,    |
+//| once the inner ring is full, the Tools door (still the LAST seat   |
+//| of the whole ring, P-UI-161/164) — 32px at CircRing2Radius(),      |
+//| which clears the first circle's discs, starting half an inner step |
+//| clockwise from 12 o'clock, so each outer seat sits BETWEEN two     |
+//| inner seats.                                                       |
+//|                                                                  |
+//| The shape gate (CircRingFits) now proves BOTH circles fit before |
+//| the ring is drawn; where it does not, the train is the degrade   |
+//| (P-UI-13: the previous surface, never a stack).                  |
 //+------------------------------------------------------------------+
-#define CIRC_SEAT_CAP 12             // P-UI-166: twelve seats at most (door included), ring and train alike
+#define CIRC_SEAT_CAP 12             // P-UI-166: the TRAIN's cap (twelve seats on a line)
+#define CIRC_RING2_REACH (CIRC_RING2_BTN_SIZE / 2 + CIRC_BADGE_FLOAT + CIRC_BADGE_SIZE / 2)  // outermost badge pixel of an outer seat
+
+//--- P-UI-195: the two circles' own counts. The FIRST circle is the shipped
+//--- nine SEATS (P-UI-166's number, measured byte-identical: eight stars + the
+//--- door still draw at 44px/r80); the second takes every seat past it — the
+//--- stars past the ninth and, once the inner ring is full, the Tools door.
+//--- RingCount() still counts stars + the door, so no seat index, key or feature
+//--- mapping moves; the door stays the LAST seat (P-UI-161/164).
+int CircRing1Count() { return MathMin(RingCount(), CIRC_RING1_SEATS); }
+int CircRing2Count() { return RingCount() - CircRing1Count(); }
+bool CircSeatOuter(const int i) { return (i >= CircRing1Count()); }
+
+//--- The outer circle's first seat: half a FIRST-circle step clockwise from 12
+//--- o'clock (a nine-seat inner ring answers -70 deg — the gap between the 12
+//--- o'clock seat and its clockwise neighbour).
+double CircRing2StartDeg()
+{
+   int n1 = CircRing1Count();
+   double step = (n1 > 0) ? 360.0 / n1 : 0.0;
+   return -90.0 + step / 2.0;
+}
+
+//--- P-UI-195: the side a seat is DRAWN at. On the train every seat wears the
+//--- taper's ONE side (CircBtnSize, P-UI-166); on the ring the first circle is 44
+//--- and the second is CIRC_RING2_BTN_SIZE. The paint, the move, the badge seat,
+//--- the hit test and the safe-zone rect all read THIS call — a second copy of the
+//--- decision would be a second grid.
+int CircSeatSize(const int i)
+{
+   bool vertical; int dir;
+   if(CircRailShape(vertical, dir)) return CircBtnSize();
+   return CircSeatOuter(i) ? CIRC_RING2_BTN_SIZE : CIRC_BTN_SIZE;
+}
 
 int CircBtnSizeForN(const int n)
 {
@@ -209,9 +241,11 @@ int CircBtnSizeForN(const int n)
 //--- ها دیگه دایره نیست», 2026-10-17: the face's right edge measured constant at
 //--- the box boundary for 17 rows). One baked pair per side, canvas == box;
 //--- 44 (s <= 9 seats) keeps the shipped circ_off/on.bmp byte-identical.
-string CircBgRes(const bool on)
+//--- P-UI-195: the side is the SEAT's own (two circles draw two sides) — the
+//--- caller hands in the side it painted, so no reader can mistake a ring-2
+//--- 32px seat for the inner 44.
+string CircBgRes(const int s, const bool on)
 {
-   int s = CircBtnSize();
    if(s == 43) return on ? "::Files\\Icons\\circ_on_43.bmp" : "::Files\\Icons\\circ_off_43.bmp";
    if(s == 39) return on ? "::Files\\Icons\\circ_on_39.bmp" : "::Files\\Icons\\circ_off_39.bmp";
    if(s == 35) return on ? "::Files\\Icons\\circ_on_35.bmp" : "::Files\\Icons\\circ_off_35.bmp";
@@ -238,6 +272,60 @@ double CircRadiusForN(const int n)
 {
    if(n <= 9) return CIRC_RADIUS;      // 80 — the shipped look, byte-identical
    return CircChordRadiusForN(n);      // ONE chord formula in this file
+}
+
+//--- P-UI-195: the SECOND circle's radius. Its inner edge clears the first
+//--- circle's discs (r1 + 22 + gap + 16), and its own chord law is the floor —
+//--- the same no-overlap invariant the inner ring has always used.
+double CircRing2Radius()
+{
+   int n2 = CircRing2Count();
+   if(n2 <= 0) return 0.0;
+   double r = CircRadius() + CIRC_BTN_SIZE / 2.0 + CIRC_GAP + CIRC_RING2_BTN_SIZE / 2.0;
+   if(n2 > 1)
+   {
+      double chord = (CIRC_RING2_BTN_SIZE + CIRC_GAP) / (2.0 * MathSin(M_PI / n2));
+      if(chord > r) r = chord;
+   }
+   return r;
+}
+
+//--- The outer circle's own fit walk: the CircFitLimit ray-vs-bounds at the OUTER
+//--- seats' angles and the outer seat's reach. P-PERF-16's cache law (it is asked
+//--- by the capacity, the paint and every hit test; none re-walks).
+double CircFitLimitOuter()
+{
+   static int    s_f2N1 = 0, s_f2N2 = 0, s_f2Cw = 0, s_f2Ch = 0, s_f2Ox = 0, s_f2Oy = 0;
+   static double s_f2R = 0.0;
+   int n1 = CircRing1Count();
+   int n2 = CircRing2Count();
+   if(n2 <= 0) return 1e18;            // nothing outside the first circle
+   int cw, ch;
+   CircUIMetrics(cw, ch);
+   int ox = g_UI.menuX;
+   int oy = g_UI.menuY;
+   if(s_f2R > 0.0 && n1 == s_f2N1 && n2 == s_f2N2 && cw == s_f2Cw && ch == s_f2Ch &&
+      ox == s_f2Ox && oy == s_f2Oy)
+      return s_f2R;
+
+   double start = CircRing2StartDeg();
+   double r = 1e18;
+   for(int i = 0; i < n2; i++)
+   {
+      double deg = (start + 360.0 * i / n2) * M_PI / 180.0;
+      double c = MathCos(deg);
+      double s = MathSin(deg);
+      double lim = 1e18;
+      if(c > 1e-6)        lim = MathMin(lim, (cw - CIRC_PAD - ox - CIRC_RING2_REACH) / c);
+      else if(c < -1e-6)  lim = MathMin(lim, (ox - CIRC_PAD - CIRC_RING2_REACH) / (-c));
+      if(s > 1e-6)        lim = MathMin(lim, (ch - CIRC_PAD - oy - CIRC_RING2_REACH) / s);
+      else if(s < -1e-6)  lim = MathMin(lim, (oy - CIRC_PAD - CIRC_RING2_REACH) / (-s));
+      if(lim < 1e17) r = MathMin(r, lim);
+   }
+   if(r > 1e17) r = CIRC_RADIUS;       // degenerate (no bound) — the design radius
+
+   s_f2N1 = n1; s_f2N2 = n2; s_f2Cw = cw; s_f2Ch = ch; s_f2Ox = ox; s_f2Oy = oy; s_f2R = r;
+   return r;
 }
 
 //--- The uncapped fit walk (the same ray-vs-bounds as the retired CircFitRadius,
@@ -292,12 +380,14 @@ double CircFitLimit()
 //+------------------------------------------------------------------+
 bool CircRingFits()
 {
+   // P-UI-195: BOTH circles must fit. The first circle's chord law is P-UI-164's
+   // own (nine seats at most now, so the answer is the shipped 80 whenever the
+   // bounds allow it); the second circle's radius must sit inside its own reach.
    double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
-   int n = MathMin(RingCount(), CIRC_SEAT_CAP);   // P-UI-166: the ring draws twelve at most
-   if(n <= 9) return CircChordRadiusForN(n) <= fit;
-   for(int k = n; k > 9; k--)
-      if(CircRadiusForN(k) <= fit) return true;
-   return CircChordRadiusForN(9) <= fit;
+   int n1 = CircRing1Count();
+   if(n1 > 1 && CircChordRadiusForN(n1) > fit) return false;
+   if(CircRing2Count() > 0 && CircRing2Radius() > CircFitLimitOuter()) return false;
+   return true;
 }
 
 // The ONE shape decision: true = the seats ride the TRAIN (vertical on a
@@ -361,10 +451,13 @@ int CircRailCapacity(const int n, const bool vertical, const int dir)
 //--- paint's per-item CircLayout and the chart-change path all ask it, none
 //--- re-walks.
 
+//--- P-UI-195: the FIRST circle's radius — the shipped 80 for nine or fewer
+//--- (byte-identical), the fit cap under a squeeze. The second circle reads it
+//--- (CircRing2Radius clears these discs), so this is the ONE inner-radius owner.
 double CircRadius()
 {
    double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
-   double r = CircRadiusForN(CircPlacedCount());
+   double r = CircRadiusForN(CircRing1Count());
    if(r > fit) r = fit;                 // the fit cap (reachable for k <= 9's squeeze)
    if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
    return r;
@@ -389,17 +482,13 @@ int CircPlacedCountLive()
    {
       s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too
    }
-   else if(n <= 9)
-   {
-      s_liveR = n;                     // nine or fewer: all of them (the 44px look is never dropped)
-   }
    else
    {
-      double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
-      s_liveR = 9;                     // the floor; the excess stays in the Tools menu
-      int top = MathMin(n, CIRC_SEAT_CAP);   // P-UI-166: twelve at most
-      for(int k = top; k > 9; k--)
-         if(CircRadiusForN(k) <= fit) { s_liveR = k; break; }
+      // P-UI-195: the drawn ring is TWO circles — nine inner seats at 44 and every
+      // remaining star + the door on the outer one — so every seat has a place.
+      // CircRailShape's own CircRingFits() proved both circles fit before this
+      // branch was reached; the train (above) keeps P-UI-166's twelve-seat cap.
+      s_liveR = n;
    }
    s_liveN = n; s_liveCw = cw; s_liveCh = ch; s_liveOx = ox; s_liveOy = oy;
    return s_liveR;

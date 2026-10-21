@@ -31,7 +31,7 @@ void TradePlanLegAtrDump()
       if(i == 0) role = "chart";
       else if(i == 1) role = "struct";
       ENUM_TIMEFRAMES tf = CompatTF(tfMins[i]);
-      double live = CalculateWeightedATR(tf);
+      double live = CalculateWeightedATRLive(tf);   // the witness names the live side, even while anchored
       datetime raw = TradePlanLegAnchorRaw(tfMins[i]);
       int run = TradePlanLegRunBars(tfMins[i]);
       double leg = live;

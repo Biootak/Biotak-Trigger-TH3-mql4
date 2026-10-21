@@ -449,6 +449,7 @@ int OnInitHandler() {
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
+    CalcAnchorLoad();   // P-ANCHOR-LAST: the per-chart LAST OBJECT switch survives attach
     //--- P-UI-185 (2026-10-20): the hotkeys are audited ONCE, here: a shortcut the
     //--- terminal cannot deliver, or two shortcuts on one key, is named instead of
     //--- being a key that silently does nothing.

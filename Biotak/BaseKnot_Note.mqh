@@ -57,21 +57,77 @@ string BaseKnotEntryTag(const bool offIsHunt, const double offPips,
    return " | " + BaseKnotEntryOffsetTag(offIsHunt) + " " + DoubleToString(offPips, 1);
 }
 //+------------------------------------------------------------------+
+//| P-TP4 (2026-10-19) — THE CARD'S FOUR LEGS AT THE KNOT'S OWN ROW. |
+//| The old face carried two (`EngSL`, `HuntSL`); the master's card  |
+//| carries four (`TRex`, `Trigger`, `Pricicle`, `Classic`). This is  |
+//| the one row the note prints, read from the plan row the pump     |
+//| already pushed for the same (TF, anchor) — never a second read.  |
+//+------------------------------------------------------------------+
+static int      s_bkLegN = 0;
+static int      s_bkLegTF[BK_ENG_ROW_MAX];
+static datetime s_bkLegAnchor[BK_ENG_ROW_MAX];
+static double   s_bkLegPric[BK_ENG_ROW_MAX];
+static double   s_bkLegClas[BK_ENG_ROW_MAX];
+void BaseKnotPlanLegsPush(const int &mins[], const datetime &anchors[],
+                          const double &pric[], const double &clas[], const int n)
+{
+   int m = 0;
+   for(int i = 0; i < n && m < BK_ENG_ROW_MAX; i++)
+   {
+      if(mins[i] <= 0) continue;
+      s_bkLegTF[m] = mins[i];
+      s_bkLegAnchor[m] = (anchors[i] > 0 ? anchors[i] : 0);
+      s_bkLegPric[m] = (pric[i] > 0.0 ? pric[i] : 0.0);
+      s_bkLegClas[m] = (clas[i] > 0.0 ? clas[i] : 0.0);
+      m++;
+   }
+   s_bkLegN = m;
+}
+double BaseKnotPlanPriciclePips(const int tfMin, const datetime anchor = 0)
+{
+   int tf = (tfMin > 0 ? tfMin : Period());
+   for(int i = 0; i < s_bkLegN; i++)
+      if(s_bkLegTF[i] == tf && s_bkLegAnchor[i] == anchor) return s_bkLegPric[i];
+   return 0.0;
+}
+double BaseKnotPlanClassicPips(const int tfMin, const datetime anchor = 0)
+{
+   int tf = (tfMin > 0 ? tfMin : Period());
+   for(int i = 0; i < s_bkLegN; i++)
+      if(s_bkLegTF[i] == tf && s_bkLegAnchor[i] == anchor) return s_bkLegClas[i];
+   return 0.0;
+}
+string BaseKnotLegPipsText(const double v)
+{
+   if(v <= 0.0) return "--";
+   if(MathAbs(v - MathRound(v)) < 0.05) return IntegerToString((int)MathRound(v));
+   return DoubleToString(v, 1);
+}
+string BaseKnotLegsTag(const int engTF, const double engPips,
+                       const datetime anchor = 0)
+{
+   if(engPips <= 0.0) return "";
+   return "TRex " + BaseKnotLegPipsText(engPips) +
+          " | Trigger " + BaseKnotLegPipsText(BaseKnotHuntPips(engTF, anchor)) +
+          " | Pricicle " + BaseKnotLegPipsText(BaseKnotPlanPriciclePips(engTF, anchor)) +
+          " | Classic " + BaseKnotLegPipsText(BaseKnotPlanClassicPips(engTF, anchor));
+}
+//+------------------------------------------------------------------+
 //| P-BK-109 (2026-10-09, user: «اینجا که نیومده هنوز») — THE TYPE'S  |
-//| OWN ATR AND THE BAR IT CAME FROM, ON THE FACE.                   |
+//| OWN ATRS, IN LADDER ORDER, ON THE FACE.                           |
 //|                                                                  |
-//| The hover could name the bar (P-BK-108) but the FACE is what the |
-//| user reads, and the face said `EngSL 17.1 | 67.0 | 9 bars · M15  |
-//| base · FTR` — three numbers, none of which is the ATR that        |
-//| decided the type, and none of which says WHEN. The type is the    |
-//| one claim on that line, so the measure behind it belongs beside   |
-//| it: `· FTR · ATR 73.1 (2026.10.06 10:13)`.                        |
+//| The face said `EngSL 17.1 | 67.0 | 9 bars · M15 base · FTR` —     |
+//| three numbers, none of which is the ATR that decided the type.    |
+//| P-BK-106b: the face now prints the three bands the type reads,    |
+//| in the leg ruler's own compact form:                             |
+//| `· FTR · ATR H1:178.3 | H4:371.0 | D1:...`.                      |
+//| The bar stays in the hover, never on the face.                    |
 //|                                                                  |
 //| IT READS THE PUBLISHED RECORD, NEVER A SECOND MEASUREMENT:        |
-//| `nd.abTrig` is the row `BaseKnotNodeRead` already read for the    |
-//| type, and `nd.anchor` is the bar it read it at — so the number    |
-//| and the bar here are the SAME pair the bands were built from, and |
-//| they can never disagree with the hover that spells them out.      |
+//| `nd.abTrig` is the node's own row and `nd.abPat` is the next     |
+//| rung's OWN row — both read by BaseKnotNodeRead at `nd.anchor` —   |
+//| so the numbers and the bar here are the SAME pair the bands were  |
+//| built from, and they can never disagree with the hover.           |
 //|                                                                  |
 //| NO UNIT WORD (P-BK-54's own law, the same one the height field   |
 //| obeys) and no target list: one name, one number, one moment.      |
@@ -81,8 +137,110 @@ string BaseKnotEntryTag(const bool offIsHunt, const double offPips,
 string BaseKnotATRTag(BaseKnotNode &nd)
 {
    if(nd.abTrig <= 0.0) return "";   // absence: the hover names it, the face does not guess
-   string bar = (nd.anchor > 0 ? TimeToString(nd.anchor, TIME_DATE | TIME_MINUTES) : "live");
-   return " · ATR " + DoubleToString(BaseKnotToPips(nd.abTrig), 1) + " (" + bar + ")";
+   // P-BK-106b: the leg ruler's compact shape — ONE `ATR` label, three `TF:value` cells,
+   // ascending ladder order (node, pattern, structure). No bar on the face: the hover
+   // carries the moment (P-BK-108). Only REAL rows are printed; a cold row stays in hover.
+   string s = " · ATR " + BaseKnotTFName(nd.nodeTF) + ":" + DoubleToString(BaseKnotToPips(nd.abTrig), 1);
+   int up1 = BaseKnotNextTFMin(nd.nodeTF);
+   int up2 = (up1 > 0 ? BaseKnotNextTFMin(up1) : 0);
+   if(up1 > 0 && nd.abPatRead && nd.abPat > 0.0)
+      s += " | " + BaseKnotTFName(up1) + ":" + DoubleToString(BaseKnotToPips(nd.abPat), 1);
+   if(up2 > 0 && nd.abStrRead && nd.abStr > 0.0)
+      s += " | " + BaseKnotTFName(up2) + ":" + DoubleToString(BaseKnotToPips(nd.abStr), 1);
+   return s;
+}
+string BaseKnotATRPctCell(const int tf, const double atr, const double boxPips)
+{
+   double a = BaseKnotToPips(atr);
+   if(a <= 0.0 || boxPips <= 0.0) return "";
+   return BaseKnotTFName(tf) + ":" + IntegerToString((int)MathRound(boxPips / a * 100.0)) + "%";
+}
+string BaseKnotATRPctTag(BaseKnotNode &nd, const double boxPips)
+{
+   string s = BaseKnotATRPctCell(nd.nodeTF, nd.abTrig, boxPips);
+   if(s == "") return "";
+   s = " · " + s;
+   int up1 = BaseKnotNextTFMin(nd.nodeTF);
+   int up2 = (up1 > 0 ? BaseKnotNextTFMin(up1) : 0);
+   string c = (up1 > 0 && nd.abPatRead ? BaseKnotATRPctCell(up1, nd.abPat, boxPips) : "");
+   if(c != "") s += " | " + c;
+   c = (up2 > 0 && nd.abStrRead ? BaseKnotATRPctCell(up2, nd.abStr, boxPips) : "");
+   if(c != "") s += " | " + c;
+   return s;
+}
+//--- P-BK-113/114: the leg ruler's owner-TF line, on the note. The owner is the
+//--- ladder rung whose own ATR makes the box 240%..360%; for the 248-pip box
+//--- that is M15 (301%), and P-BK-114 makes that same TF the knot's time. The
+//--- lower rungs are pushed by the pump (ATR is above this module); this builder
+//--- only reads the published cache.
+int BaseKnotPrevTFMin(const int tfMin)
+{
+   if(tfMin <= 1) return 0;
+   int rungs[]; int n = BaseKnotLadderAll(rungs);
+   int prev = 0;
+   for(int i = 0; i < n; i++)
+   {
+      if(rungs[i] >= tfMin) break;
+      prev = rungs[i];
+   }
+   return prev;
+}
+#define BK_OWNER_LO 2.40
+#define BK_OWNER_HI 3.60
+string BaseKnotOwnerTag(BaseKnotNode &nd, const double boxPips)
+{
+   if(nd.nodeTF <= 0 || boxPips <= 0.0 || nd.abTrig <= 0.0) return "";
+   int tfs[6]; double atrs[6]; int n = 0;
+   int d1 = BaseKnotPrevTFMin(nd.nodeTF);
+   int d2 = (d1 > 0 ? BaseKnotPrevTFMin(d1) : 0);
+   int d3 = (d2 > 0 ? BaseKnotPrevTFMin(d2) : 0);
+   int down[3]; down[0] = d3; down[1] = d2; down[2] = d1;
+   for(int i = 0; i < 3; i++)
+   {
+      double a = 0.0;
+      if(down[i] > 0 && BaseKnotOwnerATRGet(down[i], nd.anchor, a) && a > 0.0)
+      {
+         tfs[n] = down[i]; atrs[n] = a; n++;
+      }
+   }
+   tfs[n] = nd.nodeTF; atrs[n] = nd.abTrig; n++;
+   int up1 = BaseKnotNextTFMin(nd.nodeTF);
+   int up2 = (up1 > 0 ? BaseKnotNextTFMin(up1) : 0);
+   if(up1 > 0 && nd.abPatRead && nd.abPat > 0.0)
+   {
+      tfs[n] = up1; atrs[n] = nd.abPat; n++;
+   }
+   if(up2 > 0 && nd.abStrRead && nd.abStr > 0.0)
+   {
+      tfs[n] = up2; atrs[n] = nd.abStr; n++;
+   }
+   int start = -1;
+   for(int i = 0; i < n; i++) if(tfs[i] == nd.nodeTF) { start = i; break; }
+   if(start < 0) return "";
+   int owner = -1;
+   int idx = start;
+   for(int step = 0; step < 6; step++)
+   {
+      double ap = BaseKnotToPips(atrs[idx]);
+      if(ap <= 0.0) break;
+      double r = boxPips / ap;
+      if(r >= BK_OWNER_LO && r <= BK_OWNER_HI) { owner = idx; break; }
+      int nxt = (r > BK_OWNER_HI ? idx + 1 : idx - 1);
+      if(nxt < 0 || nxt >= n || nxt == idx) break;
+      idx = nxt;
+   }
+   if(owner < 0) return "";
+   // A TF already printed by BaseKnotATRTag (its ATR) and BaseKnotATRPctTag
+   // (its %) would repeat both fields on the owner row: the node's own rung,
+   // plus the pattern/structure rungs when those reads exist. Only a LOWER
+   // owner rung is new information (it is pumped, not on the face).
+   if(tfs[owner] == nd.nodeTF ||
+      (up1 > 0 && nd.abPatRead && nd.abPat > 0.0 && tfs[owner] == up1) ||
+      (up2 > 0 && nd.abStrRead && nd.abStr > 0.0 && tfs[owner] == up2)) return "";
+   double ap = BaseKnotToPips(atrs[owner]);
+   if(ap <= 0.0) return "";
+   return "TF " + BaseKnotTFName(tfs[owner]) + " | ATR " + DoubleToString(ap, 1) +
+          " | Leg " + IntegerToString((int)MathRound(boxPips / ap * 100.0)) + "%";
 }
 //+------------------------------------------------------------------+
 //| BKCORNER-ON (2026-10-20) — THE FACE IS SPLIT, NEVER CUT.          |
@@ -102,6 +260,17 @@ int BaseKnotNoteRows(const string text, string &rows[])
    {
       guard++;
       int n = ArraySize(rows);
+      // P-BK-106b: an explicit newline is a row the writer already decided — keep it whole.
+      // The old " | " wrap stays as the fallback for a line that is still too long.
+      int nl = StringFind(rest, "\n");
+      if(nl >= 0 && nl <= BK_INFO_TEXT_MAX)
+      {
+         string rowTxt = StringSubstr(rest, 0, nl);
+         StringTrimRight(rowTxt);
+         if(StringLen(rowTxt) > 0) { ArrayResize(rows, n + 1); rows[n] = rowTxt; }
+         rest = StringSubstr(rest, nl + 1);
+         continue;
+      }
       if(StringLen(rest) <= BK_INFO_TEXT_MAX || n >= BK_INFO_MAX_ROWS - 1)
       {
          ArrayResize(rows, n + 1);
@@ -139,6 +308,27 @@ int BaseKnotNoteRows(const string text, string &rows[])
       }
    }
    return ArraySize(rows);
+}
+int BaseKnotNoteLineCount(const string text)
+{
+   int n = 1;
+   for(int i = 0; i < StringLen(text); i++)
+      if(StringGetCharacter(text, i) == 10) n++;
+   return n;
+}
+int BaseKnotNoteMaxLineW(const string text, const int fontPt)
+{
+   int best = 0, start = 0, len = StringLen(text);
+   for(int i = 0; i <= len; i++)
+   {
+      if(i == len || StringGetCharacter(text, i) == 10)
+      {
+         int w = PnlRawTextW(StringSubstr(text, start, i - start), fontPt);
+         if(w > best) best = w;
+         start = i + 1;
+      }
+   }
+   return best;
 }
 //--- BKCORNER-ON (2026-10-20) — THE FAMILY'S NAMES AND ITS SWEEPS. ----------------------
 //--- Row 0 keeps the historical row's name; the wrapped rows carry their ordinal, and the

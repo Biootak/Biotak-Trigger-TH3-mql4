@@ -318,6 +318,7 @@ void LegMeasureDelete(const string base)
     }
     LegMeasureSelShadowForget(base);  // P-LM-20: its painted state goes with it
     if(s_legDragBase == base) { s_legDragBase = ""; s_legDragMode = 0; }   // no ghost drag
+    CalcAnchorForget(base);           // P-ANCHOR-LAST: deleting the owner returns the chart to live
     Print("TH3: leg measure deleted (P-LM-08): ", base);
     ThrottledChartRedraw();
 }
@@ -555,6 +556,7 @@ string LegMeasureDraw(datetime t1, double p1, datetime t2, double p2)
     // P-TH3-PB-OFF (2026-09-21): the finished leg is a measurement only — the
     // old coupling that stored it on the active pattern as pivotBaseTop/Bottom
     // and re-drew the ladder is retired with the drawn base.
+    CalcAnchorRemember(LegReadAnchor(t1, t2), base);   // P-ANCHOR-LAST: newest committed leg owns the read
     return base;
 }
 

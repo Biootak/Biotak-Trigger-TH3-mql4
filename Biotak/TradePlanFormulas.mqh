@@ -239,7 +239,7 @@ datetime TradePlanLegAnchorRaw(const int tfMinutes)
    if(s_legAtrKnown[idx] && s_legAtrBars[idx] == nb) return s_legAtrAnchor[idx];
    datetime ans = 0;
    int smallN = 0;
-   double ref = CalculateWeightedATR(tf);   // the ATR layer's own per-TF-bar cache
+   double ref = CalculateWeightedATRLive(tf);   // the ATR layer's own per-TF-bar cache — detector stays LIVE
    if(ref > 0.0)
    {
       double small = ref * 0.5;
@@ -299,7 +299,9 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
    // P-LEGATR: an explicit anchor (knot as-of reads) always wins. A live read
    // with the switch ON resolves to the leg anchor; OFF or no CP found = live.
    datetime eff = anchor;
-   if(eff <= 0 && inpUseLegATR) eff = TradePlanLegAnchor(tfMinutes);
+   // P-ANCHOR-LAST: the LAST OBJECT switch is the chart-wide read, so it wins
+   // over the older P-LEGATR source; an explicit per-box anchor still wins over both.
+   if(eff <= 0 && CalcAnchorAt() <= 0 && inpUseLegATR) eff = TradePlanLegAnchor(tfMinutes);
    double atr = (eff > 0 ? CalculateWeightedATRAt(tf, eff) : CalculateWeightedATR(tf));
    if(!MathIsValidNumber(atr) || atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;

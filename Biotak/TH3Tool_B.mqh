@@ -1417,6 +1417,7 @@ void LegMeasureDragApply(const datetime curT, const double curP)
             LegMeasureBoxFromAnchors(base, nt1, np1, nt2, np2, false);
         }
     }
+    CalcAnchorFollow(base, LegReadAnchor(nt1, nt2));   // P-ANCHOR-LAST: the read follows the moving tip
 }
 
 // Right-click (or the line vanishing) mid-drag: put the leg back EXACTLY where
@@ -1486,6 +1487,7 @@ void LegMeasureDragEnd()
     LegReadWitness("drag", t1, t2, txt, otf, trusted);   // P-LM-25: the committed anchors
     if(trusted) LegMeasureTrack(base, txt, acc);
     LegMeasurePlateShow(base);         // the visit re-arms on the FINAL numbers
+    CalcAnchorFollow(base, LegReadAnchor(t1, t2));   // P-ANCHOR-LAST: an active leg follows its tip
 }
 
 #endif // TH3_TOOL_B_MQH

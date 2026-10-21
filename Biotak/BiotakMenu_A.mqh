@@ -128,19 +128,21 @@
 #define CIRC_HIDE_POS   -500
 #define CIRC_EDGE_TRIGGER 90
 #define CIRC_MIN_RADIUS  40
-//--- P-UI-161 — THE RING GROWS BY SHRINKING, NEVER BY DROPPING THE CIRCLE.
-//--- The button side S(n) holds 44 while the ring fits nine seats (the shipped
-//--- look, byte-identical), tapers to the 35px floor through the teens (P-UI-166
-//--- raised it from 30), and the radius follows the chord law
-//--- (S+CIRC_GAP)/(2·sin(π/n)) — capped by CircFitLimit, never below
-//--- CIRC_MIN_RADIUS. The surface seats at most CIRC_SEAT_CAP (12) — starred
-//--- items the capped circle cannot seat stay in the Tools menu (their star
-//--- stays on): excess degrades to the previous surface, never to a stack
-//--- (P-UI-13).
+//--- P-UI-161/166 — the TRAIN's taper (the near-edge degrade, never the ring): the
+//--- side holds 44 through nine, floors at 35, radius by the chord law capped at
+//--- CIRC_SEAT_CAP (12). The ring itself is TWO circles (P-UI-195), no stack (P-UI-13).
 #define CIRC_BTN_MIN     35
 //--- the membership STAR on every Tools cell — same canvas as the badge, so the
 //--- corner seat below is one number (star_off/star_on.bmp, baked by the generator).
 #define CIRC_STAR_SIZE   16
+//--- P-UI-195 (2026-10-21) — TWO CIRCLES: «این رینگ‌ها پیش فرض ۹ تا اصلی باشه و بقیه
+//--- دورش … در دایره دوم … ولی از دایره اول کوچیک‌تر باشه» + «شعاع بزرگ‌تر ولی بین دو
+//--- ایتم اصلی» + «بالا (۱۲ ساعت)، ساعتگرد»: the first nine SEATS at 44px/r80
+//--- (byte-identical — eight stars + the door draw where they did), every seat past
+//--- them (extra stars, then the door, still LAST) at 32px (baked circ_*_32.bmp) on
+//--- an outer circle that clears the inner discs, half an inner step clockwise.
+#define CIRC_RING1_SEATS    9
+#define CIRC_RING2_BTN_SIZE 32
 //--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the
 //--- hand really drag?» and «has the orb moved far enough to be worth saving?» — so a short
 //--- but deliberate drag moved nothing and stored nothing, and the next repaint put the orb
@@ -628,12 +630,13 @@ int CircItemAt(const int mx, const int my)
    if(g_ToolsOpen) return -1;   // the ring is hidden while the Tools fan is open
    // P-UI-161: the seat count and the button size are the BUILT ones (frozen
    // mid-drag) — the hit test must read the same grid the paint wrote.
+   // P-UI-195: the side is the SEAT's own (two circles draw two sides).
    const int n = CircPlacedCount();
-   const int bs = CircBtnSize();
    for(int i = 0; i < n; i++)
    {
       int ix, iy;
       CircLayout(i, ix, iy);
+      const int bs = CircSeatSize(i);
       int bx = ix - bs / 2;
       int by = iy - bs / 2;
       if(mx >= bx - CIRC_BG_MARGIN && mx <= bx + bs + CIRC_BG_MARGIN &&

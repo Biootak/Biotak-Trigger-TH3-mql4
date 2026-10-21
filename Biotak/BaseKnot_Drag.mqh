@@ -122,6 +122,10 @@ void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
    // BKCURSOR-OFF: the live path is the ONLY path — no anchor move and no
    // terminal drag means there is nothing to follow and nothing to paint.
    else return;   // nothing moved — skip the repaint too
+   // P-ANCHOR-LAST: the owner's read follows the hand, not only the release.
+   // Cost is one compare per moved event; the anchor itself changes only when
+   // the box crosses a bar, and the ATR layer then hits its (TF,bar) cache.
+   CalcAnchorFollow(id, (t2 > t1 ? t2 : t1));
    uint pkT = GetTickCount();   // P-PERF-43: the repaint is the other half of the lag
    BaseKnotDragPaint();
    uint pkD = GetTickCount() - pkT;
@@ -425,6 +429,7 @@ void BaseKnotDelete(const string id)
    string pfx = BaseKnotPrefix(id);
    if(pfx != "") ObjectsDeleteAll(0, pfx);   // one call wipes box + all children
    BaseKnotUnregister(id);
+   CalcAnchorForget(id);                     // P-ANCHOR-LAST: a deleted owner returns the chart to live
    ChartRedraw();
 }
 // Re-assert the border look on every committed box (Base Box card edits
@@ -767,6 +772,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    // native resize (P-BK-72) is measured against. Last write of the commit,
    // after every property this function owns, so nothing here can undo it.
    BaseKnotSelectBox(id);
+   CalcAnchorRemember(BaseKnotAnchorAt(id), id);   // P-ANCHOR-LAST: newest committed box owns the read
    ChartRedraw();
 }
 
@@ -1286,6 +1292,7 @@ if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
                   // ended the last one's window (the same ask the click-to-recall path makes).
                   BaseKnotInfoRearm(s_bkDragId);
                  BaseKnotSync(s_bkDragId);
+                 CalcAnchorFollow(s_bkDragId, BaseKnotAnchorAt(s_bkDragId));   // P-ANCHOR-LAST: an active box follows its edge
                 painted = true;
              }
             if(painted) ChartRedraw();

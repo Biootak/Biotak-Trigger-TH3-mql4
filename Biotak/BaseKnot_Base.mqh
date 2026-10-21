@@ -220,6 +220,8 @@ struct BaseKnotBox
    int    baseTFMin; // P-BK-36/38: the class LAST published (0 = legacy/unset) — the TF the
                      //              note names, the TF the node's LENGTH is classed by AND the
                      //              TF the break's story is read on
+   int    ownerTFMin; // P-BK-114: the ruler's owner TF from the box height (240%..360% of
+                      //              that TF's ATR); 0 = not measured yet
    int    nodeSide;  // P-BK-47/46: the SIDE the break's story names (0 = none) — published so
                      //              the live-price follow leaves a named trade alone. (The node's
                      //              TIME is not kept here: P-BK-77 finds it from the box' own
@@ -256,7 +258,7 @@ void BaseKnotSpanClear(BaseKnotSpan &sp)
    sp.life = 0; sp.still = 0; sp.tStart = 0; sp.tLast = 0; sp.tExit = 0;
 }
 //+------------------------------------------------------------------+
-//| P-BK-84 (2026-09-18) — THE CLASS' SPAN IS THE BASE'S OWN, AND THE  |
+//| P-BK-84 (2026-09-18) — THE DISPLAY SPAN IS THE BASE'S OWN, AND THE |
 //| BOX IS ONLY A FLOOR.                                              |
 //|                                                                  |
 //| The user: «این قانون شمارش کندل ها باید اضافه بشه … از روی همون که |
@@ -273,10 +275,20 @@ void BaseKnotSpanClear(BaseKnotSpan &sp)
 //| M5 on `3 * 5 > 11` and the whole box fell back to M1.               |
 //|                                                                  |
 //| The span is the UNION: the box' own two anchors (chart-free, stored |
-//| on the object — P-BK-80's floor, so a box dragged WIDE can never    |
-//| shrink the reading) and the base's own entry..exit (P-BK-41's own   |
-//| ends, so a box drawn NARROW can never shrink it either).            |
+//| on the object — P-BK-80's floor) and the base's own entry..exit     |
+//| (P-BK-41's own ends, so a box drawn NARROW can never shrink it).    |
 //| `b1`/`b2` stand in only while no base was measured at all.          |
+//|                                                                  |
+//| P-BK-112 (2026-10-21): THE CLASS NO LONGER MEASURES THIS SPAN. The  |
+//| user: «این گره زده مال چهار ساعته در صورتی که گره در تایم یک ساعته  |
+//| دیده میشه» — a 7-candle H1 base read H4 because this union crossed |
+//| the Fri->Mon close, and calendar minutes counted the market's own   |
+//| shutdown as base. The class is the base's own `still` count on the  |
+//| box' commit TF (`bars × commitTF`, BaseKnotBaseTFRead). This union  |
+//| is kept for the two readers that still want a time span: the hover's|
+//| REPORTED stand-still count (`BaseKnotRungHoldCount`) and the memo's |
+//| geometry key. A box WIDER than its base can no longer name a higher |
+//| rung — the inflation this rule was blind to.                        |
 //+------------------------------------------------------------------+
 void BaseKnotClassSpan(BaseKnotSpan &sp, const datetime b1, const datetime b2,
                        datetime &c1, datetime &c2)
@@ -331,19 +343,21 @@ struct BaseKnotNode
                       // the base, counted until price came back inside (or until now)
    double depStep;    // ... and that leg's reach past the edge, in movement steps (TH)
     //--- P-BK-75/106: the box' HEIGHT (the length the user's rule compares) and the THREE
-    //--- BANDS it was compared against: the node's own time's ATR (READ, at the box' own
-    //--- anchor) and the two rungs above it (DERIVED — that ATR scaled by the ladder's own
-    //--- √-law, BaseKnotRungScale), in price units. 0 = the pump never pushed that row, or
-    //--- pushed it while the ATR was not warm. Published on the record so the tooltip can
-    //--- spell the comparison without a second read.
+    //--- ATRs it was compared against: the node's own time's ATR and the two rungs above it,
+    //--- EACH READ at the box' own anchor (the pump pushes all three rows), in price units.
+    //--- The two upper rows are the actual composite ATR of that rung at the same bar, not
+    //--- the old √-law multiplication (`H1 x 2` was only right for H1 -> H4); the derived
+    //--- fallback exists only until the upper row is warm. 0 = no row / not warm.
     //--- P-BK-92 (2026-10-09, retired by P-BK-106): the three bands were the rungs' own TH.
     //--- TH is a fixed percentage of price (`price * pct / 100`), so a calm pair and a violent
     //--- one at the same price were typed by the SAME number — the user's own call was that
     //--- «به جای th باید از atr استفاده بشه».
     double   height;   // top - bot — «طول گره» is «ارتفاع باکس»
-    double   abTrig;   // the node's own time's ATR - the trigger band (the ONE measured number)
-    double   abPat;    // the pattern time's band - ATR x the ladder's own scale
-    double   abStr;    // the structure time's band - the pattern band scaled again
+    double   abTrig;   // the node's own time's ATR - the trigger band (read at the anchor)
+    double   abPat;    // the pattern time's ATR - read at the same anchor (derived only while cold)
+    double   abStr;    // the structure time's ATR - read at the same anchor (derived only while cold)
+    bool     abPatRead; // true = abPat is the pattern rung's OWN row, not the √-law fallback
+    bool     abStrRead; // true = abStr is the structure rung's OWN row, not the √-law fallback
    //--- P-BK-79: THE BAR ALL OF THE ABOVE WAS READ AT — the box' own story end (`storyT`),
    //--- or 0 for the live sizing preview, which has no base yet and asks for the live row.
    //--- Published for the same reason the abilities are: the tooltip prints the bands off
@@ -367,6 +381,17 @@ int BaseKnotFind(const string id)
    for(int i = 0; i < ArraySize(g_bkBoxes); i++)
       if(g_bkBoxes[i].id == id) return i;
    return -1;
+}
+// P-ANCHOR-LAST: a box' calculation time is its OWN story end (`storyT`, the
+// bar its base note/plan is read at). Only a box whose story is not ready
+// degrades to its right edge, never to "now".
+datetime BaseKnotAnchorAt(const string id)
+{
+   int k = BaseKnotFind(id);
+   if(k >= 0 && g_bkBoxes[k].storyT > 0) return g_bkBoxes[k].storyT;
+   string box = BaseKnotBoxName(BaseKnotPrefix(id));
+   if(ObjectFind(0, box) >= 0) return (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+   return 0;
 }
 static int         g_bkState      = BK_IDLE;
 static datetime    g_bkT1         = 0;
@@ -430,6 +455,45 @@ static double s_bkEngHunt[BK_ENG_ROW_MAX];
 static double s_bkEngTP1[BK_ENG_ROW_MAX];
 static double s_bkEngTP2[BK_ENG_ROW_MAX];
 static double s_bkEngTP3[BK_ENG_ROW_MAX];
+//--- P-BK-113: the OWNER-TF ATR the note's last line prints. The owner walk
+//--- lives ABOVE this module (ATR is not a class input), so the pump pushes the
+//--- one selected box' lower rungs here; the note only reads them back.
+#define BK_OWNER_ATR_MAX 12
+static int      s_bkOwnerTF[BK_OWNER_ATR_MAX];
+static datetime s_bkOwnerAnchor[BK_OWNER_ATR_MAX];
+static double   s_bkOwnerATR[BK_OWNER_ATR_MAX];
+static int      s_bkOwnerN    = 0;
+static int      s_bkOwnerNext = 0;
+void BaseKnotOwnerATRPush(const int tfMin, const datetime anchor, const double atr)
+{
+   if(tfMin <= 0) return;
+   datetime an = (anchor > 0 ? anchor : 0);
+   int slot = -1;
+   for(int i = 0; i < s_bkOwnerN; i++)
+      if(s_bkOwnerTF[i] == tfMin && s_bkOwnerAnchor[i] == an) { slot = i; break; }
+   if(slot < 0)
+   {
+      slot = s_bkOwnerNext;
+      s_bkOwnerNext = (s_bkOwnerNext + 1) % BK_OWNER_ATR_MAX;
+      if(s_bkOwnerN < BK_OWNER_ATR_MAX) s_bkOwnerN++;
+   }
+   s_bkOwnerTF[slot] = tfMin;
+   s_bkOwnerAnchor[slot] = an;
+   s_bkOwnerATR[slot] = (atr > 0.0 ? atr : 0.0);
+}
+bool BaseKnotOwnerATRGet(const int tfMin, const datetime anchor, double &atr)
+{
+   atr = 0.0;
+   if(tfMin <= 0) return false;
+   datetime an = (anchor > 0 ? anchor : 0);
+   for(int i = 0; i < s_bkOwnerN; i++)
+      if(s_bkOwnerTF[i] == tfMin && s_bkOwnerAnchor[i] == an)
+      {
+         atr = s_bkOwnerATR[i];
+         return (atr > 0.0);
+      }
+   return false;
+}
 static int    s_bkEngN     = 0;
 static uint   s_bkEngEpoch = 0;
 static uint   s_bkEngSeen  = 0;
@@ -795,9 +859,9 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
                (sp.life > 0 ? " · " + IntegerToString(sp.life) + " bars" : "");
     tt += entryLine2;   // BKE2-OFF: always "" now (kept so the signature still compiles)
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
-   datetime cs1, cs2;                                    // P-BK-84: the class' span — box ∪ base
+   datetime cs1, cs2;                                    // P-BK-112: the REPORTED span — box ∪ base
    BaseKnotClassSpan(sp, t1, t2, cs1, cs2);
-   tt += BaseKnotBaseLine(sp.still, cs1, cs2, top, bot, tfMin);   // P-BK-84: the class, off the BASE'S OWN entry..exit (the node's own time, the same on every chart)
+    tt += BaseKnotBaseLine(sp.still, cs1, cs2, top, bot, tfMin, (k >= 0 ? g_bkBoxes[k].baseTFMin : 0));   // P-BK-114: the owner TF; P-BK-112: candle-count fallback
    if(sp.life > 0)   // P-BK-40/41/42: what the note's number is MADE OF, and HOW it is counted
       tt += "\n     " + IntegerToString(sp.life) + " bars = the candles between the ENTRY candle " +
             "and the EXIT candle (entry not counted, exit counted) · " + IntegerToString(sp.still) +

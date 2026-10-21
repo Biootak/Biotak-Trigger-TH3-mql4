@@ -631,9 +631,19 @@ int CircPlacedCount()
    return CircPlacedCountLive();
 }
 
-void CircNoteBuilt() { s_circBuiltSeats = CircPlacedCountLive(); }   // note BEFORE a create: CircLayout reads this n
+void CircNoteBuilt()
+{
+   s_circBuiltSeats = CircPlacedCountLive();   // note BEFORE a create: CircLayout reads this n
+   // P-UI-195: the two circles name themselves once per build (open / restore /
+   // relayout), through the FLUSHED channel (P-LOG-3) — the seat count, the split,
+   // the outer side and radius, and whether the door really rides the outer one.
+   DrawStripDiagEmit(StringFormat("[P-UI-195] seats=%d ring1=%d ring2=%d s1=%d s2=%d r2=%.1f door_outer=%d",
+                                  s_circBuiltSeats, CircRing1Count(), CircRing2Count(),
+                                  CIRC_BTN_SIZE, CIRC_RING2_BTN_SIZE, CircRing2Radius(),
+                                  (CircSeatOuter(s_circBuiltSeats - 1) ? 1 : 0)));
+}
 
-int CircBtnSize()  { return CircBtnSizeForN(CircPlacedCount()); }
+int CircBtnSize()  { return CircBtnSizeForN(CircPlacedCount()); }   // the TRAIN's taper (P-UI-166)
 
 void CircLayout(const int i, int &x, int &y)
 {
@@ -642,15 +652,13 @@ void CircLayout(const int i, int &x, int &y)
    int ox = g_UI.menuX;
    int oy = g_UI.menuY;
 
-   int n = CircPlacedCount();   // P-UI-161: the ring's own seat count
-   int s = CircBtnSize();       // ...and the side it is drawn at
-
    // P-UI-164: the ONE shape decision — CircPlacedCountLive reads this same
    // call, so the painted layout and the capacity can never be two grids.
    bool vertical;
    int dir;
    if(CircRailShape(vertical, dir))
    {
+      int s = CircBtnSize();   // the train's one side (P-UI-166) — CircSeatSize answers the same
       int step = s + CIRC_GAP;
       // P-UI-26: clamp the rail's CROSS axis so buttons never draw half
       // off-chart. One uniform shift for the whole train — never a per-item
@@ -668,10 +676,24 @@ void CircLayout(const int i, int &x, int &y)
          x = ox + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
       }
    }
+   else if(CircSeatOuter(i))
+   {
+      // P-UI-195: the SECOND circle — the stars past the ninth and the Tools door,
+      // on a bigger radius at 32px, starting half an inner step clockwise from 12
+      // o'clock so every outer seat sits BETWEEN two inner seats.
+      int n1 = CircRing1Count();
+      int n2 = CircRing2Count();
+      double r   = CircRing2Radius();
+      double deg = (CircRing2StartDeg() + ((n2 > 0) ? 360.0 * (i - n1) / n2 : 0.0)) * M_PI / 180.0;
+      x = ox + (int)MathRound(r * MathCos(deg));
+      y = oy + (int)MathRound(r * MathSin(deg));
+   }
    else
    {
+      // P-UI-195: the FIRST circle — the first nine stars, the shipped 44px look.
+      int n1 = MathMax(1, CircRing1Count());
       double r = CircRadius();
-      double deg = (-90.0 + 360.0 * i / n) * M_PI / 180.0;
+      double deg = (-90.0 + 360.0 * i / n1) * M_PI / 180.0;
       x = ox + (int)MathRound(r * MathCos(deg));
       y = oy + (int)MathRound(r * MathSin(deg));
    }

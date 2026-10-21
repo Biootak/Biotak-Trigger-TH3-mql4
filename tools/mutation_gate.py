@@ -2574,11 +2574,11 @@ MUTATIONS = [
     {
         "id": "P-UI-164d",
         "gate": "regression",
-        "rule": "the ring is drawn only where the chord fits (CircRingFits tests the chord, not the shipped 80)",
-        "what": "the ring-fit fallback tests CircRadiusForN(9) (the shipped 80) — the squeeze band draws a capped circle below its chord again (the P-UI-13 stack)",
+        "rule": "the ring is drawn only where BOTH circles fit (the first circle's chord AND the outer circle's own reach)",
+        "what": "CircRingFits stops testing the outer circle's reach — the second circle draws past the chart edge, and the shape gate and the paint disagree again",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   return CircChordRadiusForN(9) <= fit;",
-        "replace": "   return CircRadiusForN(9) <= fit;   // MUTATION: the shipped 80, not the chord",
+        "find": "   if(CircRing2Count() > 0 && CircRing2Radius() > CircFitLimitOuter()) return false;",
+        "replace": "   if(false) return false;   // MUTATION: the outer circle's reach is not tested",
         "expect": "P-UI-164",
     },
     #--- P-UI-165 (2026-10-17) — THE PLACE BELONGS TO THE PAIR. P-UI-131e's
@@ -2638,64 +2638,94 @@ MUTATIONS = [
         "replace": "   GlobalVariableDel(GVHomeNameShared(id,false)); GlobalVariableDel(GVHomeNameShared(id,true));   // MUTATION: sweeps the shared pair",
         "expect": "P-UI-165",
     },
-    #--- P-UI-166 (2026-10-17) — THE SHRINKING STOPS AT 35, THE SURFACE STOPS
-    #--- AT TWELVE. The user's report («ایکون ها یک ذره کوچیک شدن اگر تعداد
-    #--- ایتم ها زیاد بشه باز خیلی کوچیک میشن»): every star past the ninth shrank
-    #--- the WHOLE circle (43→39→35→32→30), so a full catalog seated sixteen
-    #--- 30px discs beside a 28px glyph while a drag to an edge could seat a
-    #--- longer tail on the train. The floor is 35 (CIRC_BTN_MIN is the table's
-    #--- only owner of it now) and the ring AND the train seat CIRC_SEAT_CAP (12)
-    #--- at most — the excess star stays in the Tools menu with its star ON.
-    #--- Each inverse must fail §57 naming P-UI-166.
+    #--- P-UI-195 (2026-10-21) — TWO CIRCLES, by the user's own order. «این
+    #--- رینگ‌ها پیش فرض ۹ تا اصلی باشه و بقیه دورش از یک طرف شروع به چینش در
+    #--- دایره دوم بکنه ولی از دایره اول کوچیک‌تر باشه» + «شعاع بزرگ‌تر ولی بین دو
+    #--- ایتم اصلی … سایز کوچیک‌تر از سایز دکمه های اولی» + «بالا (۱۲ ساعت)،
+    #--- ساعتگرد». P-UI-161's taper and P-UI-166's twelve-seat cap are retired
+    #--- for the ring: nine inner seats at 44px/r80, the rest plus the door on a
+    #--- 32px outer circle at a bigger radius, half an inner step clockwise from
+    #--- 12 o'clock (between two inner seats). The train keeps 35/12.
+    #--- Each inverse must fail §57 naming P-UI-195.
     {
-        "id": "P-UI-166a",
+        "id": "P-UI-195a",
         "gate": "regression",
-        "rule": "the ring's fit walk stops at CIRC_SEAT_CAP (twelve seats)",
-        "what": "the walk tops out at RingCount() again — sixteen stars re-seat a tiny circle (the reported defect)",
+        "rule": "the first circle is the shipped nine; every seat past it rides the second",
+        "what": "CircSeatOuter never answers the outer circle — the tenth star returns to the main ring and the second circle stays empty",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "      int top = MathMin(n, CIRC_SEAT_CAP);   // P-UI-166: twelve at most",
-        "replace": "      int top = n;   // MUTATION: the cap is gone",
-        "expect": "P-UI-166",
+        "find": "bool CircSeatOuter(const int i) { return (i >= CircRing1Count()); }",
+        "replace": "bool CircSeatOuter(const int i) { return false; }   // MUTATION: one circle again",
+        "expect": "P-UI-195",
     },
     {
-        "id": "P-UI-166b",
+        "id": "P-UI-195b",
         "gate": "regression",
-        "rule": "the taper's floor is 35 (CIRC_BTN_MIN)",
-        "what": "CIRC_BTN_MIN drops back to 30 — sixteen discs inside one circle, each smaller than the glyph's own 28px box",
+        "rule": "the second circle is SMALLER than the first (the user's own order)",
+        "what": "CIRC_RING2_BTN_SIZE is 44 — the outer circle draws at the inner side and the order «کوچیک‌تر» is gone",
         "file": "Biotak/BiotakMenu_A.mqh",
-        "find": "#define CIRC_BTN_MIN     35",
-        "replace": "#define CIRC_BTN_MIN     30",
-        "expect": "P-UI-166",
+        "find": "#define CIRC_RING2_BTN_SIZE 32",
+        "replace": "#define CIRC_RING2_BTN_SIZE 44",
+        "expect": "P-UI-195",
     },
     {
-        "id": "P-UI-166c",
+        "id": "P-UI-195c",
         "gate": "regression",
-        "rule": "the train honours the seat cap too (a drag to an edge never seats a thirteenth tail)",
+        "rule": "the second circle starts half an inner step clockwise from 12 o'clock",
+        "what": "CircRing2StartDeg returns -90 — every outer seat sits radially behind an inner seat instead of BETWEEN two",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   return -90.0 + step / 2.0;",
+        "replace": "   return -90.0;   // MUTATION: radially behind the first circle",
+        "expect": "P-UI-195",
+    },
+    {
+        "id": "P-UI-195d",
+        "gate": "regression",
+        "rule": "the outer circle clears the inner discs (gap + both half-sides)",
+        "what": "CircRing2Radius drops the inner-disc clearance — the two circles overlap and their skins draw on one pixel",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   double r = CircRadius() + CIRC_BTN_SIZE / 2.0 + CIRC_GAP + CIRC_RING2_BTN_SIZE / 2.0;",
+        "replace": "   double r = CircRadius();   // MUTATION: the circles overlap",
+        "expect": "P-UI-195",
+    },
+    {
+        "id": "P-UI-195e",
+        "gate": "regression",
+        "rule": "the ring seats every starred item on the two circles",
+        "what": "CircPlacedCountLive falls back to nine — the tail stars and the door drop off the ring again",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "      s_liveR = n;",
+        "replace": "      s_liveR = 9;   // MUTATION: the tail drops",
+        "expect": "P-UI-195",
+    },
+    {
+        "id": "P-UI-195f",
+        "gate": "regression",
+        "rule": "the train honours the seat cap (a drag to an edge never seats a thirteenth tail)",
         "what": "CircRailCapacity walks from RingCount() again — the edge seats tail stars the ring would not",
         "file": "Biotak/BiotakMenu_Ring.mqh",
         "find": "      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too",
         "replace": "      s_liveR = CircRailCapacity(n, vertical, dir);   // MUTATION: the train is uncapped",
-        "expect": "P-UI-166",
+        "expect": "P-UI-195",
     },
     {
-        "id": "P-UI-166d",
+        "id": "P-UI-195g",
         "gate": "regression",
-        "rule": "CircRingFits tests the capped count (the shape gate agrees with the walk)",
-        "what": "the ring-fit gate tests RingCount() again — the shape decision and the drawn count disagree",
-        "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   int n = MathMin(RingCount(), CIRC_SEAT_CAP);   // P-UI-166: the ring draws twelve at most",
-        "replace": "   int n = RingCount();   // MUTATION: the cap is gone",
-        "expect": "P-UI-166",
+        "rule": "the train's taper floor is 35 (CIRC_BTN_MIN)",
+        "what": "CIRC_BTN_MIN drops back to 30 — the edge train seats discs smaller than the glyph's own 28px box",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "#define CIRC_BTN_MIN     35",
+        "replace": "#define CIRC_BTN_MIN     30",
+        "expect": "P-UI-195",
     },
     {
-        "id": "P-UI-166e",
+        "id": "P-UI-195h",
         "gate": "regression",
-        "rule": "CIRC_SEAT_CAP is 12",
+        "rule": "CIRC_SEAT_CAP is 12 (the train's cap, P-UI-166)",
         "what": "the cap is raised out of the design — twelve becomes whatever a future edit says",
         "file": "Biotak/BiotakMenu_Ring.mqh",
         "find": "#define CIRC_SEAT_CAP 12",
         "replace": "#define CIRC_SEAT_CAP 99",
-        "expect": "P-UI-166",
+        "expect": "P-UI-195",
     },
     #--- P-SESS (2026-10-17) — THE SESSIONS CELL. CIR_SESSIONS (19) sits ABOVE the
     #--- card-number space, so the identity fallback cannot answer it: FeaturePanel
@@ -4186,6 +4216,36 @@ MUTATIONS = [
         "find": "int str2Idx = TradePlanLadderIndex(Period()) + 2;",
         "replace": "int str2Idx = TradePlanLadderIndex(Period()) + 1;  // MUTATION",
         "expect": "P-LBL-13",
+    },
+    {
+        "id": "P-ANCHOR-LAST",
+        "gate": "regression",
+        "rule": "the newest committed LegMeasure/BaseKnot owns the one ATR anchor",
+        "what": "a committed LegMeasure stops publishing its anchor - the switch has no candidate",
+        "file": "Biotak/TH3Tool_C.mqh",
+        "find": "    CalcAnchorRemember(LegReadAnchor(t1, t2), base);   // P-ANCHOR-LAST: newest committed leg owns the read",
+        "replace": "    // MUTATION: no anchor published",
+        "expect": "P-ANCHOR-LAST",
+    },
+    {
+        "id": "P-ANCHOR-LASTb",
+        "gate": "regression",
+        "rule": "the note never repeats the node's own ATR and percent in an owner row",
+        "what": "the owner row prints on a TF whose ATR/% are already on the face - the duplicate info line is back",
+        "file": "Biotak/BaseKnot_Note.mqh",
+        "find": "   if(tfs[owner] == nd.nodeTF ||\n      (up1 > 0 && nd.abPatRead && nd.abPat > 0.0 && tfs[owner] == up1) ||\n      (up2 > 0 && nd.abStrRead && nd.abStr > 0.0 && tfs[owner] == up2)) return \"\";",
+        "replace": "   if(false) return \"\";   // MUTATION: the duplicate row is back",
+        "expect": "the duplicate info bar is back",
+    },
+    {
+        "id": "P-ANCHOR-LASTc",
+        "gate": "regression",
+        "rule": "the active owner follows the story BaseKnotSync just published",
+        "what": "BaseKnotSync stops re-anchoring the active owner on the published story - a freshly drawn box keeps the live read",
+        "file": "Biotak/BaseKnot_Plan.mqh",
+        "find": " if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);",
+        "replace": "",
+        "expect": "P-ANCHOR-LAST",
     },
 ]
 
