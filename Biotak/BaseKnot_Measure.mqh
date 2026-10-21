@@ -1175,47 +1175,9 @@ bool BaseKnotNoteAtCorner(const string id)
    if(id == "") return true;
    return (id == BaseKnotSelectedId());
 }
-// The row's own keeper — called from the existing 500 ms pump (BaseKnotSyncBadges), so the
-// corner follows a selection change, a mode change, a pushed slot or a box that left this TF
-// without a new event path of its own. NOTHING IS WRITTEN while nothing changed.
-void BaseKnotNoteCornerRefresh()
-{
-   string nm = BaseKnotCornerName();
-   if(nm == "") return;
-   BaseKnotCornerToastTick();   // BKCORNER-TOAST: the 3 s life is served by the same pump
-   if(!BaseKnotNoteInCorner())
-   {
-      BaseKnotCornerFamilyWipe();   // the box-side home owns the note now
-      s_bkCornerId    = "";
-      s_bkCornerDirty = false;      // nothing is owed while the rung is not the corner one
-      return;
-   }
-   if(g_bkState == BK_PREVIEW)
-   {
-      s_bkCornerDirty = true;   // the live writer owns the row while the user draws — the NEXT round
-      return;                    // re-decides, so a cancelled BAND cannot leave its preview text behind
-   }
-   string id = BaseKnotSelectedId();
-   if(id != "" && !BaseKnotVisibleNow(id)) id = "";   // a box hidden on this TF claims no row
-   if(id == s_bkCornerId && !s_bkCornerDirty)
-   {
-      // Steady state: not one chart write. The heal reads the row and its plate — something
-      // else (a chart-wide cleanup, the user's own delete) may have taken the family away,
-      // and a readout that silently disappears is the bug this keeper exists for.
-      if(id == "" || (ObjectFind(0, nm) >= 0 && ObjectFind(0, BaseKnotCornerPlateName()) >= 0)) return;
-      s_bkCornerDirty = true;   // rebuild it below
-   }
-   s_bkCornerId = id;
-   s_bkCornerDirty = false;
-   if(id == "")
-   {
-      BaseKnotCornerFamilyWipe();   // nothing answers: a stale note is worse than none
-      BaseKnotCornerToastReset();   // a later selection of the same box is a NEW toast
-      return;
-   }
-   BaseKnotSync(id);   // the ONE writer rebuilds the box AND its note — into the row
-   ChartRedraw();
-}
+//--- P-BK-115a (2026-10-21): `BaseKnotNoteCornerRefresh` — the row's keeper — and its own
+//--- Sync count moved to BaseKnot_Note.mqh (the note's home) when this file crossed the
+//--- 1500-line ceiling (§7: touch it = split it by owner, same names, same output).
 // ONE candle's "is it inside the box" read — the BODY is the criterion (both
 // open and close inside [bot,top], boundary INCLUSIVE, direction-free): wicks may
 // pierce the band, a candle whose BODY is outside is not part of the base.

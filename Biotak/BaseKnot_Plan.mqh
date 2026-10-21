@@ -1328,9 +1328,8 @@ void BaseKnotSync(const string id)
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
                       " — the plan's own TP" + IntegerToString(tk) + " of " + BaseKnotTFName(baseTF) + ")", tfMask, false);
    }
-    ObjectDelete(0, BaseKnotTPName(pfx));   // BKTPR-OFF: purge a pre-P-BK-50 build's single tick
-   ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
-   ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
+   BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, baseTF, nd.anchor);   // P-BK-116: every line's own pips + money at its end
+   ObjectDelete(0, BaseKnotTPName(pfx)); ObjectDelete(0, BaseKnotDelName(pfx)); ObjectDelete(0, BaseKnotBuyName(pfx));   // BKTPR-OFF / NOBKDEL / NOBUYSELL: purge older builds' retired badges
    // P-BK-58: WHERE this box' note is drawn is ONE question, asked once (BaseKnotNoteAtCorner):
    // the family's row for the selected/newest box in the corner mode, the box' own corner
    // otherwise. A box the row does not answer keeps NO box-side note in that mode — the note

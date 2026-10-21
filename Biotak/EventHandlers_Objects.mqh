@@ -332,7 +332,7 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
        // TH is below BaseKnotTool (THCalculations, P-BK-92, was ATR), so Lite —
        // which has no RefreshOnBar — hands the same TH points in from its tick pump.
        // P-BK-46: and the same pump hands the knots' EngSL risk in (BaseKnotEngPump).
-        if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotStepPush(THAbilityPriceNorm(inpTHVolNorm, Period(), 0)); BaseKnotEngPump(); BaseKnotSyncBadges(); TradePlanLiveTick(); }
+        if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotStepPush(THAbilityPriceNorm(inpTHVolNorm, Period(), 0)); BaseKnotEngPump(); BaseKnotSyncBadges(); BaseKnotNoteWitness(); BaseKnotPipWitness(); TradePlanLiveTick(); }   // P-BK-115a/116: the keeper's and the column's pulses, on the flushed channel
     }
 #endif
 

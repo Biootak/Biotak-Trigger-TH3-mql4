@@ -369,6 +369,12 @@ static string s_bkToastKey     = "";      // the box the window belongs to
 static bool   s_bkToastPaused  = false;   // the cursor is on the toast: its clock is stopped
 static int    s_bkToastRemain  = 0;       // ms left when the pause began
 static int    s_bkToastX = 0, s_bkToastY = 0, s_bkToastW = 0, s_bkToastH = 0;   // last painted rect
+//--- P-BK-115a (2026-10-21): THE TOAST OWNS THE FAMILY'S OWNERSHIP, so its state is asked,
+//--- never inferred. The keeper (`BaseKnotNoteCornerRefresh`, this file) used to
+//--- read "the row is gone" as damage — the same read that is TRUE the moment the window
+//--- spends and the family is deleted — so it Synced and redrew the chart twice a second for
+//--- ever on a still chart. One question, one answer, answered here.
+bool BaseKnotCornerToastIsArmed() { return s_bkToastArmed; }
 void BaseKnotCornerToastArm()
 {
    s_bkToastArmed  = true;
@@ -419,12 +425,279 @@ void BaseKnotCornerToastTick()
    if(s_bkToastVisible) { BaseKnotCornerFamilyWipe(); s_bkToastVisible = false; BaseKnotCornerToastRect(0, 0, 0, 0); }
    s_bkToastArmed = false;
 }
+//--- P-BK-115a (2026-10-21): THE KEEPER LIVES HERE NOW — with the state it reads. §7 sent it
+//--- out of BaseKnot_Measure.mqh the day this change pushed that file past the 1500 ceiling;
+//--- same name, same body, same output. It shares the 500 ms pump (`BaseKnotSyncBadges`), so the
+//--- corner follows a selection change, a mode change, a pushed slot or a box that left this TF
+//--- without a new event path of its own. NOTHING IS WRITTEN while nothing changed.
+//--- `s_bkNoteSyncN` / `s_bkNoteSyncMs` are the witness' own numbers (BaseKnot_Witness.mqh).
+static int  s_bkNoteSyncN  = 0;
+static uint s_bkNoteSyncMs = 0;   // the WORST Sync of the window, not the last
+int BaseKnotNoteSyncTake(uint &msWorst)
+{
+   int n = s_bkNoteSyncN;
+   msWorst = s_bkNoteSyncMs;
+   s_bkNoteSyncN = 0;
+   s_bkNoteSyncMs = 0;
+   return n;
+}
+void BaseKnotNoteCornerRefresh()
+{
+   string nm = BaseKnotCornerName();
+   if(nm == "") return;
+   BaseKnotCornerToastTick();   // BKCORNER-TOAST: the 3 s life is served by the same pump
+   if(!BaseKnotNoteInCorner())
+   {
+      BaseKnotCornerFamilyWipe();   // the box-side home owns the note now
+      s_bkCornerId    = "";
+      s_bkCornerDirty = false;      // nothing is owed while the rung is not the corner one
+      return;
+   }
+   if(g_bkState == BK_PREVIEW)
+   {
+      s_bkCornerDirty = true;   // the live writer owns the row while the user draws — the NEXT round
+      return;                    // re-decides, so a cancelled BAND cannot leave its preview text behind
+   }
+   string id = BaseKnotSelectedId();
+   if(id != "" && !BaseKnotVisibleNow(id)) id = "";   // a box hidden on this TF claims no row
+   if(id == s_bkCornerId && !s_bkCornerDirty)
+   {
+      // Steady state: not one chart write. The heal reads the row and its plate — something
+      // else (a chart-wide cleanup, the user's own delete) may have taken the family away,
+      // and a readout that silently disappears is the bug this keeper exists for.
+      // P-BK-115a — BUT ONLY WHILE A NOTE IS SUPPOSED TO BE UP. The toast DELETES the family
+      // when its 3 s window ends, so from that moment "the row is missing" is the note's own
+      // state, not damage — and this test read it as damage on every round: `BaseKnotSync`
+      // (one bar walk + the node read + the whole family's writes) plus `ChartRedraw()`,
+      // twice a second, for ever, with nothing on the chart changing. MEASURED by
+      // construction, not by eye: once `s_bkToastArmed` is false `BaseKnotWriteInfo`'s toast
+      // branch can NEVER repaint (its key is unchanged, so nothing re-arms it), while this
+      // line re-set `s_bkCornerDirty` every 500 ms — a write loop with no writer, and §5's
+      // "at rest: zero writes, zero polling" broken. The question is the TOAST's, so the
+      // keeper asks it: a spent window means the family's ABSENCE is the state, and a still
+      // chart pays one bool.
+      if(id == "") return;
+      if(!BaseKnotCornerToastIsArmed()) return;   // P-BK-115a: the toast owns the absence
+      if(ObjectFind(0, nm) >= 0 && ObjectFind(0, BaseKnotCornerPlateName()) >= 0) return;
+      s_bkCornerDirty = true;   // rebuild it below
+   }
+   s_bkCornerId = id;
+   s_bkCornerDirty = false;
+   if(id == "")
+   {
+      BaseKnotCornerFamilyWipe();   // nothing answers: a stale note is worse than none
+      BaseKnotCornerToastReset();   // a later selection of the same box is a NEW toast
+      return;
+   }
+   uint bkKeeperT0 = GetTickCount();
+   BaseKnotSync(id);   // the ONE writer rebuilds the box AND its note — into the row
+   {   // P-BK-115a: the witness' own number — how many Syncs this keeper issued, and the worst
+      uint bkKeeperD = GetTickCount() - bkKeeperT0;
+      s_bkNoteSyncN++;
+      if(bkKeeperD > s_bkNoteSyncMs) s_bkNoteSyncMs = bkKeeperD;
+   }
+   ChartRedraw();
+}
 void BaseKnotCornerWipe()
 {
    BaseKnotCornerFamilyWipe();
    BaseKnotCornerToastReset();
    s_bkCornerId    = "";
    s_bkCornerDirty = true;
+}
+//+------------------------------------------------------------------+
+//| P-BK-116 (2026-10-21) — THE END OF EVERY LINE SAYS WHAT IT IS    |
+//| WORTH: pips, then money.                                         |
+//|                                                                  |
+//| User order, on a knot whose Entry/SL/TP lines carry a tooltip    |
+//| only: «مقدار پیپ و دلاری هر کدوم در آخر هر خط بنویس ولی جوری باشه    |
+//| که چارت رو شلوغ نکنه». So the ink is a COLUMN at the right edge  |
+//| (the very edge the TP ticks hug, P-BK-50), one 7 pt row per line, |
+//| in the LINE'S OWN ink — and it exists for ONE box: the selected  |
+//| one (or the newest while nothing is selected), the same answer   |
+//| the corner note already uses (BaseKnotSelectedId). A box that   |
+//| does not answer deletes its own rows, so a selection change      |
+//| leaves no ghost column behind.                                   |
+//|                                                                  |
+//| WHERE THE MONEY COMES FROM (one basis, stated once): the STOP's  |
+//| pips ARE the risk (hPips), so the position is sized from          |
+//| `inpBKRiskPct` of the balance — lot = risk / (stop pips x pip    |
+//| value) — and every other line is its own pips at that lot. No    |
+//| second size, no second risk: one lot, one account currency, and  |
+//| the terminal's own tick value does the conversion (never a        |
+//| hard-coded $10). 0% = the ink is off and NOTHING is guessed.     |
+//|                                                                  |
+//| COST: writes only on a real change (name/text/x/y/ink compared   |
+//| first), one ChartTimePriceToXY per row, at most five rows, and   |
+//| only while a box is selected — a still frame writes nothing.     |
+//+------------------------------------------------------------------+
+static string s_bkPipOwner = "";   // the box whose column is on the chart ("" = none)
+//--- The column's own numbers, for the flushed witness (`BaseKnotPipWitness`, BaseKnot_Witness).
+//--- This file sits inside BaseKnotTool and may not call `DrawStripDiagEmit`; the pair below is
+//--- WRITE-then-read, and the reader says a line only when the string MOVED — so a still chart
+//--- is silent and every real recompute is one line with its own arithmetic.
+static string s_bkPipWitLive = "";
+static string s_bkPipWitSeen = "";
+string BaseKnotPipWitTake()
+{
+   if(s_bkPipWitLive == s_bkPipWitSeen) return "";
+   s_bkPipWitSeen = s_bkPipWitLive;
+   return (s_bkPipWitSeen == "" ? "none" : s_bkPipWitSeen);
+}
+string BaseKnotPipInkName(const string pfx, const int kind, const int k = 0)
+{
+   if(pfx == "") return "";
+   if(kind == 0) return pfx + "PIPENTRY";
+   if(kind == 1) return pfx + "PIPSL";
+   return pfx + "PIPTP" + IntegerToString(k);
+}
+void BaseKnotPipInkWipe(const string pfx)
+{
+   if(pfx == "") return;
+   ObjectDelete(0, BaseKnotPipInkName(pfx, 0));
+   ObjectDelete(0, BaseKnotPipInkName(pfx, 1));
+   for(int k = 1; k <= BK_TP_PLAN_MAX; k++) ObjectDelete(0, BaseKnotPipInkName(pfx, 2, k));
+}
+// Account currency per ONE pip at 1.00 lot — the terminal's own tick value, scaled to the
+// chart's own pip (the same BaseKnotPipSize every other number on the knot is measured in).
+double BaseKnotMoneyPerPip()
+{
+   double pip = BaseKnotPipSize();
+   if(pip <= 0.0) return 0.0;
+   double tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double ts = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tv > 0.0 && ts > 0.0) return tv * (pip / ts);
+   double cs = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE);
+   return (cs > 0.0 ? cs * pip : 0.0);
+}
+// The lot the risk % buys for THIS stop, on the symbol's own step/min/max.
+double BaseKnotRiskLot(const double slPips)
+{
+   if(slPips <= 0.0 || inpBKRiskPct <= 0.0) return 0.0;
+   double per = BaseKnotMoneyPerPip();
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(per <= 0.0 || bal <= 0.0) return 0.0;
+   double risk = bal * inpBKRiskPct / 100.0;
+   if(risk <= 0.0) return 0.0;
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0) step = 0.01;
+   double lot = MathFloor(risk / (slPips * per) / step) * step;
+   double mn = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double mx = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   if(mx > 0.0 && lot > mx) lot = mx;
+   if(mn > 0.0 && lot < mn) lot = mn;
+   return (lot > 0.0 ? NormalizeDouble(lot, 2) : 0.0);
+}
+string BaseKnotMoneyText(const double money)
+{
+   if(money <= 0.0) return "";
+   string cur = AccountInfoString(ACCOUNT_CURRENCY);
+   string sym = (cur == "USD" ? "$" : (cur == "" ? "$" : cur + " "));
+   return sym + DoubleToString(money, money < 100.0 ? 1 : 0);
+}
+// Does a row at `y` land on one already placed? `lineH` is the font's own leading, so two
+// rows closer than that would print through each other.
+bool BaseKnotPipClash(const int y, const int &used[], const int n, const int lineH)
+{
+   for(int u = 0; u < n; u++) if(MathAbs(y - used[u]) < lineH - 2) return true;
+   return false;
+}
+// One row: pips + money, written only when it moved.
+bool BaseKnotPipInkRow(const string nm, const int x, const int y, const string txt, const color clr)
+{
+   if(nm == "" || txt == "") return false;
+   bool have = (ObjectFind(0, nm) >= 0);
+   if(have && (int)ObjectGetInteger(0, nm, OBJPROP_TYPE) != OBJ_LABEL) { ObjectDelete(0, nm); have = false; }
+   if(have &&
+      (int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE) == x &&
+      (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE) == y &&
+      (int)ObjectGetInteger(0, nm, OBJPROP_COLOR) == (int)clr &&
+      ObjectGetString(0, nm, OBJPROP_TEXT) == txt) return true;
+   if(!have && !ObjectCreate(0, nm, OBJ_LABEL, 0, 0, 0)) return false;
+   ObjectSetString(0, nm, OBJPROP_TEXT, txt);
+   ObjectSetString(0, nm, OBJPROP_FONT, inpFontName);
+   ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, PnlPt(BK_PT_PIP));
+   ObjectSetInteger(0, nm, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, nm, OBJPROP_CORNER, CORNER_LEFT_UPPER);   // the projection's own pixel, never a right-edge distance
+   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, nm, OBJPROP_ANCHOR, ANCHOR_RIGHT_LOWER);   // the ink sits ON the line, inside the plot
+   ObjectSetInteger(0, nm, OBJPROP_BACK, false);
+   ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_CHART_LABEL);
+   return true;
+}
+// The column. `dir` + `baseTF` + `anchor` are the SAME owners the drawn legs were read from,
+// so the ink can never name a level the lines did not draw (the tick loop asks
+// BaseKnotTPLevel exactly as the Sync did).
+void BaseKnotPipInk(const string id, const double entry, const double sl, const double offPips,
+                   const double hPips, const int dir, const int baseTF, const datetime anchor)
+{
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   bool sel = (id == BaseKnotSelectedId());
+   if(!sel)
+   {
+      if(s_bkPipOwner == id) { BaseKnotPipInkWipe(pfx); s_bkPipOwner = ""; }
+      s_bkPipWitLive = "";
+      return;   // one box wears the column, and a selection change takes the old one with it
+   }
+   if(s_bkPipOwner != "" && s_bkPipOwner != id) BaseKnotPipInkWipe(BaseKnotPrefix(s_bkPipOwner));
+   s_bkPipOwner = id;
+   double per = BaseKnotMoneyPerPip();
+   double lot = BaseKnotRiskLot(hPips);
+   datetime edge = BaseKnotTPEdgeTime();
+   int ex = 0, ey = 0;
+   if(entry <= 0.0 || sl <= 0.0 || per <= 0.0 || lot <= 0.0 || edge <= 0 ||
+      !ChartTimePriceToXY(0, 0, edge, entry, ex, ey))
+   {
+      BaseKnotPipInkWipe(pfx);   // no size, no money, no ink — never a guessed number
+      s_bkPipWitLive = "";
+      return;
+   }
+   s_bkPipWitLive = "id=" + id + " lot=" + DoubleToString(lot, 2) +
+                    " perPip=" + DoubleToString(per, 2) +
+                    " balance=" + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 0) +
+                    " riskPct=" + DoubleToString(inpBKRiskPct, 2) +
+                    " stop=" + DoubleToString(hPips, 1) + "p " + BaseKnotMoneyText(hPips * per * lot) +
+                    " off=" + DoubleToString(offPips, 1) + "p";
+   // the anchor x: the right edge of the plot, a hair inside it (the price axis owns the rest)
+   int x = ex - 4;
+   int ax = ex;
+   int lineH = PnlRawLineH(PnlPt(BK_PT_PIP));
+   if(lineH < 1) lineH = 1;
+   int used[6]; ArrayInitialize(used, -9999); int nu = 0;   // the column never stacks two rows on one pixel row
+   //--- PRIORITY IS THE ORDER THE TRADE IS READ IN: the STOP first (it IS the risk), then the
+   //--- ENTRY's own leg, then the plan's targets. A row that would land on a row already taken
+   //--- is dropped, never nudged: the tooltip still carries that number, and a tight knot then
+   //--- reads three clean rows instead of five smudged ones.
+   int yy = 0;
+   if(hPips > 0.0 && ChartTimePriceToXY(0, 0, edge, sl, ax, yy))
+   {
+      BaseKnotPipInkRow(BaseKnotPipInkName(pfx, 1), x, yy, "-" + DoubleToString(hPips, 1) + "p " + BaseKnotMoneyText(hPips * per * lot), g_bkStopColor);
+      used[nu] = yy; nu++;
+   }
+   else ObjectDelete(0, BaseKnotPipInkName(pfx, 1));
+   if(offPips > 0.0 && ChartTimePriceToXY(0, 0, edge, entry, ax, yy) && !BaseKnotPipClash(yy, used, nu, lineH))
+   {
+      BaseKnotPipInkRow(BaseKnotPipInkName(pfx, 0), x, yy, DoubleToString(offPips, 1) + "p " + BaseKnotMoneyText(offPips * per * lot), g_bkEntryColor);
+      used[nu] = yy; nu++;
+   }
+   else ObjectDelete(0, BaseKnotPipInkName(pfx, 0));
+   for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
+   {
+      string nm = BaseKnotPipInkName(pfx, 2, tk);
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, baseTF, tk, anchor) : 0.0);
+      if(lv > 0.0 && ChartTimePriceToXY(0, 0, edge, lv, ax, yy) && !BaseKnotPipClash(yy, used, nu, lineH))
+      {
+         double pp = BaseKnotToPips(MathAbs(lv - entry));
+         BaseKnotPipInkRow(nm, x, yy, "+" + DoubleToString(pp, 1) + "p " + BaseKnotMoneyText(pp * per * lot), g_bkTargetColor);
+         s_bkPipWitLive += " tp" + IntegerToString(tk) + "=" + DoubleToString(pp, 1) + "p " + BaseKnotMoneyText(pp * per * lot);
+         used[nu] = yy; nu++;
+      }
+      else ObjectDelete(0, nm);
+   }
 }
 
 #endif // BASE_KNOT_NOTE_MQH

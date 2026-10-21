@@ -427,7 +427,8 @@ bool BaseKnotBodySizeHeal(const string id)
 void BaseKnotDelete(const string id)
 {
    string pfx = BaseKnotPrefix(id);
-   if(pfx != "") ObjectsDeleteAll(0, pfx);   // one call wipes box + all children
+   if(pfx != "") ObjectsDeleteAll(0, pfx);   // one call wipes box + all children (P-BK-116: the line-end ink lives under that prefix)
+   if(s_bkPipOwner == id) s_bkPipOwner = "";   // P-BK-116: the column's owner is gone with it
    BaseKnotUnregister(id);
    CalcAnchorForget(id);                     // P-ANCHOR-LAST: a deleted owner returns the chart to live
    ChartRedraw();

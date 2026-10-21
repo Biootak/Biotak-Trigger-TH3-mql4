@@ -404,6 +404,8 @@ void RefreshUIPerTick()
       // warm chart pays cache hits and compares and rebuilds nothing.
       BaseKnotEngPump();
       BaseKnotSyncBadges();   // pixel badges re-glued after scroll/zoom (cheap, runs only with boxes)
+      BaseKnotNoteWitness();   // P-BK-115a: the note keeper's own pulse — silent on a still chart
+      BaseKnotPipWitness();    // P-BK-116: the line-end column's numbers — silent when they did not move
       BaseKnotHintTick();     // result-hint auto-hide pump
    }
    TradePlanLiveTick();   // right-side trade block: 2s-throttled, change-guarded (P-LBL-03)

@@ -412,6 +412,16 @@ input ENUM_TIMEFRAMES inpHistoricalTimeframe = PERIOD_MN1;
 input int inpHistoricalPeriods = 0;
 input ENUM_LOG_LEVEL inpLogLevel = LOG_LEVEL_WARN;   // Minimum log level (TRACE=all, OFF=none)
 
+// P-BK-116 (2026-10-21) — THE LINE-END INK'S OWN BASIS, AND IT LIVES AT THE END ON PURPOSE.
+// MT4 keeps an indicator's parameters BY ORDER in the chart/template, so an input inserted
+// mid-list shifts every value below it on the next re-attach; the last slot shifts nothing.
+// The knot's STOP pips ARE its risk, so one percentage turns every Entry/SL/TP line into
+// money: lot = balance x this% / (stop pips x pip value), and each line's $ is its own pips
+// at that lot. 0 = the ink is off — the tool never guesses a size.
+input group "20) BASE BOX - LINE END (PIPS + MONEY)"
+input string S23 = "[20] BASE BOX / LINE END";
+input double inpBKRiskPct = 1.0;                         // Base Box Risk % of Balance (line ends: pips + money)
+
 //==============================================================================
 // This module ONLY declares the user-facing `input` parameters.
 // The panel-editable subset (SS/LS, trigger, factor, TH3, visibility ...) is

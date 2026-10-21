@@ -14,6 +14,7 @@
 // text size). Restoring the old look = BKInfoFontPt() returning PnlPt(BK_PT_INFO).
 #define BK_PT_INFO   8    // the box' [H Pips | R:R] readout (P-BK-27: retired size)
 #define BK_PT_BADGE  8    // the retired badge (one-line restorable)
+#define BK_PT_PIP    7    // P-BK-116: the line-end pip/money column (the smallest readable row)
 #define BK_IDLE    0
 #define BK_ARMED   1   // menu hidden, waiting for the first corner click
 #define BK_PREVIEW 2   // first corner set, rubber-band follows the cursor

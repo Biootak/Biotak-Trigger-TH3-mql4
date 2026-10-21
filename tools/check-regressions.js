@@ -7716,6 +7716,83 @@ function main() {
     }
   }
 
+  // P-BK-115 (2026-10-21) — THE NOTE'S KEEPER AND THE OWNER PUMP ARE QUIET AT REST.
+  // Two numbers, both from the call graph and neither visible on a screenshot:
+  //   * `BaseKnotNoteCornerRefresh` shares the 500 ms pump and treated "the row is gone" as
+  //     damage — the very read that is TRUE the moment the toast (BK_CORNER_TOAST_MS) spends
+  //     and deletes the family. So a still chart paid one full `BaseKnotSync` (bar walk, node
+  //     read, the whole family's writes) plus `ChartRedraw()` TWICE A SECOND, for ever.
+  //   * `BaseKnotOwnerATRPump` ran on every pump — up to nine ATR legs, one 300-candle walk
+  //     and `BaseKnotSelectedId()`'s registry walk — for a question none of whose inputs had
+  //     moved; and it published `storyT`/`exitT`/`baseTFMin`, the three fields `BaseKnotSync`
+  //     owns, so two walks took turns re-keying the note's anchor.
+  {
+    const broken = [];
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const owner = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
+    const kit = linesOf(path.join(BIOTAK, 'BiotakKit.mqh'));
+    const obj = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+    // P-BK-115a: the keeper moved to the note's own home (§7 size split) — same body.
+    const keeper = note ? bodyOf(note, 'void BaseKnotNoteCornerRefresh(') : null;
+    const pump = owner ? bodyOf(owner, 'void BaseKnotOwnerATRPump(') : null;
+    if (!keeper || !keeper.text.includes('if(!BaseKnotCornerToastIsArmed()) return;'))
+      broken.push('the keeper heals a row the toast deliberately deleted - a full Sync + ChartRedraw twice a second on a still chart');
+    if (!note || !note.join('\n').includes('bool BaseKnotCornerToastIsArmed() { return s_bkToastArmed; }'))
+      broken.push('the toast no longer answers whether a note is supposed to be up - the keeper has nothing to ask');
+    if (!pump || !pump.text.includes('s_bkOwnKeyId') || !pump.text.includes('barNow == s_bkOwnKeyBar'))
+      broken.push('the owner pump measures on every 500 ms round instead of once per question (no input key)');
+    if (pump && /g_bkBoxes\[k\]\.(storyT|exitT|baseTFMin)\s*=/.test(pump.text))
+      broken.push('the owner pump writes the story again - two publishers for the note\'s anchor key');
+    if (!kit || !kit.join('\n').includes('BaseKnotNoteWitness();'))
+      broken.push('the Full pump no longer reports the note keeper - a still chart proves nothing');
+    if (!obj || !obj.join('\n').includes('BaseKnotNoteWitness();'))
+      broken.push('the Lite pump no longer reports the note keeper - a still chart proves nothing');
+    if (broken.length) {
+      failures.push('P-BK-115: ' + broken.join('; ') + ' (BaseKnot_Measure / BaseKnot_Note / BaseKnot_Owner / BiotakKit / EventHandlers_Objects)');
+    } else {
+      console.log('[PASS] P-BK-115 the note keeper heals only while the toast is armed, the owner-TF pump measures once per question, and the story has one publisher');
+    }
+  }
+
+  // P-BK-116 (2026-10-21) — THE LINE-END COLUMN: pips + money, ONE selected box, ONE basis.
+  // The user asked for each line's pips and dollars `without cluttering the chart`, so the
+  // numbers may not become a second readout: one 7 pt row per line, at the right edge, only
+  // for the box BaseKnotSelectedId answers, and the money is SIZED FROM THE STOP (the risk %
+  // of the balance) rather than guessed at a fixed lot.
+  {
+    const broken = [];
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const wit = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
+    const kit = linesOf(path.join(BIOTAK, 'BiotakKit.mqh'));
+    const obj = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+    const ink = note ? bodyOf(note, 'void BaseKnotPipInk(') : null;
+    const per = note ? bodyOf(note, 'double BaseKnotMoneyPerPip(') : null;
+    if (!ink || !ink.text.includes('bool sel = (id == BaseKnotSelectedId());') ||
+        !ink.text.includes('if(!sel)'))
+      broken.push('the column no longer belongs to ONE selected box - every knot wears five rows');
+    if (!per || !per.text.includes('SYMBOL_TRADE_TICK_VALUE') || !per.text.includes('SYMBOL_TRADE_TICK_SIZE'))
+      broken.push('the pip money is not the terminal\'s own tick value - a hard-coded $/pip is back');
+    if (!note || !note.join('\n').includes('inpBKRiskPct'))
+      broken.push('the size is no longer the balance x risk % - a fixed lot would have no owner');
+    if (!plan || !plan.join('\n').includes('BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, baseTF, nd.anchor);'))
+      broken.push('BaseKnotSync no longer paints the column - the lines end in nothing');
+    if (!drag || !drag.join('\n').includes('if(s_bkPipOwner == id) s_bkPipOwner = "";'))
+      broken.push('a deleted box keeps the column\'s ownership - the next box inherits a ghost');
+    if (!wit || !wit.join('\n').includes('void BaseKnotPipWitness()'))
+      broken.push('the column\'s numbers are not on the flushed channel - the size can only be argued');
+    if (!kit || !kit.join('\n').includes('BaseKnotPipWitness();') ||
+        !obj || !obj.join('\n').includes('BaseKnotPipWitness();'))
+      broken.push('a pump stopped reporting the column - one build would be silent');
+    if (broken.length) {
+      failures.push('P-BK-116: ' + broken.join('; ') + ' (BaseKnot_Note / BaseKnot_Plan / BaseKnot_Drag / BaseKnot_Witness / BiotakKit / EventHandlers_Objects)');
+    } else {
+      console.log('[PASS] P-BK-116 the line-end column is pips + money for ONE selected box, sized from the risk % through the terminal\'s own tick value, deleted with its box, and witnessed on the flushed channel');
+    }
+  }
+
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);
     console.log('');

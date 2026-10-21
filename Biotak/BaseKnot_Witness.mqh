@@ -195,4 +195,41 @@ void BaseKnotDirWitness()
    }
 }
 
+// P-BK-116 (2026-10-21): the line-end column's own arithmetic, on the flushed channel — the
+// lot the risk % bought, the pip's money, the balance it was sized from, and every leg's
+// pips + money. It reads the numbers the PAINT used (`BaseKnotPipWitTake`), so the log and the
+// ink can never describe different sizes, and a still frame says nothing (the string is
+// compared first). Emitted from both pumps, right after the note's own pulse.
+void BaseKnotPipWitness()
+{
+   string w = BaseKnotPipWitTake();
+   if(w == "") return;
+   DrawStripDiagEmit("[BK-PIP] " + w);
+}
+
+// P-BK-115a (2026-10-21): THE KEEPER'S OWN PULSE — AND IT IS SILENT WHEN THE CHART IS STILL.
+// «مدام روی چارت بیس نات حذف و رسم میشه و اپدیت میشه» is a claim about FREQUENCY, and the one
+// instrument that can settle it is the keeper's own count: `BaseKnotNoteCornerRefresh` shares
+// the 500 ms pump, so a tree that Syncs on every round prints two lines a second for ever
+// with nothing on the chart changing, and a tree that respects §5 prints NONE.
+// The read-back is the keeper's (`BaseKnotNoteSyncTake`, BaseKnot_Measure.mqh) and the line
+// carries what a reader needs to tell the two apart: how many Syncs, the worst one's ms (the
+// full family rewrite is the expensive half), the box, and whether a note is even supposed to
+// be up. Called AFTER the pump's own SyncBadges, from both entries' pump (BiotakKit / the Lite
+// tick pump) — the same place the keeper runs.
+void BaseKnotNoteWitness()
+{
+   uint ms = 0;
+   int  n  = BaseKnotNoteSyncTake(ms);
+   if(n <= 0) return;   // the still chart: no line, which IS the proof
+   string id = BaseKnotSelectedId();
+   DrawStripDiagEmit("[BK-NOTE] sync=" + IntegerToString(n) +
+                     " worstMs=" + IntegerToString((int)ms) +
+                     " armed=" + IntegerToString(BaseKnotCornerToastIsArmed() ? 1 : 0) +
+                     " boxes=" + IntegerToString(ArraySize(g_bkBoxes)) +
+                     " id=" + (id == "" ? "-" : id) +
+                     " rows=" + IntegerToString(ObjectFind(0, BaseKnotCornerRowName(0)) >= 0 ? 1 : 0) +
+                     " plate=" + IntegerToString(ObjectFind(0, BaseKnotCornerPlateName()) >= 0 ? 1 : 0));
+}
+
 #endif // BASE_KNOT_WITNESS_MQH
