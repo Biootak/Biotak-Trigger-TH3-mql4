@@ -21,11 +21,11 @@
 
 //--- geometry / UX tuning
 // BKTPR-OFF (P-BK-50): THE R-MULTIPLE TARGET IS RETIRED IN PLACE. The target a
-// Base-Knot box draws is the TRADE PLAN's own TP1..TP3 now (BaseKnotTPLevel — the
-// very numbers the label's `#SL:-n #TP1+n #TP2+n #TP3+n` row prints for the knot's
-// TF). Restore the old one by uncommenting the two `BKTPR-OFF` lines in
+// Base-Knot box draws is the box' OWN TP1..TP3 now (BaseKnotTPLevel — the plan's
+// ratios 7/3, 5, 31/3 applied to the very stop the box draws, P-BK-120).
+// Restore the old one by uncommenting the two `BKTPR-OFF` lines in
 // BaseKnotCalcLevels (the `TARGET R` state itself never moved: the SAME number now
-// says HOW MANY plan legs are drawn, BaseKnotTPCount).
+// says HOW MANY legs are drawn, BaseKnotTPCount).
 #define BK_TP_R_MULT      2.0    // retired (BKTPR-OFF): the old N in TP = Entry +/- N x R —
                                  //          R = EngSL of the knot's own TF (P-BK-46)
 // BK_TP_PLAN_MAX (the plan's own targets — TP1..TP3) is declared in ConstantsAndEnums:
@@ -842,8 +842,9 @@ string BaseKnotTFName(const int tfMin)
 // tooltip, and a string keeps this signature free of the node record.
 // P-BK-46: `riskTag` arrives the same way — the first number is the trade's RISK,
 // so the hover says whether it is EngSL of the knot's own TF or the box' height.
-// P-BK-50: so do the PLAN's targets (`tpTip`, ready-built by BaseKnotTPPlanTip —
-// the retired `TARGET R` x R field is gone, and the plan's own legs take its place).
+// P-BK-50: so do the box' own targets (`tpTip`, ready-built by BaseKnotTPPlanTip —
+// the retired `TARGET R` x R field is gone, and the box' own legs take its place;
+// P-BK-120: those legs are the plan's ratios on the stop THIS box draws).
 string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
                           const double top, const double bot, const string side,
                           const double hPips, const string tpTip, BaseKnotSpan &sp,

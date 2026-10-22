@@ -2181,6 +2181,20 @@ files.push(['path_mid_dot.bmp', () => render(11, [
   Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
   Object.assign(cfill(16, 16, 9.0),    { color: PATH_MID_INK_RGB }),
 ], PATH_MID_INK_RGB)]);
+//--- P-ANCHOR-LAST-MOVE (2026-10-22): THE ANCHOR SEAT. It replaced a row on the ATR
+//--- labels card, where the switch never belonged — its two owners are the BaseKnot
+//--- box and the leg ruler, and it reads the ATR AT a bar instead of now. So the art
+//--- is a TARGET: a ring with four ticks and a centre dot, i.e. "measure here". One
+//--- shape in two inks like every other toggle on this row (bk_half, bk_mid, bk_back)
+//--- — OFF in the plate ink, ON in the amber ink the ON wash needs.
+const BK_ANCHOR = [
+  ring(16, 16, 10.0, 2.2),
+  cfill(16, 16, 2.6),
+  seg(16.0, 2.5, 16.0, 8.0, 2.2), seg(16.0, 24.0, 16.0, 29.5, 2.2),
+  seg(2.5, 16.0, 8.0, 16.0, 2.2), seg(24.0, 16.0, 29.5, 16.0, 2.2),
+];
+files.push(['bk_anchor_off.bmp', () => render(24, BK_ANCHOR, BK_DARK)]);
+files.push(['bk_anchor_on.bmp',  () => render(24, BK_ANCHOR, BK_GOLDINK)]);
 files.push(['bk_ext_off.bmp',  () => render(24, BK_EXT_OFF,  BK_DARK)]);
 files.push(['bk_ext_on.bmp',   () => render(24, BK_EXT_ON,   BK_GOLDINK)]);
 files.push(['bk_fill_on.bmp',   () => render(24, BK_FILL_ON,   BK_GOLDINK)]);

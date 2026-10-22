@@ -364,6 +364,30 @@ double TradePlanHunterFromEng(const double engTrue)
    return TradePlanRound1(TRADEPLAN_HUNTER_NUM * engTrue / TRADEPLAN_HUNTER_DEN);
 }
 
+// P-BK-120 (2026-10-22) — THE TARGET LEGS OFF ANY STOP, not just off the plan's own.
+//
+// The ratios above are the plan's law: TP1 = 7/3 × SL, TP2 = 5 × SL, TP3 = 31/3 × SL,
+// where the plan's own SL is `slTrue = 1.2 × Eng(StructureTF)` of ONE chart TF.
+//
+// A BaseKnot box does NOT stop at that SL. P-BK-51/83 draws its stop as ONE EngSL of
+// the node TYPE's own time, so on a CTR box the drawn risk is Eng(H1) while the plan
+// of its base TF (M5) sizes its targets off Eng(M15). The user (2026-10-22): «tp های
+// که رسم شده باید از همون محاسبات باشه» — the ticks belong to the box, so they must
+// ride the box' own stop. This is that call: the SAME ratios, applied to whatever
+// stop the caller actually drew.
+//
+// One owner: the ratios live here and nowhere else. The pump calls this per row and
+// pushes the answer, because BaseKnotTool sits BELOW this module (the layer law).
+int TradePlanTPFromEng(const double stopPips, const int k)
+{
+   if(!MathIsValidNumber(stopPips) || stopPips <= 0.0) return 0;   // P-UI-57: absence, never garbage
+   if(k == 1) return TradePlanRound(stopPips * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN);
+   if(k == 2) return TradePlanRound(stopPips * TRADEPLAN_TP2_MULT);
+   if(k == 3) return TradePlanRound(stopPips * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN);
+   if(k == 4) return TradePlanRound(stopPips * TRADEPLAN_TP4_MULT);
+   return 0;
+}
+
 //+------------------------------------------------------------------+
 //| Trade-plan value set for one chart TF.                            |
 //+------------------------------------------------------------------+

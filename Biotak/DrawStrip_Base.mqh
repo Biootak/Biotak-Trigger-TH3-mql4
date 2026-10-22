@@ -1087,6 +1087,13 @@ bool DrawStripVis(const EDrawKind k, const int slot)
 //--- it works on every channel type.)
 bool DrawStripSeatAvail(const EDrawKind k, const int slot)
 {
+   //--- P-ANCHOR-LAST-MOVE: the anchor seat is the HELD OBJECT'S, not the kind's —
+   //--- asked BEFORE the caps gate, like the path's 50 % seat (owner test: Head).
+   if(slot == DRAW_SLOT_ANCHOR)
+   {
+      if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+      return DrawStripAnchorOwner(s_dsObj);
+   }
    //--- P-UI-139: THE 50 % CELL IS THE PATH'S TOO — a polyline's own answer to it is
    //--- a small circle at each leg's middle. It CANNOT be a KIND rule: a kind rule
    //--- would hand the cell to every plain trendline, and a control nothing answers
@@ -1288,6 +1295,11 @@ string DrawStripIconRes(const int slot, const string nm)
                                                        : "::Files\\Icons\\bk_back_off.bmp");
    if(slot == DRAW_SLOT_FONT) return "::Files\\Icons\\gl_textsize_m.bmp";
    if(slot == DRAW_SLOT_GLYPH) return "::Files\\Icons\\bk_glyph.bmp";
+   //--- P-ANCHOR-LAST-MOVE: one shape in two inks. ON = the ATR is read at the
+   //--- owner's bar (box right edge / leg end bar); OFF = the live read.
+   if(slot == DRAW_SLOT_ANCHOR)
+      return (g_calcAnchorOn ? "::Files\\Icons\\bk_anchor_on.bmp"
+                             : "::Files\\Icons\\bk_anchor_off.bmp");
    if(slot == DSTRIP_SLOT_LEVELS) return "::Files\\Icons\\bk_levels.bmp";
    return "";
 }

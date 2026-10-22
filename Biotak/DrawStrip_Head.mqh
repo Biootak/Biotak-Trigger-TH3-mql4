@@ -73,6 +73,11 @@
 //--- is in BOTH builds, while this file is not. Declaring it here left Lite painting a
 //--- raster it never declared.
 #resource "\\Files\\Icons\\bk_ext_off.bmp"
+//--- P-ANCHOR-LAST-MOVE (2026-10-22): the anchor seat's two inks, declared beside
+//--- the painter that names them (`DrawStripIconRes`) — a raster a unit paints must
+//--- be #resource'd in that same unit (a missing declaration is a silent no-op).
+#resource "\\Files\\Icons\\bk_anchor_off.bmp"
+#resource "\\Files\\Icons\\bk_anchor_on.bmp"
 #resource "\\Files\\Icons\\bk_ext_on.bmp"
 #resource "\\Files\\Icons\\bk_back_on.bmp"
 #resource "\\Files\\Icons\\bk_lock_on_g.bmp"
@@ -495,7 +500,12 @@
 #define DSTRIP_SEP_AIR    8
 //--- P-DRAW-66: the command group's ids and count, moved UP from the layout block
 //--- so the state block can size its own seat array by the count (one owner).
-#define DSTRIP_QUICK_CAP 8
+//--- P-ANCHOR-LAST-MOVE (2026-10-22): 8 → 9. A rectangle already fills the row
+//--- exactly (colour/width/style/fill/lock/back/50%/extend = 8), so the anchor
+//--- seat would have been pushed into the overflow list — a switch the user asked
+//--- to reach from the strip and could not see. 9 is the ONE extra cell that
+//--- seat needs; every other kind carries 8 or fewer, so their rows do not move.
+#define DSTRIP_QUICK_CAP 9
 #define DSTRIP_ACT_MORE 0
 #define DSTRIP_ACT_GEAR 1
 #define DSTRIP_ACT_PIN 2
@@ -856,6 +866,46 @@ bool DSNameMatches(const double packed, const string s)
 {
    if(packed < 0.0) return false;
    return (DSNamePack(s) == packed);
+}
+
+//--- P-ANCHOR-LAST-MOVE (2026-10-22) — THE SECOND ONE-WAY BRIDGE (the first is
+//--- `DrawStripPalAsk`, P-PAL-19). `RefreshDisplay` lives in BiotakKit (include 128)
+//--- and this strip is include 99, so the strip CANNOT call it — and the `REFRESH_*`
+//--- mask is not declared above either, which is why the request is a BOOL and the
+//--- entry translates it. A switch that only set its own flags would wait for the
+//--- next tick to show anything — on a quiet chart that is minutes — so the press
+//--- leaves a REQUEST here and the entry's `OnChartEvent` drains it into the one
+//--- dispatcher every card press uses. One direction, one place, no forward decl.
+static bool s_dsRefreshAsk = false;
+void DrawStripRefreshAsk() { s_dsRefreshAsk = true; }
+bool DrawStripRefreshTake() { bool f = s_dsRefreshAsk; s_dsRefreshAsk = false; return f; }
+
+//--- P-ANCHOR-LAST-MOVE (2026-10-22) — IS THE HELD DRAWING ONE OF THE TWO THAT OWN
+//--- THE ATR ANCHOR? A BaseKnot box and a leg ruler, nothing else. Neither is a
+//--- terminal TYPE the strip knows (both are plain rectangles/trend lines), so the
+//--- question cannot be a kind rule — it is asked of the NAME with the very two tests
+//--- the tools themselves use, so the strip and the tools can never disagree:
+//---   * a leg ruler's line is `<TH3_LEG_PREFIX>…_Line` (TH3Tool_C.mqh:35 / :333),
+//---   * a BaseKnot box is `BaseKnotBoxName(BaseKnotPrefix(id))` for an id the registry
+//---     still holds — a renamed or orphaned object does not count.
+//--- It lives HERE, above DrawStrip_Base, because that file is at its P-SIZE-1500
+//--- ceiling and this is a state-free test. COST: one prefix compare for every other
+//--- drawing; the registry walk runs on an open/tap path only, never on a frame.
+bool DrawStripAnchorOwner(const string nm)
+{
+   if(nm == "") return false;
+   if(StringFind(nm, TH3_LEG_PREFIX) == 0)
+   {
+      int len = StringLen(nm);
+      if(len > 5 && StringSubstr(nm, len - 5) == "_Line") return true;
+   }
+   int n = BaseKnotCount();
+   for(int i = 0; i < n; i++)
+   {
+      string pfx = BaseKnotPrefix(g_bkBoxes[i].id);
+      if(pfx != "" && BaseKnotBoxName(pfx) == nm) return true;
+   }
+   return false;
 }
 
 #endif // DRAW_STRIP_HEAD_MQH

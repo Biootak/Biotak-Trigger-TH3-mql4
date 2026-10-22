@@ -856,9 +856,12 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==17) { kind=4; label="TRADE COLOR"; }
       else if(row==18) { kind=4; label="SPREAD COLOR"; }
        // P-LEGATR: APPENDED (row 19), so rows 0..18 keep their addresses and the
-       // persisted OV_ keys keep their meaning. P-ANCHOR-LAST is row 20.
-      else if(row==19) { kind=1; label="PRE-CP ATR"; }
-      else             { kind=1; label="LAST OBJECT"; }
+       // persisted OV_ keys keep their meaning.
+       // P-ANCHOR-LAST-MOVE (2026-10-22): row 20 (LAST OBJECT) left this card, so
+       // PRE-CP ATR is the trailing branch and the card ends at 19 — `row_arms`
+       // counts branches, and the fallthrough's row is "how many branches
+       // preceded it", which is now 19, the same address it already wrote.
+      else             { kind=1; label="PRE-CP ATR"; }
    }
     else if(item==3)   // TH LABELS
     {

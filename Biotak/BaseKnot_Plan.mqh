@@ -553,8 +553,8 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
     BaseKnotMakeRay(tag + "SL", te, tLiveFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
                     "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + stopWhyLive, tfMask, true);
     // BKE2-OFF: no 2nd-entry rays here (created above only to purge).
-   // P-BK-50: the targets are the plan's own legs — one short, THICK tick each at the
-   // chart's right edge (never a ray), drawn only for the legs the plan has pushed.
+   // P-BK-50: the targets are the box' own legs — a short, THICK tick at the right edge,
+   // drawn only when pushed. P-BK-120: a preview is FTR, so its measure TF IS this chart's.
    for(int tk = 1; tk <= BaseKnotTPCount(); tk++)
    {
       double lv = BaseKnotTPLevel(entry, dir, 0, tk, 0);
@@ -566,7 +566,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                       DoubleToString(tpP, 0) + " pips from the entry" +
                       (hPips > 0.0 ? " = " + DoubleToString(tpP + hPips, 0) + " from the stop, " +
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
-                      " — the plan's own TP" + IntegerToString(tk) + ")", tfMask, false);
+                      " — the box' own TP" + IntegerToString(tk) + " (the plan's ratio on its own stop))", tfMask, false);
    }
     // BKE2-OFF: no set-2 ticks here.
     BaseKnotSpan spLive;   // P-BK-41: the live label reads the same span record
@@ -1270,7 +1270,7 @@ void BaseKnotSync(const string id)
     for(int e2p = 1; e2p <= BK_TP_PLAN_MAX; e2p++) ObjectDelete(0, BaseKnotTPTick2Name(pfx, e2p));
     string entryLine2 = "";   // BKE2-OFF: always "" (keeps the tooltip signature compiling)
    // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(baseTF);   // the retired note field
-    string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor);   // P-BK-54: the hover keeps every leg
+    string tpTip = BaseKnotTPPlanTip(mTF, entry, dir, hPips, nd.anchor);   // P-BK-54: the hover keeps every leg
     string side = (dir >= 0 ? "BUY" : "SELL");
    // P-BK-51: the trade's own two sentences, ready-built — how deep the entry waits and
    // what sized the stop. The box hover, the note's hover and the two rays read THESE.
@@ -1311,24 +1311,24 @@ void BaseKnotSync(const string id)
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + ", INSIDE the box' " + edgeName +
                    " edge, ONE " + riskTag + " behind the entry" + BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")", tfMask, true);
     // BKE2-OFF: no 2nd-entry rays (purged above).
-    // P-BK-50: the TARGETS are the plan's own legs (TP1..TP3) — one SHORT, THICK tick
-   // each at the chart's right edge, never a ray and never box-wide (the user's own
-   // 2026-09-08 decision, now for three of them). A leg the plan has not pushed is
-   // NOT drawn: absence is never turned into a level.
+    // P-BK-50: the TARGETS are the box' own legs — one SHORT, THICK tick each at the chart's
+   // right edge, never a ray (the user's 2026-09-08 decision). An unpushed leg is NOT drawn.
+   // P-BK-120: READ ON `mTF`, THE STOP'S OWN TIME — the plan's ratios on THAT rung's EngSL,
+   // so the ticks, the stop and the R on each tick are one ruler (never the base TF's).
    for(int tk = 1; tk <= BaseKnotTPCount(); tk++)
    {
-      double lv = BaseKnotTPLevel(entry, dir, baseTF, tk, nd.anchor);
+      double lv = BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor);
       if(lv <= 0.0) continue;
-      double tpP = BaseKnotPlanTPPips(baseTF, tk, nd.anchor);
+      double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);
       BaseKnotMakeRay(BaseKnotTPTickName(pfx, tk), tps, tpe, lv, g_bkTargetColor,
                       BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
                       "BK " + side + " TP" + IntegerToString(tk) + ": " + DoubleToString(lv, dg) + " (+" +
                       DoubleToString(tpP, 0) + " pips from the entry" +
                       (hPips > 0.0 ? " = " + DoubleToString(tpP + hPips, 0) + " from the stop, " +
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
-                      " — the plan's own TP" + IntegerToString(tk) + " of " + BaseKnotTFName(baseTF) + ")", tfMask, false);
+                      " — the box' own TP" + IntegerToString(tk) + " (the plan's ratio on its " + riskTag + " stop)", tfMask, false);
    }
-   BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, baseTF, nd.anchor);   // P-BK-116: every line's own pips + money at its end
+   BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, mTF, nd.anchor);   // P-BK-116: every line's own pips + money at its end
    ObjectDelete(0, BaseKnotTPName(pfx)); ObjectDelete(0, BaseKnotDelName(pfx)); ObjectDelete(0, BaseKnotBuyName(pfx));   // BKTPR-OFF / NOBKDEL / NOBUYSELL: purge older builds' retired badges
    // P-BK-58: WHERE this box' note is drawn is ONE question, asked once (BaseKnotNoteAtCorner):
    // the family's row for the selected/newest box in the corner mode, the box' own corner
@@ -1462,7 +1462,8 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    {
       int bit = (tk == 1 ? BK_CH_TP : (tk == 2 ? BK_CH_TP2 : BK_CH_TP3));
       if((s_bkChildMask & bit) == 0) continue;
-      double lv = BaseKnotTPLevel(entry, g_bkBoxes[k].dir, g_bkBoxes[k].baseTFMin, tk, an);
+      double lv = BaseKnotTPLevel(entry, g_bkBoxes[k].dir,
+                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin), tk, an);   // P-BK-120: the stop's own rung
       if(lv <= 0.0) continue;
       BaseKnotMoveOne(BaseKnotTPTickName(pfx, tk), tps, lv, tpe, lv);
    }

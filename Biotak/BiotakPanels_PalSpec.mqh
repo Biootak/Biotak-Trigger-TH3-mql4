@@ -135,9 +135,15 @@ void PnlSpecBuild(const int item)
       // read/apply branches all stay (MIDPOINT precedent, P-UI-47).
       // P-LEGATR: the plan's ATR source, APPENDED in its own band (14→16 display
       // rows, still wide). Address 19 renders here and nowhere else.
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "PLAN ATR", 2);
+      // P-ANCHOR-LAST-MOVE (2026-10-22): address 20 (LAST OBJECT) is OFF THIS CARD.
+      // It was never an ATR-label setting: its two consumers are the BaseKnot note
+      // and the leg ruler, and neither reads it (they carry their own anchors —
+      // BaseKnot_Owner.mqh:37 `an = t2`, TH3Tool_C.mqh:387 `LegReadAnchor`). The
+      // address, its read/apply branches and its GV stay (MIDPOINT precedent,
+      // P-UI-47), exactly like address 9 above; only the display row is gone, so
+      // the band declares ONE row (19) instead of two.
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "PLAN ATR", 1);
       PnlSpecAdd(2, PNL_K_LEGACY, 19, 1, "gauge");
-      PnlSpecAdd(2, PNL_K_LEGACY, 20, 1, "gauge");   // P-ANCHOR-LAST
       // P-UI-70d: the trade card's personalisation band. The four rows below
       // write the SAME settings the group-13 dialog inputs write (ROW GAP ->
       // P-UI-131: the whole TRADE CARD band moved to the GENERAL card (ROW GAP,

@@ -18,11 +18,14 @@ void CalcAnchorSave()
 
 void CalcAnchorLoad()
 {
-   // P-ANCHOR-LAST: shipped ON. A chart that has never stored the switch gets
-   // the feature immediately; an explicit OFF is respected because the key exists.
+   // P-ANCHOR-LAST-MOVE (2026-10-22): shipped OFF. The switch is no longer a row
+   // on the ATR card (it never was an ATR-label setting); it belongs to the two
+   // tools that own the anchor — the BaseKnot box and the leg ruler — so a chart
+   // starts LIVE and the user arms it himself. The key is still written, so an
+   // explicit ON survives an attach and a chart that never stored it answers OFF.
    if(!GlobalVariableCheck(CalcAnchorGVKey()))
    {
-      g_calcAnchorOn = true;
+      g_calcAnchorOn = false;
       CalcAnchorSave();
    }
    else g_calcAnchorOn = (GlobalVariableGet(CalcAnchorGVKey()) > 0.5);

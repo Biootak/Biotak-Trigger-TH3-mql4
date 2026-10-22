@@ -3078,7 +3078,10 @@ function main() {
     const tbb2 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
     const tba2 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
     const broken = [];
-    if (!/#define DRAW_SLOT_BODYCOLOR 13/.test(tba2) || !/#define DRAW_SLOT_N\s+16/.test(tba2))
+    // P-ANCHOR-LAST-MOVE (2026-10-22): N moved 16 → 17 because DRAW_SLOT_ANCHOR was
+    // APPENDED at 16 (the strip's anchor switch). The body's three seats are still
+    // 13/14/15 — nothing was renumbered, which is what this pair of asserts is for.
+    if (!/#define DRAW_SLOT_BODYCOLOR 13/.test(tba2) || !/#define DRAW_SLOT_N\s+17/.test(tba2))
       broken.push('the body\'s three seats are gone (or moved an index) — the body shares the level cells again (P-DRAW-BODY)');
     if (!/#define DRAW_CAP_BODY\s+\(DRAW_CAP_BODYCOLOR \| DRAW_CAP_BODYWIDTH \| DRAW_CAP_BODYSTYLE\)/.test(tba2))
       broken.push('the body has no capability mask — the settings panel cannot offer it (P-DRAW-BODY)');
@@ -3113,6 +3116,10 @@ function main() {
       broken.push('the drag rate is unmeasured — events per second tell queue from paint (P-DRAW-74b)');
     if (!/FibPenStraysDrop\(sparam\)/.test(tbr))
       broken.push('a native delete strands the fibo family — every dependent dies with its object (P-DRAW-74b)');
+    if (!/if\(FibPenChildParent\(fibo\) != ""\) return false;/.test(fib))
+      broken.push('a CHILD walks the master sweep — every child delete probes 48 absent names (measured 1000-7125 ms per event, P-DRAW-74b)');
+    if (!/return \(ObjectsDeleteAll\(0, fibo \+ "_FS"\) > 0\);/.test(fib))
+      broken.push('the master sweep deletes child-by-child — 27 deletes measured 6078 ms for one fibo (P-DRAW-74b)');
     if (!/CASCADE obj=/.test(tbr))
       broken.push('a cascade leaves no number — the delete path witnesses what it dropped (P-DRAW-74b)');
     if (!/if\(!s_dsOpen && id != CHARTEVENT_OBJECT_DELETE\) return false;/.test(tbr))
@@ -7867,8 +7874,8 @@ function main() {
     const bkPlan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
     if (!anchor || !anchor.join('\n').includes('CalcAnchorSetOn'))
       broken.push('CalcAnchor.mqh is gone - the switch has no owner');
-    if (!anchor || !anchor.join('\n').includes('g_calcAnchorOn = true;'))
-      broken.push('the switch no longer ships ON - the feature is inert on a fresh chart');
+    if (!anchor || !anchor.join('\n').includes('g_calcAnchorOn = false;'))
+      broken.push('the switch ships ON again - a fresh chart starts anchored instead of live (P-ANCHOR-LAST-MOVE: default is OFF)');
     if (!atr || !atr.join('\n').includes('datetime fa = CalcAnchorAt();') ||
         !atr.join('\n').includes('CalculateWeightedATRAt(tf, fa)'))
       broken.push('CalculateWeightedATR no longer routes to the anchor - the switch is inert');
@@ -7882,8 +7889,14 @@ function main() {
       broken.push('a BaseKnot no longer arms/clears the anchor - the newest drawn box is not the owner');
     if (!bkPlan || !bkPlan.join('\n').includes('g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast)'))
       broken.push('BaseKnotSync no longer re-anchors the active owner on the story it publishes - a freshly drawn box keeps the live read');
-    if (!spec || !spec.join('\n').includes('PnlSpecAdd(2, PNL_K_LEGACY, 20, 1, "gauge")'))
-      broken.push('the ATR card lost row 20 - the switch is not painted');
+    // P-ANCHOR-LAST-MOVE (2026-10-22): the switch is NOT an ATR-label setting. Its
+    // two consumers (the BaseKnot note and the leg ruler) carry their own anchors
+    // and never read it, so a row here was a control that edited the chart's level
+    // read while claiming to belong to the labels. Row 20 is off the card; the
+    // address stays as a stub (like row 9). The inverse — the row coming back — is
+    // what this asks.
+    if (!spec || spec.join('\n').includes('PNL_K_LEGACY, 20,'))
+      broken.push('row 20 is back on the ATR card - the LAST OBJECT switch is in the labels card again');
     if (!linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh')) ||
         !linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh')).join('\n').includes('nd.abStrRead && nd.abStr > 0.0 && tfs[owner] == up2'))
       broken.push('the note prints the owner TF even when it repeats a printed ATR/% row - the duplicate info bar is back');
@@ -7895,9 +7908,61 @@ function main() {
     if (broken.length) {
       failures.push('P-ANCHOR-LAST: ' + broken.join('; ') + ' (ATR_A / CalcAnchor / TH3Tool_C / BaseKnot_Drag / panels)');
     } else {
-      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the ATR card row 20 writes it, CalculateWeightedATR and GetATRForTimeframe read it, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
+      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the strip\'s anchor seat writes it (P-ANCHOR-LAST-MOVE), the card no longer paints it and the GV ships OFF, CalculateWeightedATR and GetATRForTimeframe read it, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
     }
   }
+
+  // -- 77. P-ANCHOR-LAST-MOVE (2026-10-22): THE STRIP'S ANCHOR SWITCH LANDS IN THE
+  // SAME PASS, AND COSTS NOTHING AT REST. Four facts, each one a way the control lies:
+  //   * the press goes through the ONE owner (`CalcAnchorSetOn`), never a GV write —
+  //     a second writer is the touch rule's item 6;
+  //   * that owner requests the label relayout AND the redraw, because the ATR read it
+  //     changes is consumed by the LABEL pass: a switch that moves the number but not
+  //     the pass that paints it reads as dead until the next bar;
+  //   * the seat re-reads the state on the same paint, so the cell cannot show the old
+  //     face over the new numbers;
+  //   * and nothing polls it — no read in the 250 ms timer/tail — so a still chart pays
+  //     zero for a switch nobody is touching (contract §5, the weakest machine).
+  {
+    const broken = [];
+    const tapSrc = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    const baseSrc = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Base.mqh')) || []);
+    const ancSrc = codeOf(linesOf(path.join(BIOTAK, 'CalcAnchor.mqh')) || []);
+    const tailSrc = codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Tail.mqh')) || []);
+    const i0 = tapSrc.indexOf('if(slot == DRAW_SLOT_ANCHOR)');
+    const i1 = tapSrc.indexOf('if(DrawStripIsToggle(slot))', i0);
+    const press = (i0 >= 0 ? tapSrc.slice(i0, (i1 > i0 ? i1 : i0 + 900)) : '');
+    //--- the request lives in CalcAnchorSetOn's OWN body: Remember/Follow/Forget set
+    //--- the same two flags, so a file-wide regex would pass while the switch itself
+    //--- asked for nothing (the first cut of this gate did exactly that).
+    const s0 = ancSrc.indexOf('void CalcAnchorSetOn(');
+    const setOn = (s0 >= 0 ? ancSrc.slice(s0, s0 + 800) : '');
+    if (press === '' || !/CalcAnchorSetOn\(!g_calcAnchorOn\);/.test(press))
+      broken.push('the seat no longer flips through CalcAnchorSetOn - the press is not the one owner');
+    if (!/DrawStripPaint\(\);/.test(press) || !/ChartRedraw\(\);/.test(press))
+      broken.push('the press does not repaint its own row and flush - the cell keeps the old face');
+    //--- the same-pass half: the strip cannot reach RefreshDisplay (include order), so
+    //--- the press must leave the request and the entry must drain it. Either line
+    //--- missing = the switch waits for a tick, which is the «همون لحظه» the user asked
+    //--- for and did not get.
+    const entry = codeOf(linesOf(path.join(__dirname, '..', 'Biotak Trigger TH3.mq4')) || []);
+    if (!/DrawStripRefreshAsk\(\);/.test(press))
+      broken.push('the press asks for no refresh - the ATR numbers move only on the next tick');
+    if (!/DrawStripRefreshTake\(\)/.test(entry) || !/RefreshDisplay\(REFRESH_ALL\);/.test(entry))
+      broken.push('the entry no longer drains the strip\'s refresh request into RefreshDisplay - the bridge is dead');
+    if (!/g_labelsRelayoutNeeded = true;/.test(setOn) || !/g_redrawNeeded = true;/.test(setOn))
+      broken.push('CalcAnchorSetOn stopped requesting the label relayout/redraw - the numbers change only on the next bar');
+    if (!/g_calcAnchorOn \? "::Files/.test(baseSrc))
+      broken.push('the seat face no longer reads g_calcAnchorOn - the cell shows a state the chart is not in');
+    if (/g_calcAnchorOn/.test(tailSrc))
+      broken.push('the 250 ms tail polls the anchor - a still chart pays for a switch nobody touches');
+    if (broken.length) {
+      failures.push('P-ANCHOR-LAST-MOVE: ' + broken.join('; ') + ' (DrawStrip_Tap / DrawStrip_Base / CalcAnchor / EventHandlers_Tail)');
+    } else {
+      console.log('[PASS] P-ANCHOR-LAST-MOVE the strip\'s anchor seat flips through CalcAnchorSetOn, requests the label relayout + redraw in the same press, repaints its own face from the live flag, and is never polled by the timer');
+    }
+  }
+
 
   // P-BK-115 (2026-10-21) — THE NOTE'S KEEPER AND THE OWNER PUMP ARE QUIET AT REST.
   // Two numbers, both from the call graph and neither visible on a screenshot:
@@ -7927,6 +7992,10 @@ function main() {
       broken.push('the owner pump measures on every 500 ms round instead of once per question (no input key)');
     if (pump && /g_bkBoxes\[k\]\.(storyT|exitT|baseTFMin)\s*=/.test(pump.text))
       broken.push('the owner pump writes the story again - two publishers for the note\'s anchor key');
+    if (pump && /an\s*=\s*g_bkBoxes\[k\]\.storyT\s*;/.test(pump.text))
+      broken.push('the owner walk reads storyT - Sync derives it from the owner, so M5/18:50/none/05:45 re-key each other every pump');
+    if (pump && !pump.text.includes('an = t2;'))
+      broken.push('the owner walk no longer reads the box\' right edge - the measurement anchor is not the box edge');
     if (!kit || !kit.join('\n').includes('BaseKnotNoteWitness();'))
       broken.push('the Full pump no longer reports the note keeper - a still chart proves nothing');
     if (!obj || !obj.join('\n').includes('BaseKnotNoteWitness();'))
@@ -7934,7 +8003,7 @@ function main() {
     if (broken.length) {
       failures.push('P-BK-115: ' + broken.join('; ') + ' (BaseKnot_Measure / BaseKnot_Note / BaseKnot_Owner / BiotakKit / EventHandlers_Objects)');
     } else {
-      console.log('[PASS] P-BK-115 the note keeper heals only while the toast is armed, the owner-TF pump measures once per question, and the story has one publisher');
+      console.log('[PASS] P-BK-115 the note keeper heals only while the toast is armed, the owner-TF pump measures once per question at the box edge, and the story has one publisher');
     }
   }
 
@@ -7960,8 +8029,12 @@ function main() {
       broken.push('the pip money is not the terminal\'s own tick value - a hard-coded $/pip is back');
     if (!note || !note.join('\n').includes('inpBKRiskPct'))
       broken.push('the size is no longer the balance x risk % - a fixed lot would have no owner');
-    if (!plan || !plan.join('\n').includes('BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, baseTF, nd.anchor);'))
+    // P-BK-120 (2026-10-22): the column is drawn with the SAME TF the ticks are read on
+    // (`mTF` — the stop's own time), so the ink and the lines cannot name two rulers.
+    if (!plan || !plan.join('\n').includes('BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, mTF, nd.anchor);'))
       broken.push('BaseKnotSync no longer paints the column - the lines end in nothing');
+    if (plan && plan.join('\n').includes('BaseKnotPipInk(id, entry, sl, offPips, hPips, dir, baseTF, nd.anchor);'))
+      broken.push('the column went back to the BASE TF - its pips would name levels the ticks never drew');
     if (!drag || !drag.join('\n').includes('if(s_bkPipOwner == id) s_bkPipOwner = "";'))
       broken.push('a deleted box keeps the column\'s ownership - the next box inherits a ghost');
     if (!wit || !wit.join('\n').includes('void BaseKnotPipWitness()'))
@@ -8238,6 +8311,57 @@ function main() {
     } else {
       console.log('[PASS] P-PERF-56 a left-down move with neither grip live returns before the two ChartGetInteger reads');
     }
+  }
+
+  // -- 86. P-BK-120 (2026-10-22): THE BOX' TARGETS RIDE THE BOX' OWN STOP --
+  // The user, on a CTR box over an M1 chart: «این تی پی ها رو از کجا اورده به نظر
+  // درست نیستش». MEASURED on his own screenshot (XAUUSD, M5 base, CTR, 130.4 pips):
+  // entry 30.5p, stop 33.2p (Eng H1 — the type's own rung), and the ticks at +50.0p
+  // and +108.0p — the M5 PLAN's legs, which that plan sizes off `1.2 × Eng(M15)`.
+  // So the ticks were 1.5R / 3.3R of the drawn stop while the plan's own ratios are
+  // 7/3 and 5: two rulers on one box, and the R printed on each tick was neither.
+  // The rule now: the pump applies the plan's ratios to the SAME `plan.eng` it pushes
+  // as that row's EngSL, and the box reads them on the STOP's TF. One ruler.
+  {
+    const broken = [];
+    const tpf = linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const obj = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+    const fromEng = tpf ? bodyOf(tpf, 'int TradePlanTPFromEng(') : null;
+    if (!fromEng || !fromEng.text.includes('TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN') ||
+        !fromEng.text.includes('TRADEPLAN_TP2_MULT') || !fromEng.text.includes('TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN'))
+      broken.push('the target ratios have a second owner - TradePlanTPFromEng no longer reads the plan\'s own constants');
+    // the pump: the legs are the ROW'S OWN EngSL, never the plan's slTrue-based tp1..3
+    if (!obj || !obj.join('\n').includes('tp1[i]  = (double)TradePlanTPFromEng(plan.eng, 1);') ||
+        !obj.join('\n').includes('tp2[i]  = (double)TradePlanTPFromEng(plan.eng, 2);') ||
+        !obj.join('\n').includes('tp3[i]  = (double)TradePlanTPFromEng(plan.eng, 3);'))
+      broken.push('the pump pushes the plan\'s tp1..3 again - the legs are sized off another rung\'s Eng');
+    if (obj && /tp1\[i\]\s*=\s*\(plan\.tp1/.test(obj.join('\n')))
+      broken.push('a pushed leg reads plan.tp1 - the box would draw a target its own stop cannot reach');
+    // the box: every read on the STOP's time, and the base TF gone from all four sites
+    if (!plan || !plan.join('\n').includes('double lv = BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor);'))
+      broken.push('the ticks are no longer read on the stop\'s TF');
+    if (!plan || !plan.join('\n').includes('double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);'))
+      broken.push('the tick tooltip counts its pips on another TF than the level it sits on');
+    if (!plan || !plan.join('\n').includes('BaseKnotTPPlanTip(mTF, entry, dir, hPips, nd.anchor);'))
+      broken.push('the box hover still spells the legs of the base TF');
+    if (plan && /BaseKnotTPLevel\(entry, dir, baseTF,/.test(plan.join('\n')))
+      broken.push('a tick went back to the BASE TF - it would leave the stop\'s ruler');
+    if (plan && /BaseKnotTPPlanTip\(baseTF,/.test(plan.join('\n')))
+      broken.push('the hover went back to the BASE TF');
+    // the drag path must follow the same rung, or the levels jump at release
+    if (!plan || !plan.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin),'))
+      broken.push('the lean mover drops the stop\'s TF - every tick jumps when the drag is released');
+    // the ink column reads the TF it is handed, never a hard-coded base
+    const ink = note ? bodyOf(note, 'void BaseKnotPipInk(') : null;
+    if (!ink || !ink.text.includes('BaseKnotTPLevel(entry, dir, tpTF, tk, anchor)'))
+      broken.push('the line-end column draws its levels off a TF it was not handed');
+    if (broken.length)
+      failures.push('P-BK-120: ' + broken.join('; ') + ' (TradePlanFormulas / EventHandlers_Objects / BaseKnot_Plan / BaseKnot_Note)');
+    else
+      console.log('[PASS] P-BK-120 the box\' targets are the plan\'s ratios on the box\' own stop: one owner of the ratios, the pump pushes ratio x EngSL, every tick and its hover and its ink read the STOP\'s TF, and the lean mover follows the same rung');
   }
 
   if (failures.length) {

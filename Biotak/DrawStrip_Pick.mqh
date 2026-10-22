@@ -481,6 +481,15 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_BODYSTYLE:
          return "Handle style: " + DrawStripSlotText(k, DRAW_SLOT_BODYSTYLE, nm) +
                 " — click to choose" + scope;
+      //--- P-ANCHOR-LAST-MOVE: the switch speaks in the two states it has, and names
+      //--- the bar it reads, because «last object» alone says nothing about WHAT moves.
+      case DRAW_SLOT_ANCHOR:
+         if(g_calcAnchorOn)
+            return "Last object: ON — the ATR is read at " +
+                   (g_calcAnchorTime > 0 ? TimeToString(g_calcAnchorTime, TIME_DATE | TIME_MINUTES)
+                                         : (string)"the owner's bar") +
+                   ", so the labels show the numbers this drawing was measured with" + scope;
+         return "Last object: OFF — the ATR is read LIVE; click to read it at this drawing's bar" + scope;
       default: break;
    }
    if(slot == DSTRIP_SLOT_LEVELS)

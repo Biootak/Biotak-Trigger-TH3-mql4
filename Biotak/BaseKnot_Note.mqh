@@ -628,11 +628,12 @@ bool BaseKnotPipInkRow(const string nm, const int x, const int y, const string t
    ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_CHART_LABEL);
    return true;
 }
-// The column. `dir` + `baseTF` + `anchor` are the SAME owners the drawn legs were read from,
+// The column. `dir` + `tpTF` + `anchor` are the SAME owners the drawn legs were read from,
 // so the ink can never name a level the lines did not draw (the tick loop asks
-// BaseKnotTPLevel exactly as the Sync did).
+// BaseKnotTPLevel exactly as the Sync did). P-BK-120: `tpTF` is the STOP's own time —
+// the rung the plan's ratios were applied to — never the box' base TF.
 void BaseKnotPipInk(const string id, const double entry, const double sl, const double offPips,
-                   const double hPips, const int dir, const int baseTF, const datetime anchor)
+                   const double hPips, const int dir, const int tpTF, const datetime anchor)
 {
    string pfx = BaseKnotPrefix(id);
    if(pfx == "") return;
@@ -688,7 +689,7 @@ void BaseKnotPipInk(const string id, const double entry, const double sl, const 
    for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
       string nm = BaseKnotPipInkName(pfx, 2, tk);
-      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, baseTF, tk, anchor) : 0.0);
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, tpTF, tk, anchor) : 0.0);
       if(lv > 0.0 && ChartTimePriceToXY(0, 0, edge, lv, ax, yy) && !BaseKnotPipClash(yy, used, nu, lineH))
       {
          double pp = BaseKnotToPips(MathAbs(lv - entry));

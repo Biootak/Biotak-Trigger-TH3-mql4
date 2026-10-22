@@ -492,6 +492,33 @@ MUTATIONS = [
         "replace": "         // MUTATION: strays persist\r\n",
         "expect": "P-DRAW-74b",
     },
+    #--- P-DRAW-74b-m — A DELETED CHILD IS NOT A MASTER. The native delete hub
+    #--- calls the name-keyed sweep for every object the terminal removes; a child
+    #--- has no family below it, and probing 48 master names per child measured
+    #--- 1000 ms per master and 7125 ms for one cascade (2026-10-22 17:43).
+    {
+        "id": "P-DRAW-74b-m",
+        "gate": "regression",
+        "rule": "a deleted child never walks the master sweep",
+        "what": "the child guard goes out (each child pays 48 absent probes)",
+        "file": "Biotak/FibPen.mqh",
+        "find": "   if(FibPenChildParent(fibo) != \"\") return false;\r\n",
+        "replace": "   // MUTATION: child walks the master sweep\r\n",
+        "expect": "P-DRAW-74b",
+    },
+    #--- P-DRAW-74b-n — THE FAMILY DIES IN ONE NATIVE CALL. The per-child loop
+    #--- paid 27 ObjectDelete calls at ~225 ms each (6078 ms measured for one
+    #--- fibo, 2026-10-22 18:10); the prefix call answers in one pass.
+    {
+        "id": "P-DRAW-74b-n",
+        "gate": "regression",
+        "rule": "the fibo family is swept in one prefix call",
+        "what": "the sweep deletes nothing (the per-child loop would come back)",
+        "file": "Biotak/FibPen.mqh",
+        "find": "   return (ObjectsDeleteAll(0, fibo + \"_FS\") > 0);\r\n",
+        "replace": "   return false;\r\n",
+        "expect": "P-DRAW-74b",
+    },
     #--- P-DRAW-74b-f — A DRAG FLUSHES ITS OWN FRAME. The terminal blits the
     #--- dragged master live; without the flush the followers trail one frame
     #--- behind for the whole resize gesture.
@@ -4519,6 +4546,16 @@ MUTATIONS = [
         "replace": "         { g_bkBoxes[k].ownerTFMin = bkOwner; g_bkBoxes[k].storyT = osp.tLast; }   // MUTATION: second publisher",
         "expect": "two publishers for the note's anchor key",
     },
+    {
+        "id": "P-BK-115d",
+        "gate": "regression",
+        "rule": "the owner-TF walk reads the box' right edge, never storyT (which Sync derives from the owner)",
+        "what": "the pump reads storyT again - M5 -> 18:50 -> none -> 05:45 -> M5 every 500 ms on one unchanged box",
+        "file": "Biotak/BaseKnot_Owner.mqh",
+        "find": "      an = t2;",
+        "replace": "      an = g_bkBoxes[k].storyT;",
+        "expect": "the owner walk reads storyT",
+    },
     # P-BK-116 (2026-10-21) — the line-end column's two laws: ONE selected box, and a size
     # read from the terminal's own tick value instead of a hard-coded dollar per pip.
     {
@@ -4550,6 +4587,82 @@ MUTATIONS = [
         "find": " if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);",
         "replace": "",
         "expect": "P-ANCHOR-LAST",
+    },
+    # P-ANCHOR-LAST-MOVE (2026-10-22) — the switch is on the strip now, and the user's
+    # law is «همون لحظه»: the press must land in the SAME pass, and cost nothing at rest.
+    {
+        "id": "P-ANCHOR-LAST-MOVE-a",
+        "gate": "regression",
+        "rule": "the strip's anchor press requests the label relayout and the redraw in the same press",
+        "what": "CalcAnchorSetOn keeps the state but stops asking for the pass - the labels show the old ATR until the next bar",
+        "file": "Biotak/CalcAnchor.mqh",
+        "find": "   CalcAnchorSave();\n   g_labelsRelayoutNeeded = true;\n   g_redrawNeeded = true;\n}",
+        "replace": "   CalcAnchorSave();\n   // MUTATION: no relayout request\n}",
+        "expect": "P-ANCHOR-LAST-MOVE",
+    },
+    {
+        "id": "P-ANCHOR-LAST-MOVE-b",
+        "gate": "regression",
+        "rule": "the seat flips the anchor through its one owner",
+        "what": "the press stops calling CalcAnchorSetOn - a second writer for one state, and no relayout at all",
+        "file": "Biotak/DrawStrip_Tap.mqh",
+        "find": "      CalcAnchorSetOn(!g_calcAnchorOn);",
+        "replace": "      g_calcAnchorOn = !g_calcAnchorOn;   // MUTATION: second writer",
+        "expect": "P-ANCHOR-LAST-MOVE",
+    },
+    {
+        "id": "P-ANCHOR-LAST-MOVE-c",
+        "gate": "regression",
+        "rule": "the entry drains the strip's refresh request into RefreshDisplay (the same-pass half)",
+        "what": "the bridge is dead - the press repaints its own row and the ATR numbers wait for the next tick",
+        "file": "Biotak Trigger TH3.mq4",
+        "find": "  if(dsAsk > 0) RefreshDisplay(REFRESH_ALL);",
+        "replace": "  // MUTATION: the bridge is dead",
+        "expect": "P-ANCHOR-LAST-MOVE",
+    },
+    {
+        "id": "P-ANCHOR-LAST-MOVE-d",
+        "gate": "regression",
+        "rule": "the press leaves the refresh request at all",
+        "what": "the seat stops asking - CalcAnchorSetOn sets its flags and nothing runs the pass in this event",
+        "file": "Biotak/DrawStrip_Tap.mqh",
+        "find": "      DrawStripRefreshAsk();",
+        "replace": "      // MUTATION: no refresh ask",
+        "expect": "P-ANCHOR-LAST-MOVE",
+    },
+    # P-BK-120 (2026-10-22) — the box' ticks must ride the box' own stop. The user, on a
+    # CTR box over an M1 chart: «این تی پی ها رو از کجا اورده به نظر درست نیستش» — the
+    # ticks were the base TF's PLAN legs (sized off Eng(M15)) while the drawn stop was
+    # Eng(H1). One ruler, or the numbers are nobody's.
+    {
+        "id": "P-BK-120-a",
+        "gate": "regression",
+        "rule": "the pump pushes the plan's ratios on the row's OWN EngSL",
+        "what": "the pushed legs go back to plan.tp1 - every tick is sized off the structure rung again",
+        "file": "Biotak/EventHandlers_Objects.mqh",
+        "find": "       tp1[i]  = (double)TradePlanTPFromEng(plan.eng, 1);",
+        "replace": "       tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);   // MUTATION: the plan's own leg",
+        "expect": "[FAIL] P-BK-120",
+    },
+    {
+        "id": "P-BK-120-b",
+        "gate": "regression",
+        "rule": "every tick is read on the STOP's own time",
+        "what": "the level goes back to the base TF - the tick leaves the ruler its stop is on",
+        "file": "Biotak/BaseKnot_Plan.mqh",
+        "find": "      double lv = BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor);",
+        "replace": "      double lv = BaseKnotTPLevel(entry, dir, baseTF, tk, nd.anchor);   // MUTATION: the base TF",
+        "expect": "[FAIL] P-BK-120",
+    },
+    {
+        "id": "P-BK-120-c",
+        "gate": "regression",
+        "rule": "the lean mover follows the same rung the release Sync lands on",
+        "what": "the drag drops the measure TF - every tick jumps when the gesture is released",
+        "file": "Biotak/BaseKnot_Plan.mqh",
+        "find": "                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin), tk, an);   // P-BK-120: the stop's own rung",
+        "replace": "                                  g_bkBoxes[k].baseTFMin, tk, an);   // MUTATION: the base TF",
+        "expect": "[FAIL] P-BK-120",
     },
 ]
 
@@ -4623,7 +4736,10 @@ def main():
     #--- never does. MEASURED: exact-id matching listed P-DRAGF3 as "without one"
     #--- while all six of its mutations were KILLED (exit was right, the census read
     #--- as a contradiction).
-    witnessed = {m["expect"] for m in MUTATIONS}
+    #--- P-BK-120 (2026-10-22): `expect` may carry the gate's own prefix (`[FAIL] P-…`)
+    #--- so a kill cannot be claimed by a PASS line that merely names the rule. The
+    #--- census below still reads the RULE, so the prefix is stripped here, once.
+    witnessed = {m["expect"].replace("[FAIL] ", "").strip() for m in MUTATIONS}
 
     if "--list" in argv:
         print("MUTATIONS (one rule each)")

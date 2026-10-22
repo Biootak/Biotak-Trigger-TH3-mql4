@@ -1205,7 +1205,7 @@ int BaseKnotEngNeeds(int &mins[], datetime &anchors[])
 // row (TF or value) really differs from the last round — so a warm, unchanged chart
 // pays a compare per entry and triggers no rebuild at all, while a new bar's EngSL
 // (or a box that just published a class) re-arms the pump's gate. P-BK-50: the SAME
-// row now carries the plan's three target legs, so ONE round hands over the risk AND
+// row now carries the box' three target legs, so ONE round hands over the risk AND
 // the targets, and a leg that MOVED re-arms the gate exactly like a moved EngSL.
 void BaseKnotEngPush(const int &mins[], const datetime &anchors[], const double &pips[],
                      const double &hunts[], const double &tp1[], const double &tp2[],
@@ -1278,11 +1278,13 @@ double BaseKnotHuntPips(const int tfMin, const datetime anchor = 0)
       if(s_bkEngTF[i] == tf && s_bkEngAnchor[i] == anchor) return s_bkEngHunt[i];
    return 0.0;
 }
-// P-BK-50 — THE PLAN'S OWN TARGET LEGS, per TF and anchor, exactly as the pump pushed
-// them: TP1..TP3 in pips counted FROM THE ENTRY, which is how the label's `#TPn+` row
-// counts them (the plan's legs are entry-relative by construction — the `#` field
-// of that row is entry-to-level, and the stop is one of those legs). 0 = the pump
-// has no value for that leg: an ABSENCE, never a guess.
+// P-BK-50 — THE BOX' OWN TARGET LEGS per TF and anchor, exactly as the pump pushed
+// them: TP1..TP3 in pips from the ENTRY. 0 = not pushed: an ABSENCE, never a guess.
+// P-BK-120 — AND THE RULER IS THE STOP'S OWN EngSL: the pump applies the plan's ratios
+// (7/3, 5, 31/3) to the SAME `plan.eng` it pushes as this row's EngSL, so a leg here is
+// `ratio × the stop the box draws`. It used to carry `plan.tp1..3`, which the plan sizes
+// off the STRUCTURE rung — on a CTR box the ticks were sized by Eng(M15) while the stop
+// was Eng(H1). Read it on the STOP's TF, never the base TF.
 double BaseKnotPlanTPPips(const int tfMin, const int k, const datetime anchor = 0)
 {
    if(k < 1 || k > BK_TP_PLAN_MAX) return 0.0;
@@ -1337,8 +1339,8 @@ string BaseKnotTPPlanTag(const int tfMin, const datetime anchor = 0)
    return " | TP " + s;
 }
 // ... and the hover's version: every drawn leg with its LEVEL and its pips from the
-// entry, plus what those pips are in R (the box' stop is 1 R), so the tick on the
-// chart can be checked against the plan row in the corner.
+// entry, plus what those pips are in R (the box' stop is 1 R). P-BK-120: the legs are
+// `ratio × that stop`, so the R here IS the plan's ratio (7/3, 5, 31/3).
 string BaseKnotTPPlanTip(const int tfMin, const double entry, const int dir, const double rPips,
                          const datetime anchor = 0)
 {
@@ -1350,9 +1352,9 @@ string BaseKnotTPPlanTip(const int tfMin, const double entry, const int dir, con
       double p = BaseKnotPlanTPPips(tfMin, k, anchor);
       double lv = BaseKnotTPLevel(entry, dir, tfMin, k, anchor);
       if(p <= 0.0 || lv <= 0.0) continue;
-      // P-BK-50: BOTH readings are spelled out — pips from the ENTRY (how the plan row
-      // counts them) and pips from the STOP line plus the R multiple that implies, so a
-      // reader can check the tick against whichever of the two he has in mind.
+      // P-BK-50: BOTH readings are spelled out — pips from the ENTRY and pips from the
+      // STOP line plus the R multiple that implies, so a reader can check the tick
+      // against whichever of the two he has in mind.
       t += "\n     TP" + IntegerToString(k) + " " + DoubleToString(lv, dg) + " (+" +
            DoubleToString(p, 0) + " pips from the entry" +
            (rPips > 0.0 ? " = " + DoubleToString(p + rPips, 0) + " from the stop, " +

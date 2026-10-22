@@ -973,6 +973,11 @@ void DrawStripLearnCurrent()
       //--- "learn the look" must not touch them, and same-value writes on them would
       //--- cost two description reads for a guaranteed no-op.
       if(s == DRAW_SLOT_BOXHALF || s == DRAW_SLOT_EXTEND) continue;
+      //--- P-ANCHOR-LAST-MOVE: the anchor seat is not a LOOK either — it holds the
+      //--- chart's switch, not a property of this drawing. "Learn this look" must not
+      //--- touch it (a same-value write there would be a no-op at best, and the seat's
+      //--- read is the GV, not the object).
+      if(s == DRAW_SLOT_ANCHOR) continue;
       if(!DrawSlotAvailable(k, s)) continue;
       DrawSlotWrite(s_dsObj, s, DrawSlotRead(s_dsObj, s));
    }

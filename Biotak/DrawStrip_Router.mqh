@@ -919,17 +919,30 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       //--- children (the sync refuses them outright), and rays/paths are healed
       //--- by their own tools (P-HR-01, PathTool:833) — never a second owner here.
       bool casc = false;
+      uint dt0 = GetTickCount();
+      uint dt1 = dt0, dt2 = dt0, dt3 = dt0, dt4 = dt0, dt5 = dt0, dt6 = dt0;
       if(!DrawIsIndicatorObject(sparam))
       {
          if(FibPenStraysDrop(sparam)) casc = true;
+         dt1 = GetTickCount();
          if(FibPenTagDrop(sparam)) casc = true;
          if(FibPenLookDrop(sparam)) casc = true;
+         dt2 = GetTickCount();
          if(PenStackStraysDrop(sparam)) casc = true;   // P-DRAW-74c: the rows die with the line
+         dt3 = GetTickCount();
       }
       BoxEdgeForget(sparam);
+      dt4 = GetTickCount();
       BoxMidDrop(sparam);
+      dt5 = GetTickCount();
       if(FillChildDrop(sparam)) casc = true;
       BoxMarkDrop(sparam);   // P-UI-134: a deleted box's KEY goes with it
+      dt6 = GetTickCount();
+      if(dt6 - dt0 >= 20)
+         DrawStripDiagEmit("[drawstrip] DELTIME obj=\"" + sparam + "\" fp=" + IntegerToString((int)(dt1 - dt0)) +
+                           " tag=" + IntegerToString((int)(dt2 - dt1)) + " ps=" + IntegerToString((int)(dt3 - dt2)) +
+                           " edge=" + IntegerToString((int)(dt4 - dt3)) + " mid=" + IntegerToString((int)(dt5 - dt4)) +
+                           " fillmark=" + IntegerToString((int)(dt6 - dt5)) + " total=" + IntegerToString((int)(dt6 - dt0)));
       // P-DEL-NOWb: one flush for every HAND delete, family or not. Our own
       // bulk paths arm the suppression window (their repaint is owned
       // elsewhere); an unsuppressed delete is the user's hand, and under a

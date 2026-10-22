@@ -193,38 +193,34 @@ string P4InitLedgerTag(const uint indMs, const uint uiMs)
 //+------------------------------------------------------------------+
 //| P-BK-46 — THE KNOT'S OWN EngSL: THE ASK / PUSH PAIR (one owner).   |
 //|                                                                   |
-//| The Base/Knot trade is measured in EngSL of the knot's OWN TF     |
-//| (its base class), and EngSL is TRADE-PLAN MATH — TradePlanFormulas,
-//| which sits ABOVE BaseKnotTool (the layer law, the same one P-BK-29's
-//| movement step obeys). So the tool is never asked to read it here:  |
-//| it SAYS which TFs its live boxes call their own, this layer       |
-//| computes exactly those (TradePlanEngOf — the number the TRex       |
-//| card's Eng.SL row shows, rounded to the same whole pips) and       |
-//| pushes the pairs back, where the domain stores them and rebuilds   |
-//| a knot's stop / target the moment one really moved.               |
+//| The Base/Knot trade is measured in EngSL, and EngSL is TRADE-PLAN  |
+//| MATH — TradePlanFormulas, which sits ABOVE BaseKnotTool (the layer |
+//| law, the same one P-BK-29's movement step obeys). So the tool is   |
+//| never asked to read it here: it SAYS which TFs its live boxes call |
+//| their own, this layer computes exactly those (TradePlanEngOf — the |
+//| number the TRex card's Eng.SL row shows, to the same whole pips)   |
+//| and pushes the pairs back, where the domain stores them and        |
+//| rebuilds a knot's stop / target the moment one really moved.       |
 //|                                                                   |
 //| One ask per pump round (500 ms), no boxes = one TF (this chart's,  |
 //| which is what the sizing preview uses), and every value comes from |
 //| the SAME multi-TF ATR cache the strip and the trade block read, so |
 //| a warm chart pays cache hits and compares.                        |
 //|                                                                   |
-//| P-BK-50 (2026-09-15) — THE PLAN'S TARGET LEGS RIDE THE SAME CALL.  |
-//| One plan per TF answers BOTH numbers a knot draws: the risk        |
-//| (`plan.eng` = EngSL, the very number the TRex card's Eng.SL row   |
-//| prints: one decimal since P-TRADEPLAN-DEC, 2026-09-16) and the    |
-//| targets (`plan.tp1..3` — the very numbers the corner row prints as  |
-//| `#TP1+n #TP2+n #TP3+n`). So the box can never disagree with that    |
-//| row about a target, and the tool is never asked to read ATR.       |
+//| P-BK-50 — THE TARGET LEGS RIDE THE SAME CALL. One plan per TF      |
+//| answers BOTH numbers a knot draws: the risk (`plan.eng` = EngSL,   |
+//| one decimal since P-TRADEPLAN-DEC) and the targets.                |
+//| P-BK-120 (2026-10-22): the box draws the same RATIOS on its OWN    |
+//| stop — EngSL of the TYPE's rung, not the plan's slTrue.            |
 //|                                                                   |
-//| P-BK-51 (2026-09-15) — AND SO DOES THE HUNTER LEG. The user's own   |
-//| rule («و برای گره etr میشه به اندازه huntsl محل ورود») sizes an     |
-//| ETR/CTR/OTR entry by ONE HuntSL, so `plan.hunter` — the leg the     |
-//| TRex card prints as `Hunter SL:` — is pushed per TF beside EngSL.   |
-//| The ask list grew with it: the ENTRY is read on the knot's own TF |
-//| and the STOP on the node TYPE'S own time (P-BK-83 — one rung above |
-//| the class for ETR, two for CTR, three for OTR), so that rung is    |
-//| asked for as well                                                  |
-//| (BaseKnotEngNeeds walks each box' own TF AND its measure TF).       |
+//| P-BK-51 — AND SO DOES THE HUNTER LEG. The user's own rule («و برای |
+//| گره etr میشه به اندازه huntsl محل ورود») sizes an ETR/CTR/OTR entry |
+//| by ONE HuntSL, so `plan.hunter` — the leg the TRex card prints as   |
+//| `Hunter SL:` — is pushed per TF beside EngSL. The ask list grew    |
+//| with it: the ENTRY is read on the knot's own TF and the STOP on    |
+//| the node TYPE'S own time (P-BK-83 — one rung above the class for   |
+//| ETR, two for CTR, three for OTR), so that rung is asked for too    |
+//| (BaseKnotEngNeeds walks the box' TF and its measure TF).           |
 //+------------------------------------------------------------------+
 void BaseKnotEngPump()
 {
@@ -262,9 +258,13 @@ void BaseKnotEngPump()
       pips[i] = (plan.eng > 0.0 ? plan.eng : 0.0);
       // P-BK-51: HuntSL rides the same row — the TRex card's Trigger.
       hunts[i] = (plan.hunter > 0.0 ? plan.hunter : 0.0);   // P-TRADEPLAN-DEC: 0.1 pip, same rule
-       tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);
-       tp2[i]  = (plan.tp2 > 0 ? (double)plan.tp2 : 0.0);
-       tp3[i]  = (plan.tp3 > 0 ? (double)plan.tp3 : 0.0);
+       // P-BK-120 (2026-10-22): the legs are the plan's RATIOS on THIS row's EngSL — the very
+       // number `pips[i]` above pushes and the box draws its stop with — never `plan.tp1..3`,
+       // which the plan sizes off the STRUCTURE rung (a different stop: user «tp های که رسم
+       // شده باید از همون محاسبات باشه»). So a box' ticks, its stop and its R are one ruler.
+       tp1[i]  = (double)TradePlanTPFromEng(plan.eng, 1);
+       tp2[i]  = (double)TradePlanTPFromEng(plan.eng, 2);
+       tp3[i]  = (double)TradePlanTPFromEng(plan.eng, 3);
        pric[i] = (plan.pricicle > 0 ? (double)plan.pricicle : 0.0);
        clas[i] = (plan.classic > 0 ? (double)plan.classic : 0.0);
        // P-BK-106 — THE TYPE'S OWN MEASURE IS BACK ON ATR (P-BK-92's TH reversal retired).

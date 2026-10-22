@@ -629,12 +629,12 @@ void BaseKnotDrawPreviewRect(const string tag, const datetime t1, const double p
 //| never a guess. P-BK-50's geometry (entry ONE R OUTSIDE the edge,   |
 //| the stop ON that edge) is SUPERSEDED IN PLACE by the two lines     |
 //| below — the pair it replaced is kept verbatim under BKGEOM-OFF, one |
-//| uncomment away. The TARGETS are the TRADE PLAN's own legs          |
-//| (BaseKnotTPLevel — the TP1/TP2/TP3 the label's `#SL/-TP` row       |
-//| prints for the same TF), measured from the entry exactly as that   |
-//| row measures them; the old `TARGET R`-multiple target stays        |
-//| RETIRED IN PLACE (BKTPR-OFF) and the SAME state picks how many of   |
-//| the plan's legs are drawn (BaseKnotTPCount).                       |
+//| uncomment away. The TARGETS are the box' OWN legs                  |
+//| (BaseKnotTPLevel — the plan's ratios 7/3, 5, 31/3 applied to the   |
+//| stop this geometry just drew, P-BK-120), measured from the entry;  |
+//| the old `TARGET R`-multiple target stays RETIRED IN PLACE          |
+//| (BKTPR-OFF) and the SAME state picks how many legs are drawn       |
+//| (BaseKnotTPCount).                                                 |
 //+------------------------------------------------------------------+
 // P-BK-51 — WHICH TF'S NUMBERS SIZE THE TRADE. The knot's own TF is the class the note
 // names (P-BK-46). P-BK-83 (2026-09-17) — AND THE TWO LEGS DO NOT SHARE ONE ANSWER:

@@ -115,7 +115,15 @@ enum EDrawKind
 #define DRAW_SLOT_BODYCOLOR 13
 #define DRAW_SLOT_BODYWIDTH 14
 #define DRAW_SLOT_BODYSTYLE 15
-#define DRAW_SLOT_N          16
+//--- P-ANCHOR-LAST-MOVE (2026-10-22) — THE ONE SEAT THAT IS NOT THE KIND'S.
+//--- The ATR anchor switch left the ATR labels card (it was never a label setting)
+//--- and lives here, on the strip, for the only two drawings that own an anchor:
+//--- a BaseKnot box and a leg ruler. It is asked of the HELD OBJECT, never of the
+//--- kind — a kind rule would hand it to every rectangle and every trendline — so
+//--- `DrawStripSeatAvail` answers it BEFORE the caps gate, the same door the path's
+//--- 50 % seat uses (P-UI-139). APPENDED, so no existing slot index moved.
+#define DRAW_SLOT_ANCHOR     16
+#define DRAW_SLOT_N          17
 
 //--- THE CAPABILITIES, one bit per slot. A kind's mask IS its toolbar.
 #define DRAW_CAP_COLOR   (1 << DRAW_SLOT_COLOR)
@@ -135,6 +143,11 @@ enum EDrawKind
 #define DRAW_CAP_BODYWIDTH (1 << DRAW_SLOT_BODYWIDTH)
 #define DRAW_CAP_BODYSTYLE (1 << DRAW_SLOT_BODYSTYLE)
 #define DRAW_CAP_BODY      (DRAW_CAP_BODYCOLOR | DRAW_CAP_BODYWIDTH | DRAW_CAP_BODYSTYLE)
+//--- P-ANCHOR-LAST-MOVE: NO kind carries this bit. The seat is the held object's,
+//--- so `DrawKindCaps` must never answer it — it is granted in `DrawStripSeatAvail`
+//--- from the object's own identity, and the cap constant exists only so the seat
+//--- has a name in the same currency as every other one.
+#define DRAW_CAP_ANCHOR    (1 << DRAW_SLOT_ANCHOR)
 //--- every drawing tool the user has: the four common controls + the two that
 //--- every MT4 object really carries (LOCK, BACK) + the terminal's own dialog
 //--- hint. Kinds add FILL / RAY / FONT / GLYPH on top (see the table).

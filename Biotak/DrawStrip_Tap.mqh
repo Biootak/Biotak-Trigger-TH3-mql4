@@ -336,6 +336,29 @@ bool DrawStripTap(const int idx, const string tap)
       DrawStripPaint();
       return true;
    }
+   //--- P-ANCHOR-LAST-MOVE (2026-10-22) — THE ONE SEAT WHOSE STATE IS NOT AN OBJECT
+   //--- PROPERTY. It is the chart's own ATR-anchor switch, so it flips HERE instead of
+   //--- riding `DrawStripWriteValue` — a write to a property the rectangle/trend line
+   //--- does not have is the silent no-op this strip refuses (C-04). It sits before
+   //--- the toggle branch for that reason, and it flushes: P-UI-131's law is that a
+   //--- user action gets ONE unconditional redraw, never the paint's own `dirty` gate.
+   if(slot == DRAW_SLOT_ANCHOR)
+   {
+      CalcAnchorSetOn(!g_calcAnchorOn);
+      DrawStripDiagEmit("[drawstrip] ANCHOR on=" + IntegerToString(g_calcAnchorOn ? 1 : 0) +
+                        " obj=\"" + s_dsObj + "\" at=" +
+                        (g_calcAnchorTime > 0 ? TimeToString(g_calcAnchorTime, TIME_DATE | TIME_MINUTES)
+                                              : (string)"live"));
+      DrawStripPaint();
+      //--- P-ANCHOR-LAST-MOVE: the SAME-PASS half. The ATR the switch changes is read
+      //--- by the label/level/plan pass, which a bare `ChartRedraw` does not run — so
+      //--- the press asks the ONE dispatcher the cards use (through the bridge above,
+      //--- because BiotakKit is include 128 and this file is 99). One press, one full
+      //--- refresh; a still frame asks nothing and pays nothing.
+      DrawStripRefreshAsk();
+      ChartRedraw();
+      return true;
+   }
    if(DrawStripIsToggle(slot))
    {
       DrawStripUndoPush();

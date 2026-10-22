@@ -411,6 +411,11 @@ double PnlCurrentSet(const int item,const int row)
               if(row==13) return g_tradeMarginBottom;
               if(row>=14 && row<=18) return 0;   // palette-only (P-UI-70d)
               if(row==19) return g_useLegATR?1.0:0.0;   // P-LEGATR (not a visibility family: no mute term)
+              // P-ANCHOR-LAST-MOVE (2026-10-22): row 20 is OFF THE CARD, so this is
+              // an address stub (MIDPOINT precedent, P-UI-47) — no descriptor and no
+              // spec row asks it any more, and the switch now belongs to the two
+              // tools that own the anchor. Kept so a stale reader cannot fall into
+              // the trailing branch and answer PRE-CP ATR's value instead.
               if(row==20) return g_calcAnchorOn?1.0:0.0;   // P-ANCHOR-LAST
               return g_useLegATR?1.0:0.0;   // trailing answers the TOP address (row 19)
       case 3: // P-UI-93: SetTHLabelsVisibility spells its mask
@@ -697,6 +702,11 @@ int PnlApplySet(const int item,const int row,const double v)
          else if(row==19) { g_useLegATR=(v>0.5);
                             RuntimeSettingsSaveOverridesThrottled();   // OV_ALG
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         // P-ANCHOR-LAST-MOVE (2026-10-22): the switch left this card, so this is
+         // the address stub for row 20 (MIDPOINT precedent, P-UI-47) — nothing on
+         // the card paints it. The write stays so an older build's saved press
+         // cannot fall through to PRE-CP ATR's branch and flip the plan's ATR
+         // source instead.
          else             { CalcAnchorSetOn(v>0.5);   // P-ANCHOR-LAST
                             flags=REFRESH_ALL; }
          break;
