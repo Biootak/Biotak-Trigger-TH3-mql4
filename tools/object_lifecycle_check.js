@@ -30,7 +30,7 @@ const root = process.argv[2] ?? '.';
 const WRITERS = {
   DrawStripBtnZ: 0, DrawStripBtn: 0, DrawStripFaceZ: 0, DrawStripFace: 0,
   DrawStripLblAt: 0, DrawStripLblIn: 0, DrawStripRect: 0, DrawStripSkinBmp: 0,
-  DrawStripEdit: 'DrawStripEditName', DrawStripPopHex: 'DrawStripPHexEdName',
+  DrawStripEdit: 'DrawStripEditName',
   PnlBtn: 0, PnlSetButton: 0, PnlCreate: 0, PnlLabel: 0, PnlBitmap: 0, PnlRect: 0,
 };
 

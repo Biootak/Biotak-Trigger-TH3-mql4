@@ -847,19 +847,19 @@ bool DrawStripGearPlate()
        string wantRes   = (narrow && cardExact)
                           ? ("::Files\\Icons\\pnl_card" + IntegerToString(cardN) + ".bmp")
                           : "::Files\\Icons\\pnl_cardWtop.bmp";
-       Print("[drawstrip] PLATE tab=", s_dsGear, " h=", gh, " w=", gw,
-             " cardN=", cardN, " exact=", (cardExact ? 1 : 0), " narrow=", (narrow ? 1 : 0),
-             " -> branch=", (narrow && cardExact ? "bake" : "wide"),
-             " obj=", plateName,
-             " exists=", (ObjectFind(0, plateName) >= 0 ? 1 : 0),
-             " want=", wantRes,
-             " got=", (ObjectFind(0, plateName) >= 0
-                       ? ObjectGetString(0, plateName, OBJPROP_BMPFILE, 0) : "-"),
-             " xy=", gx, ",", gy,
-             " z=", (ObjectFind(0, plateName) >= 0
-                     ? (int)ObjectGetInteger(0, plateName, OBJPROP_ZORDER) : -1),
-             " plateFill=", (int)DrawStripPlateFill(),
-             " rows=", s_dsGRN, " grids=", s_dsGGN, " secs=", s_dsGearSecN);
+       DrawStripDiagEmit("[drawstrip] PLATE tab=" + IntegerToString(s_dsGear) + " h=" + IntegerToString(gh) + " w=" + IntegerToString(gw) +
+             " cardN=" + IntegerToString(cardN) + " exact=" + IntegerToString(cardExact ? 1 : 0) + " narrow=" + IntegerToString(narrow ? 1 : 0) +
+             " -> branch=" + (narrow && cardExact ? "bake" : "wide") +
+             " obj=" + plateName +
+             " exists=" + IntegerToString(ObjectFind(0, plateName) >= 0 ? 1 : 0) +
+             " want=" + wantRes +
+             " got=" + (ObjectFind(0, plateName) >= 0
+                       ? ObjectGetString(0, plateName, OBJPROP_BMPFILE, 0) : "-") +
+             " xy=" + IntegerToString(gx) + "," + IntegerToString(gy) +
+             " z=" + IntegerToString(ObjectFind(0, plateName) >= 0
+                     ? (int)ObjectGetInteger(0, plateName, OBJPROP_ZORDER) : -1) +
+             " plateFill=" + IntegerToString((int)DrawStripPlateFill()) +
+             " rows=" + IntegerToString(s_dsGRN) + " grids=" + IntegerToString(s_dsGGN) + " secs=" + IntegerToString(s_dsGearSecN));
     }
     return dirty;
 }
@@ -925,10 +925,6 @@ void DrawStripPlaceGear()
    px[6] = s_dsX + s_dsW + DSTRIP_GEAR_GAP; py[6] = s_dsY + s_dsH - H;         // right, low
    px[7] = s_dsX - W - DSTRIP_GEAR_GAP;     py[7] = s_dsY + s_dsH - H;         // left, low
    const bool cardOpen = (g_UIPanelRX >= 0 && g_UIPanelRW > 0 && g_UIPanelRH > 0);
-   //--- P-DRAW-73 (2026-09-28): the COLOUR BOARD is a surface too, and the panel's
-   //--- score did not know it — so the panel could be placed straight through an open
-   //--- board (H-05's other half; the board's placer now answers the same question).
-   const bool boardOpen = (DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0);
    int best = -1, bestAir = 0; long bestScore = 0;
    for(int c = 0; c < DSTRIP_GEAR_POS_N; c++)
    {
@@ -936,13 +932,14 @@ void DrawStripPlaceGear()
       const int oDraw  = haveDraw ? DrawStripRectOverlap(px[c], py[c], W, H, dx1, dy1, dx2 - dx1, dy2 - dy1) : 0;
       const int oPlate = DrawStripRectOverlap(px[c], py[c], W, H, s_dsX, s_dsY, s_dsW, s_dsH);
       const int oCard  = cardOpen ? DrawStripRectOverlap(px[c], py[c], W, H, g_UIPanelRX, g_UIPanelRY, g_UIPanelRW, g_UIPanelRH) : 0;
-      const int oBoard = boardOpen ? DrawStripRectOverlap(px[c], py[c], W, H, s_dsBX, s_dsBY, s_dsBW, s_dsBH) : 0;
       // P-DRAW-45: the WORK is punished an order of magnitude above the surfaces it
       // shares the screen with (B-10: the panel never covers the drawing it serves),
       // the plate next (P-DRAW-31: two surfaces never share a pixel) and the open card
       // last; between two spots that cover nothing, the one leaving more window wins,
       // and a real tie keeps the reading order (below, above, right, left, corners).
-      const long score = -((long)oDraw * 1000 + (long)oPlate * 20 + (long)oBoard * 20 + (long)oCard * 5);
+      // P-PAL-21: the COLOUR BOARD term (`oBoard`) is retired with the board's rect
+      // (0 at every write) — it always scored 0, so the score is byte-identical.
+      const long score = -((long)oDraw * 1000 + (long)oPlate * 20 + (long)oCard * 5);
       const int air = MathMin(MathMin(px[c] - gm, py[c] - gm),
                               MathMin(maxX - px[c], maxY - py[c]));
       if(best < 0 || score > bestScore || (score == bestScore && air > bestAir))
@@ -963,9 +960,9 @@ void DrawStripPlaceGear()
    {
       s_gpLogSide = best;
       s_gpLogX = s_dsGEX; s_gpLogY = s_dsGEY;
-      Print("[drawstrip] gear side=", DrawStripGearSideName(best),
-            " pos=(", s_dsGEX, ",", s_dsGEY, ") size=", W, "x", H,
-            " chart=", cw, "x", ch, " air=", bestAir);
+      DrawStripDiagEmit("[drawstrip] gear side=" + DrawStripGearSideName(best) +
+            " pos=(" + IntegerToString(s_dsGEX) + "," + IntegerToString(s_dsGEY) + ") size=" + IntegerToString(W) + "x" + IntegerToString(H) +
+            " chart=" + IntegerToString(cw) + "x" + IntegerToString(ch) + " air=" + IntegerToString(bestAir));
    }
 }
 

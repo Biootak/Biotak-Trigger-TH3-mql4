@@ -19,19 +19,24 @@
 
 void CircRingCensus(const int n)
 {
-   int r  = (int)MathCeil(CircRing2Radius() + CIRC_BTN_SIZE / 2.0 + CIRC_BG_MARGIN);
-   int x0 = g_UI.menuX - r, y0 = g_UI.menuY - r, x1 = g_UI.menuX + r, y1 = g_UI.menuY + r;
+   // P-UI-204: the rect is the FAMILY's own box (the orb + every seat box), not the ring's
+   // radius. MEASURED 10:29: a 12-seat TRAIN ran from x=688 to x=1182 while the census rect
+   // ended at 804 - hit=7 and the tail was outside the judge's field of view entirely.
+   int x0 = g_UI.menuX - CIRC_ORB_SIZE / 2, y0 = g_UI.menuY - CIRC_ORB_SIZE / 2;
+   int x1 = g_UI.menuX + CIRC_ORB_SIZE / 2, y1 = g_UI.menuY + CIRC_ORB_SIZE / 2;
    for(int i = 0; i < n; i++)
    {
       string nm = CircBg(i);
       if(ObjectFind(0, nm) < 0) { DrawStripDiagEmit(StringFormat("[P-UI-200] seat=%d bg MISSING", i)); continue; }
+      int bx = (int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
+      int by = (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
+      int bw = (int)ObjectGetInteger(0, nm, OBJPROP_XSIZE);
+      int bh = (int)ObjectGetInteger(0, nm, OBJPROP_YSIZE);
       DrawStripDiagEmit(StringFormat("[P-UI-200] seat=%d s=%d box=%dx%d at=%d,%d bmp=%s",
-                                     i, CircSeatSize(i),
-                                     (int)ObjectGetInteger(0, nm, OBJPROP_XSIZE),
-                                     (int)ObjectGetInteger(0, nm, OBJPROP_YSIZE),
-                                     (int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE),
-                                     (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE),
+                                     i, CircSeatSize(i), bw, bh, bx, by,
                                      ObjectGetString(0, nm, OBJPROP_BMPFILE, 0)));
+      x0 = MathMin(x0, bx);           y0 = MathMin(y0, by);
+      x1 = MathMax(x1, bx + bw);      y1 = MathMax(y1, by + bh);
    }
    int total = ObjectsTotal(0, -1, -1), hits = 0;
    for(int k = 0; k < total; k++)

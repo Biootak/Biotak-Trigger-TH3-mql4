@@ -633,11 +633,17 @@ int CircPlacedCount()
 
 void CircNoteBuilt()
 {
-   s_circBuiltSeats = CircPlacedCountLive();   // note BEFORE a create: CircLayout reads this n
+   // P-UI-206: the fingerprint must be the count the LAYOUT will draw at. While the hand
+   // holds the orb that is the FROZEN set (CircLayout reads CircPlacedCount()), so noting the
+   // live count here stamped a set the paint never used — and the release gate
+   // (`C:512 built == live`) then answered "same set" and rebuilt nothing, which is the
+   // reported «رها می‌کنم درست نمی‌شود»: old pitch, new seats, bare glyphs.
+   s_circBuiltSeats = (g_OrbDragging && s_circBuiltSeats >= 0) ? s_circBuiltSeats
+                                                             : CircPlacedCountLive();
    // P-UI-195/200: the two circles and the ring's census name themselves once per build
    // (open / restore / relayout) through the FLUSHED channel (P-LOG-3), not the journal.
-   DrawStripDiagEmit(StringFormat("[P-UI-195] seats=%d ring1=%d ring2=%d s1=%d s2=%d r2=%.1f th0=%.1f step=%.1f door_outer=%d",
-                                   s_circBuiltSeats, CircRing1Count(), CircRing2Count(),
+   DrawStripDiagEmit(StringFormat("[P-UI-195] seats=%d live=%d ring1=%d ring2=%d s1=%d s2=%d r2=%.1f th0=%.1f step=%.1f door_outer=%d",
+                                   s_circBuiltSeats, CircPlacedCountLive(), CircRing1Count(), CircRing2Count(),
                                    CIRC_BTN_SIZE, CIRC_RING2_BTN_SIZE, CircRing2Radius(),
                                    CircRing2StartDeg(), CircRing2StepDeg(),
                                    (CircSeatOuter(s_circBuiltSeats - 1) ? 1 : 0)));
@@ -659,21 +665,24 @@ void CircLayout(const int i, int &x, int &y)
    if(CircRailShape(vertical, dir))
    {
       int s = CircBtnSize();   // the train's one side (P-UI-166) — CircSeatSize answers the same
-      int step = s + CIRC_GAP;
+      // P-UI-204: the PITCH is the TILE's width (s + 2*margin). MEASURED 10:29: box 43 at
+      // pitch 41 - every tile overlapped its neighbour by 2px and the train read as a comb.
+      int box = s + 2 * CIRC_BG_MARGIN;
+      int step = box + CIRC_GAP;
       // P-UI-26: clamp the rail's CROSS axis so buttons never draw half
       // off-chart. One uniform shift for the whole train — never a per-item
       // clamp (that stacks the train, P-UI-13) and never a radius shrink
       // (R-SUBLADDER). The orb itself stays where the user put it.
-      int half = s / 2 + CIRC_PAD;
+      int half = box / 2 + CIRC_PAD;   // P-UI-204: the TILE must stay inside, not the seat
       if(vertical)
       {
          x = MathMax(half, MathMin(cw - half, ox));
-         y = oy + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
+         y = oy + dir * (CIRC_ORB_SIZE / 2 + box / 2 + CIRC_GAP + i * step);
       }
       else
       {
          y = MathMax(half, MathMin(ch - half, oy));
-         x = ox + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
+         x = ox + dir * (CIRC_ORB_SIZE / 2 + box / 2 + CIRC_GAP + i * step);
       }
    }
    else if(CircSeatOuter(i))
@@ -793,13 +802,12 @@ bool SubRailAxis(const int n, const int ox, const int oy, const int cw, const in
    bool nearBottom = (oy >= ch - CIRC_EDGE_TRIGGER);
    if(!(nearLeft || nearRight || nearTop || nearBottom)) return false;
 
-   int pitch    = CIRC_BTN_SIZE + CIRC_GAP;
-   int trainLen = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP
-                  + (n - 1) * pitch + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
+   int tile     = SubRailTile();          // P-UI-207: the TILE this rail PAINTS (52), not the seat
+   int trainLen = CircRailRun(tile, n);   // ...and the run the placement lays down — one owner
    if(nearLeft || nearRight)
    {
-      int upRoom   = oy - CIRC_PAD - CIRC_BTN_SIZE / 2;
-      int downRoom = ch - CIRC_PAD - oy - CIRC_BTN_SIZE / 2;
+      int upRoom   = CircRailRoom(oy, tile);
+      int downRoom = CircRailRoom(ch - oy, tile);
       int dir = (upRoom >= downRoom) ? -1 : 1;
       if(dir == -1 && upRoom < trainLen && downRoom >= trainLen) dir = 1;
       else if(dir == 1 && downRoom < trainLen && upRoom >= trainLen) dir = -1;
@@ -807,8 +815,8 @@ bool SubRailAxis(const int n, const int ox, const int oy, const int cw, const in
       fits = ((dir == -1) ? upRoom : downRoom) >= trainLen;
       return true;
    }
-   int leftRoom  = ox - CIRC_PAD - CIRC_BTN_SIZE / 2;
-   int rightRoom = cw - CIRC_PAD - ox - CIRC_BTN_SIZE / 2;
+   int leftRoom  = CircRailRoom(ox, tile);
+   int rightRoom = CircRailRoom(cw - ox, tile);
    int dir = (leftRoom >= rightRoom) ? -1 : 1;
    if(dir == -1 && leftRoom < trainLen && rightRoom >= trainLen) dir = 1;
    else if(dir == 1 && rightRoom < trainLen && leftRoom >= trainLen) dir = -1;
@@ -985,8 +993,9 @@ void SubPlaceItem(const int i, int &x, int &y)
       int ux = 0, uy = 0;
       bool fits = false;
       SubRailAxis(CAT_COUNT, ox, oy, cw, ch, ux, uy, fits);
-      int dist = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP
-                 + i * (CIRC_BTN_SIZE + CIRC_GAP);
+      // P-UI-207: the TILE, not the seat — the same lead/step the fits test above answered.
+      int tile = SubRailTile();
+      int dist = CircRailLead(tile) + i * CircRailStep(tile);
       x = ox + ux * dist;
       y = oy + uy * dist;
       return;
@@ -1069,6 +1078,8 @@ int SubBgSize()
 {
    return SubIsPanelMode() ? SUB_CELL_CANVAS : CIRC_BG_SIZE;
 }
+//--- P-UI-207: the TILE row B (the Tools rail) paints — the disc canvas, never the seat.
+int SubRailTile() { return CIRC_BG_SIZE; }
 string SubBgRes(const bool on)
 {
    if(SubIsPanelMode()) return on ? "::Files\\Icons\\cell_on.bmp" : "::Files\\Icons\\cell_off.bmp";

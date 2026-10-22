@@ -74,6 +74,31 @@ function hostTrees(names) {
   return out;
 }
 
+// P-UI-201 (2026-10-22): a seat's glow must DIE before its canvas edge. MT4 blits a
+// bitmap label 1:1 and CLIPS it at XSIZE/YSIZE, so a halo still opaque at the border
+// draws four straight edges around the disc — the rounded-SQUARE seat the user
+// photographed. MEASURED: every circ_*.bmp shipped border alpha 29..87 (off) and
+// 29..104 (on); the window in `circSkin` (gen-th3-icons.js) brings it to 0.
+function borderAlpha(p) {
+  const fd = fs.openSync(p, 'r');
+  try {
+    const h = Buffer.alloc(54);
+    if (fs.readSync(fd, h, 0, 54, 0) < 54) return null;
+    if (h.toString('ascii', 0, 2) !== 'BM') return null;
+    const off = h.readUInt32LE(10), w = h.readInt32LE(18), hs = h.readInt32LE(22);
+    const bpp = h.readUInt16LE(28);
+    if (bpp !== 32 || !w || !hs) return null;
+    const H = Math.abs(hs), row = w * 4, topDown = hs < 0;
+    const buf = Buffer.alloc(row * H);
+    fs.readSync(fd, buf, 0, buf.length, off);
+    const A = (x, y) => buf[(topDown ? y : H - 1 - y) * row + x * 4 + 3];
+    let mx = 0;
+    for (let x = 0; x < w; x++) mx = Math.max(mx, A(x, 0), A(x, H - 1));
+    for (let y = 0; y < H; y++) mx = Math.max(mx, A(0, y), A(w - 1, y));
+    return mx;
+  } finally { fs.closeSync(fd); }
+}
+
 function main() {
   if (!fs.existsSync(MANIFEST)) {
     console.error('[FAIL] tools/icon-manifest.txt is missing — run `node tools/gen-th3-icons.js`');
@@ -87,6 +112,20 @@ function main() {
     for (const n of missingSrc.slice(0, 10)) console.error('    ' + n);
     return 1;
   }
+
+  const circ = names.filter((n) => /^circ_(on|off)(_\d+)?\.bmp$/.test(n));
+  const cut = [];
+  for (const n of circ) {
+    const a = borderAlpha(path.join(SRC, n));
+    if (a === null || a > 0) cut.push(`${n} (border alpha max ${a})`);
+  }
+  if (cut.length) {
+    console.error('[FAIL] P-UI-201 seat art — the glow is cut at the canvas border (a square silhouette on the chart):');
+    for (const c of cut) console.error('    ' + c);
+    console.error('       Re-bake with the radial window: node tools/gen-th3-icons.js');
+    return 1;
+  }
+  console.log(`[PASS] P-UI-201 seat art — ${circ.length} circ raster(s) fade to alpha 0 at every border pixel`);
 
   const hosts = hostTrees(names);
   if (!hosts.length) {

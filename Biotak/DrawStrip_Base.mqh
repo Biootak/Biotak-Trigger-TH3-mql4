@@ -519,15 +519,9 @@ void DrawStripPublishRect()
       if(s_dsGEX + s_dsGearW0 + DSTRIP_SKIN_M > x2) x2 = s_dsGEX + s_dsGearW0 + DSTRIP_SKIN_M;
       if(s_dsGEY + s_dsGearH + DSTRIP_SKIN_M > y2) y2 = s_dsGEY + s_dsGearH + DSTRIP_SKIN_M;
    }
-   //--- P-DRAW-48: the COLOUR BOARD is occupancy too — a card placed by the
-   //--- neighbours must clear it, and a fresh board must clear them.
-   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0)
-   {
-      if(s_dsBX - DSTRIP_SKIN_M < x1) x1 = s_dsBX - DSTRIP_SKIN_M;
-      if(s_dsBY - DSTRIP_SKIN_M < y1) y1 = s_dsBY - DSTRIP_SKIN_M;
-      if(s_dsBX + s_dsBW + DSTRIP_SKIN_M > x2) x2 = s_dsBX + s_dsBW + DSTRIP_SKIN_M;
-      if(s_dsBY + s_dsBH + DSTRIP_SKIN_M > y2) y2 = s_dsBY + s_dsBH + DSTRIP_SKIN_M;
-   }
+   //--- P-PAL-21 (2026-10-02): the colour-board occupancy clause is RETIRED, not
+   //--- lost — the board's rect (`s_dsBW/s_dsBH`) is 0 at every write in the tree,
+   //--- so the clause could never fire. Nothing left to trade against.
    g_UIStripRX = x1;
    g_UIStripRY = y1;
    g_UIStripRW = x2 - x1;
@@ -727,8 +721,6 @@ string DrawStripPRecLabelName() { return "PnlDrawS_PRecT"; }
 //--- P-PAL-14: the well an EMPTY recent slot wears. A seat of its own, because the
 //--- slot is a state the trader can see, not an absence.
 string DrawStripPRecEmptyName(const int i) { return DrawStripPRecName(i) + "E"; }
-string DrawStripPHexLbName() { return "PnlDrawS_PHexLb"; }
-string DrawStripPHexEdName() { return "PnlDrawS_PHexEd"; }
 //--- P-DRAW-48: the OPACITY band's own five objects (Lb = its label, T = the bed,
 //--- F = the filled part, K = the knob, V = the `NN%` readout).
 string DrawStripPOpLbName()    { return "PnlDrawS_POpLb"; }
@@ -791,8 +783,8 @@ void DrawStripForeign(const string nm, const int type)
    if(!saidType)
    {
       saidType = true;
-      Print("[drawstrip] object of another type reclaimed obj=", nm,
-            " type=", (int)ObjectGetInteger(0, nm, OBJPROP_TYPE), " want=", type);
+      DrawStripDiagEmit("[drawstrip] object of another type reclaimed obj=" + nm +
+            " type=" + IntegerToString((int)ObjectGetInteger(0, nm, OBJPROP_TYPE)) + " want=" + IntegerToString(type));
    }
    ObjectDelete(0, nm);
 }
@@ -845,12 +837,8 @@ bool DrawStripPointInside(const int mx, const int my)
    if(s_dsGear != 0 && s_dsGearW0 > 0 && s_dsGearH > 0 &&
       mx >= s_dsGEX - m && mx <= s_dsGEX + s_dsGearW0 + m &&
       my >= s_dsGEY - m && my <= s_dsGEY + s_dsGearH + m) return true;
-   //--- P-DRAW-48: the COLOUR BOARD is our surface too — it can float anywhere,
-   //--- including over the chart, and a click on its plate is not a click on the
-   //--- chart (it would dismiss the very strip the board belongs to).
-   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0 &&
-      mx >= s_dsBX - m && mx <= s_dsBX + s_dsBW + m &&
-      my >= s_dsBY - m && my <= s_dsBY + s_dsBH + m) return true;
+   //--- P-PAL-21: the COLOUR BOARD's own surface clause is retired with the board
+   //--- (`s_dsBW/s_dsBH` are 0 at every write, so it never answered true).
    //--- P-PAL-20: AND WHATEVER ELSE THIS STRIP OWNS — the popups the entry's bridge
    //--- republished this event (the cards' palette, opened by a colour cell). Same
    //--- law as the two clauses above, one registry instead of one branch per popup.

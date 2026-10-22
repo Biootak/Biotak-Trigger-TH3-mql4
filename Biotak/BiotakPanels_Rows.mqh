@@ -746,20 +746,6 @@ bool IsDdRow(const int item,const int row)
    string arr[]; int cnt=PnlSplit(opts,arr,12);
    return (cnt>=4);
 }
-// Closed select-button rect (shared by draw + press hit-test + update).
-void PnlDdRect(const int item,const int row,int &x,int &y,int &w,int &h)
-{
-   int kind; string label,unit,opts; int minV,maxV; double step;
-   PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
-   string arr[]; int cnt=PnlSplit(opts,arr,12);
-   int maxLen=0;
-   for(int i=0;i<cnt;i++) maxLen=MathMax(maxLen,StringLen(arr[i]));
-   w=MathMax(104,MathMin(190,maxLen*7+54));
-   int px=PnlRowBaseX(item,row), py=g_PnlY[item];
-   x=px+PNL_WEL-PNL_PAD_X-w;
-   y=py+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_CTL_Y;
-   h=PNL_CTL_H;
-}
 string PnlDdOptText(const int item,const int row)
 {
    int kind; string label,unit,opts; int minV,maxV; double step;
@@ -768,6 +754,15 @@ string PnlDdOptText(const int item,const int row)
    if(cnt<=0) return "";
    int idx=ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
    return arr[idx];
+}
+// Closed select-button rect (shared by draw + press hit-test + update).
+void PnlDdRect(const int item,const int row,int &x,int &y,int &w,int &h)
+{
+   w=MathMax(PNL_BTN_W,50+PnlTextW(PnlDdOptText(item,row),PNL_PT_CTL));
+   int px=PnlRowBaseX(item,row), py=g_PnlY[item];
+   x=px+PNL_WEL-PNL_PAD_X-w;
+   y=py+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_CTL_Y-1;
+   h=26;
 }
 void PnlDdClose()
 {
@@ -1190,7 +1185,7 @@ bool PnlBandHit(const int mx,const int my,int &item,int &row)
       int bx = PnlRowBaseX(it,r);
       int ry = py + PNL_HEAD_H + PnlRowLine(it,r)*PNL_ROW_H;
       // WIDE: bands span both columns — hit the whole card width
-      if(mx >= bx+PNL_PAD_X-6 && mx <= bx+PnlCardW(it)-PNL_PAD_X+6 && my >= ry+5 && my <= ry+37)
+      if(mx >= bx && mx <= bx+PnlCardW(it) && my >= ry && my <= ry+PNL_ROW_H-1)
       {
          item=it; row=r;
          return true;

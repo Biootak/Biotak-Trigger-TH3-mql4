@@ -461,6 +461,28 @@ bool DrawAnchorXY(const string name, const int idx, int &x, int &y)
 {
    datetime t = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, idx);
    double   p = ObjectGetDouble(0, name, OBJPROP_PRICE, idx);
+   // P-UI-208 (2026-10-22) — THE AXIS THE OBJECT DOES NOT OWN IS NOT AN ANCHOR.
+   // A horizontal line carries NO time (MT4 stores 0 in TIME1; this tree's own
+   // helpers create it as `ObjectCreate(..., 0, 0, price)`) and a vertical line
+   // carries NO price. Requiring both made every such line un-projectable, so a
+   // press on it named nothing and the strip refused to open: MEASURED 2026-10-22
+   // 12:56:27 XAUUSD,M15 — `[drawstrip] close: anchor projection failed on
+   // "Horizontal Line 43389"`, and the Biotak-made custom-price lines are born
+   // the same way (EventHandlers_CustomPrice.mqh:49). Borrow the missing axis
+   // from the MIDDLE of the live window: it is on the chart by definition,
+   // whatever the scroll, and the axis the object really owns is untouched.
+   const int type = (int)ObjectGetInteger(0, name, OBJPROP_TYPE);
+   if((t <= 0 && type == OBJ_HLINE) || (!(p > 0.0) && type == OBJ_VLINE))
+   {
+      int sub = 0; datetime tc = 0; double pc = 0.0;
+      const int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+      const int chh = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+      if(cw > 0 && chh > 0 && ChartXYToTimePrice(0, cw / 2, chh / 2, sub, tc, pc))
+      {
+         if(t <= 0 && type == OBJ_HLINE) t = tc;
+         if(!(p > 0.0) && type == OBJ_VLINE) p = pc;
+      }
+   }
    if(t <= 0 || !(p > 0.0)) return false;
    if(!ChartTimePriceToXY(0, 0, t, p, x, y)) return false;
    return true;

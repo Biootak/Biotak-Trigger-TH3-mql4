@@ -42,8 +42,21 @@ void CircHealRingStep()
    int n = CircPlacedCount();
    if(n <= 0) return;
    static int s_healSeat = 0;
-   if(s_healSeat >= n) s_healSeat = 0;
+   if(s_healSeat >= RING_MAX_SEATS) s_healSeat = 0;
    int i = s_healSeat++;
+   // P-UI-205: a name PAST the placed set is an orphan of a larger mask or of a drag-time
+   // layout (the freeze paints the OLD count) — sweep it here, one slot per tick, BEFORE
+   // the user's next look. Cost: one ObjectFind on a tail slot; 0 writes when clean.
+   if(i >= n)
+   {
+      if(ObjectFind(0, CircIcon(i)) >= 0 || ObjectFind(0, CircBg(i)) >= 0)
+      {
+         ObjectDelete(0, CircIcon(i));    ObjectDelete(0, CircBg(i));
+         ObjectDelete(0, CircBadgeBg(i)); ObjectDelete(0, CircBadgeTxt(i));
+         DrawStripDiagEmit(StringFormat("[P-UI-205] orphan seat=%d swept (live=%d)", i, n));
+      }
+      return;
+   }
    bool bHole = (ObjectFind(0, CircBg(i)) < 0 || ObjectFind(0, CircIcon(i)) < 0);
    if(!bHole && CircHasBadge(RingFeature(i)))
       bHole = (ObjectFind(0, CircBadgeBg(i)) < 0 || ObjectFind(0, CircBadgeTxt(i)) < 0);
@@ -655,13 +668,8 @@ void ToggleMenuVisibility()
    if(willShow)
    {
       // Same rule as CreateMenu: no ring behind an open Tools submenu.
-      // P-UI-161: the ring's seats are the PLACED ones (the star mask decides),
-      // the Tools menu's are the whole catalog.
-      if(!g_ToolsOpen)
-      {
-         CircNoteBuilt();   // the create's n is the LIVE set - the opening press keeps the freeze on
-         for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);
-      }
+      // P-UI-203: the rebuild owns the tail sweep AND the live-mask note.
+      if(!g_ToolsOpen) CircRebuildRing();
       if(g_ToolsOpen)
          for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
    }

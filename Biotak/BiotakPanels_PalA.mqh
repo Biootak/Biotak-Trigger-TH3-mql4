@@ -221,7 +221,6 @@ int  g_PalAnchorItem = 0;           // panel the popup hangs next to
 int  g_PalMixDrag = 0;              // 0 none · 1 R · 2 G · 3 B · 4 the mixer TR
                                    // · 5 the footer TR (P-UI-131k: one channel —
                                    // `PaletteMixHit` → `PaletteMixFromX`)
-bool g_PalHexFocus = false;         // hex edit box has keyboard focus
 int  s_PalRecentPainted = -1;       // P-UI-69: the list the recents strip shows
 uint s_PalRecentAt      = 0;        // last recents repaint (drag coalescer)
 
@@ -620,6 +619,18 @@ void PalClose()
     UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
     PalMoveDisarm();     // the title carry ends with its popup (spot stays parked)
     PalHoverRestore();   // P-UI-131h: a close while previewing must not leave the colour picked
+    // P-UI-81c: a live mixer owns a chart-lock claim of its own. Closing the popup
+    // under it (Done, Esc, a card switch) used to reset g_PalMixDrag and leave that
+    // claim, its drag owner and its coalesced recents tail behind. End it through
+    // the same release path the pointer's own release uses, before the palette dies.
+    if(g_PalMixDrag > 0)
+    {
+       g_PalMixDrag = 0;
+       PalRefreshRecents(true);
+       DragReleaseIf(DRAG_PANEL_KNOB);
+       UIDragBudgetEnd();
+       CircUnlockChart();
+    }
    if(!g_PalOpen) return;
    SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);

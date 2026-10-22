@@ -40,6 +40,7 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
       DrawStripGripRelease();
       return;
    }
+   if(!s_dsGripLive && !s_dsGGripLive) return;
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
    int gm = 4 + DSTRIP_SKIN_M;   // P-DRAW-29: the carried skin stays on screen
@@ -134,7 +135,7 @@ void DrawStripDragWitness(const string nm)
    s_dsDragObj = nm;
    if(s_dsOpen) return;                       // an open strip owns no press naming
    if(!DrawStripPressCycleLive()) return;     // nothing named: nothing to drop
-   Print("[drawstrip] press dropped: native drag obj=\"", nm, "\"");
+   DrawStripDiagEmit("[drawstrip] press dropped: native drag obj=\"" + nm + "\"");
    DrawStripPressCycleClear();   // proved a drag: this press may never become a tap
 }
 //--- P-UI-113c (2026-09-23) — THE OPENING PRESS OWNS ITS OWN CLICK-FAMILY EVENTS.
@@ -159,7 +160,7 @@ void DrawStripHoldLatch(const int mx, const int my)
     //--- because it is one compare, and a press during a live drag names nothing.
     if(DrawStripDragLive())
     {
-       if(!s_dsOpen) Print("[drawstrip] latch blocked: native drag obj=\"", s_dsDragObj, "\"");
+       if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: native drag obj=\"" + s_dsDragObj + "\"");
        return;
     }
     string named = DrawObjectAtCached(mx, my);   // the one hit test this latch pays for
@@ -170,13 +171,13 @@ void DrawStripHoldLatch(const int mx, const int my)
    //--- printed cannot say WHICH fence did it (or whether the edge ever came).
    //--- Each fence now names itself, only while the strip is shut - i.e. exactly
    //--- the state a hold opens from, and one line per press. Remove with DIAG-113.
-   if(BaseKnotSessionActive()) { if(!s_dsOpen) Print("[drawstrip] latch blocked: baseknot session"); return; }
-   if(UIPeekClickClaim())      { if(!s_dsOpen) Print("[drawstrip] latch blocked: ui peek claim"); return; }
-   if(UIPointerOverSurface(mx, my)) { if(!s_dsOpen) Print("[drawstrip] latch blocked: ui pointer over surface at ", mx, ",", my); return; }
-   if(BaseKnotViewOwned())     { if(!s_dsOpen) Print("[drawstrip] latch blocked: baseknot view owned"); return; }
-   if(TH3SessionActive() || TH3BaseMarkArmed()) { if(!s_dsOpen) Print("[drawstrip] latch blocked: th3 session"); return; }
-   if(LegMeasureSessionActive()) { if(!s_dsOpen) Print("[drawstrip] latch blocked: leg measure session"); return; }
-   if(g_waitingForCustomPriceClick) { if(!s_dsOpen) Print("[drawstrip] latch blocked: waiting for custom price click"); return; }
+   if(BaseKnotSessionActive()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: baseknot session"); return; }
+   if(UIPeekClickClaim())      { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: ui peek claim"); return; }
+   if(UIPointerOverSurface(mx, my)) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: ui pointer over surface at " + IntegerToString(mx) + "," + IntegerToString(my)); return; }
+   if(BaseKnotViewOwned())     { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: baseknot view owned"); return; }
+   if(TH3SessionActive() || TH3BaseMarkArmed()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: th3 session"); return; }
+   if(LegMeasureSessionActive()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: leg measure session"); return; }
+   if(g_waitingForCustomPriceClick) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: waiting for custom price click"); return; }
    // P-UI-113j: NAME THE PRESS'S OWN DRAWING - and name it even while the strip is
    // OPEN, because the release that follows belongs to the same press and the
    // terminal's selected controls are not part of any drawn body. Cost: the one
@@ -190,8 +191,8 @@ void DrawStripHoldLatch(const int mx, const int my)
     if(s_dsOpen) return;   // an open strip owns no press cycle - the press is only NAMED
     // DIAG-113 (temporary): one line per named press so the log proves whether the
     // press reached us, what the hit test saw, and what the live probe reads.
-    Print("[drawstrip] press named at ", mx, ",", my, " hit=\"", named,
-          "\" lbtn=", (UILeftButtonDown() ? 1 : 0));
+    DrawStripDiagEmit("[drawstrip] press named at " + IntegerToString(mx) + "," + IntegerToString(my) +
+          " hit=\"" + named + "\" lbtn=" + IntegerToString(UILeftButtonDown() ? 1 : 0));
 }
 //--- P-UI-113f (2026-09-24): THE CLICK LEAVES THE DRAWING NATIVELY SELECTED.
 //---
@@ -245,7 +246,7 @@ void DrawStripHoldSelectPoll()
    if(!wasSelected)
    {
       ChartRedraw();
-      Print("[drawstrip] native selection repaired after release obj=\"", s_dsObj, "\"");
+      DrawStripDiagEmit("[drawstrip] native selection repaired after release obj=\"" + s_dsObj + "\"");
    }
    // Keep the guarded read alive until the short TTL: the timer is the proof that
    // MT4's delayed click state has committed. It never owns selection afterwards.
@@ -280,7 +281,7 @@ bool DrawStripClickToggle(const string nm, const bool wasDrag)
             if(DrawStripTwinSpent()) return DrawStripClickFamily();
             if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED))
                 ObjectSetInteger(0, nm, OBJPROP_SELECTED, false);   // single-click deselect
-            Print("[drawstrip] click closed on \"", nm, "\"");
+            DrawStripDiagEmit("[drawstrip] click closed on \"" + nm + "\"");
             DrawStripClose();
             DrawStripOpenerArm();   // this release's twin is spent, not a re-open
             return DrawStripClickFamily();
@@ -300,8 +301,8 @@ bool DrawStripClickToggle(const string nm, const bool wasDrag)
         DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release
     }
     DrawStripOpenerArm();   // P-UI-113c: the click that opened it owns its twin
-    Print("[drawstrip] click opened on \"", nm, "\" selected=",
-          (bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED));
+    DrawStripDiagEmit("[drawstrip] click opened on \"" + nm + "\" selected=" +
+          ((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED) ? "true" : "false"));
     return DrawStripClickFamily();
 }
 //--- P-UI-113i (2026-09-24): RELEASE OWNERSHIP IS GEOMETRY, NOT SELECTION STATE.
@@ -436,7 +437,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
           //--- 2026-09-29 log after the 13:35 reload (no line of any kind). Gated to
           //--- the shut strip: a toggle only opens from there, and an open strip's
           //--- presses are the panel's own. One line per press edge.
-         if(!s_dsOpen) Print("[drawstrip] press edge at ", tmx, ",", tmy, " bit=", (tleft ? 1 : 0));
+         if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] press edge at " + IntegerToString(tmx) + "," + IntegerToString(tmy) + " bit=" + IntegerToString(tleft ? 1 : 0));
           // P-UI-113j: the latch names this press (a flapping bit re-reports ONE
           // press as many). Its owner, its press point and the opening window
           // survive untouched - re-declaring them here is what let a mid-press
@@ -506,7 +507,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
                s_dsGearPressSpent = true;       // the release knows the panel had it
             }
          }
-         else if(!s_dsOpen) Print("[drawstrip] press refused: cycle live obj=\"", s_dsPressCycleObj, "\"");
+         else if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] press refused: cycle live obj=\"" + s_dsPressCycleObj + "\"");
        }
        else if(tleft)
       {
@@ -710,10 +711,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        bool edgeFresh = (s_dsPressEdgeMs != 0 && (int)(GetTickCount() - s_dsPressEdgeMs) < DSTRIP_PRESS_CYCLE_MS);
        bool travelOk = !edgeFresh || !(s_dsPressTracked && s_dsTravel > DSTRIP_CLICK_SLOP);
        // DIAG-156 (temporary): name the refusing stage for hollow-interior clicks.
-       if(nm != "") Print("[drawstrip] interior-click relHit=\"", relHit, "\" cyc=\"", cyc,
-             "\" edgeFresh=", (edgeFresh ? 1 : 0), " travel=", s_dsTravel,
-             " draglive=", (DrawStripDragLive() ? 1 : 0),
-             " modal=", (g_PnlOpen >= 0 ? 1 : 0));
+       if(nm != "") DrawStripDiagEmit("[drawstrip] interior-click relHit=\"" + relHit + "\" cyc=\"" + cyc +
+             "\" edgeFresh=" + IntegerToString(edgeFresh ? 1 : 0) + " travel=" + IntegerToString(s_dsTravel) +
+             " draglive=" + IntegerToString(DrawStripDragLive() ? 1 : 0) +
+             " modal=" + IntegerToString(g_PnlOpen >= 0 ? 1 : 0));
        if(nm != "" && ObjectFind(0, nm) >= 0 && DrawKindOf(nm) != DK_NONE && travelOk)
        {
           if(DrawStripClickToggle(nm, false)) { DrawStripTwinArm(); return true; }
@@ -906,7 +907,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    // sees first — so the delete closes it in its own event.
    if(id == CHARTEVENT_OBJECT_DELETE)
    {
-      if(sparam == s_dsObj) { Print("[drawstrip] close: OBJECT_DELETE of \"", sparam, "\""); DrawStripClose(); }
+      if(sparam == s_dsObj) { DrawStripDiagEmit("[drawstrip] close: OBJECT_DELETE of \"" + sparam + "\""); DrawStripClose(); }
       // A deleted CHILD is its parent's business: drop the child, heal parent.
       if(BoxIsMidChild(sparam)) { string par = BoxMidParent(sparam); if(par != "" && ObjectFind(0, par) >= 0) BoxMidSync(par); return false; }
       if(FillIsChild(sparam)) { string fpar = FillChildParent(sparam); if(fpar != "" && ObjectFind(0, fpar) >= 0) FillChildSync(fpar); return false; }
@@ -958,7 +959,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        if(s_dsObj == "") return false;
 
       if(ObjectFind(0, s_dsObj) < 0)
-      { Print("[drawstrip] close: object gone on drag/zoom \"", s_dsObj, "\""); DrawStripClose(); return false; }
+      { DrawStripDiagEmit("[drawstrip] close: object gone on drag/zoom \"" + s_dsObj + "\""); DrawStripClose(); return false; }
       // P-DRAW-41 (2026-09-25): NO RE-ANCHOR, and no re-open either. The plate has a
       // home, so a zoom, a scroll or the drawing's own drag moves the WORK and
       // leaves the plate; the strip is already the right picture at the right spot.
@@ -999,7 +1000,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
          DrawStripPaint();
          return true;
       }
-      Print("[drawstrip] close: Esc key");
+      DrawStripDiagEmit("[drawstrip] close: Esc key");
       DrawStripClose();
       ChartRedraw();
       return true;
@@ -1061,8 +1062,8 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       {
          // DIAG-113 (temporary): one line per dismissal so the log names the
          // gesture that closed the strip, not a guess about it.
-         Print("[drawstrip] dismiss click at ", rcx, ",", rcy, " travel=", s_dsTravel,
-               " obj=\"", s_dsObj, "\"");
+         DrawStripDiagEmit("[drawstrip] dismiss click at " + IntegerToString(rcx) + "," + IntegerToString(rcy) +
+               " travel=" + IntegerToString(s_dsTravel) + " obj=\"" + s_dsObj + "\"");
          DrawStripClose();
       }
       else if(ownedPop == 1)

@@ -2,8 +2,14 @@
 #ifndef BIOTAK_PANELS_HIT_MQH
 #define BIOTAK_PANELS_HIT_MQH
 
+// P-UI-81b: the close path is a gesture owner too. A card can be closed by Esc
+// (or a hotkey / a delete) while a move or slider gesture still holds its chart
+// lock; PnlCloseAll unlocked only the panel's own claim, so the gesture's claim
+// survived the surface and the chart stayed modal until some later press reaped
+// it. Reap FIRST, while the palette it may flush is still open.
 void PnlCloseAll()
 {   BkFlushTextEdit();   // close = apply (TV Ok semantics)
+   PnlReapStaleGestures(false);
    g_BkTextFocus = false;
    bool wasOpen = (g_PnlOpen >= 0);
    // P-PERF-47: ONE FAMILY WIPE INSTEAD OF FOURTEEN PER-ITEM TEARDOWNS.
@@ -42,6 +48,19 @@ void PnlCloseAll()
    //
    // Cost: ONE scan, one time, instead of 28 scans and ~560 absent-name probes.
    ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl", -1, -1);
+   // P-UI-145c: AND THE SEATS THIS FAMILY TAUGHT GO WITH IT — the SAME release the
+   // palette's own teardown does (BiotakPanels_PalA.mqh:632). The card teardown
+   // wiped the OBJECTS and kept every SEAT: `PnlSeatRemember` (BiotakPanels_Apply.mqh:1135,
+   // called by `PnlSetButton`) taught the registry one name per card control, and the
+   // only releaser in the tree was `PnlSeatForget` — reachable only from `PnlDestroy`,
+   // which has NO caller (the P-PERF-47 family wipe replaced it). So a closed card left
+   // its names behind for good: the registry filled with dead names, `PNL_SEAT_MAX` was
+   // reached, and `PnlSeatRemember` returned early for EVERY later control — the
+   // P-UI-145 revert died silently, in the fix whose whole point was to stop a silent
+   // displacement. ONE call, ONE pass over the registry, per USER ACTION (never per
+   // paint) — and it is the EXISTING mechanism, called with the EXACT prefix the wipe
+   // above used, so every name deleted above is released and nothing else is.
+   PnlSeatForget(g_UI.btnPrefix + "Pnl");
    // The two popovers still go through their own closers because they reset
    // STATE as well as objects (g_PnlDdItem / g_BkDd), and both are guarded by
    // "is it open?" so a closed popover costs one compare.
@@ -217,7 +236,9 @@ int PnlDdHit(const int mx,const int my)
    if(g_PnlDdItem<0) return -1;
    if(mx<g_PnlDdX || mx>g_PnlDdX+g_PnlDdW || my<g_PnlDdY || my>g_PnlDdY+g_PnlDdH)
    { PnlDdClose(); return -1; }
-   int idx=ClampInt((my-(g_PnlDdY+PNL_DD_PAD))/PNL_DD_ROW_H,0,MathMax(0,g_PnlDdN-1));
+   const int local = my-(g_PnlDdY+PNL_DD_PAD);
+   if(local<0 || local>=g_PnlDdN*PNL_DD_ROW_H) return REFRESH_NONE;   // the popup's own pad is not a row
+   int idx=ClampInt(local/PNL_DD_ROW_H,0,MathMax(0,g_PnlDdN-1));
    int item=g_PnlDdItem, row=g_PnlDdRow;
    return PnlApplyOption(item,row,idx);
 }
@@ -791,11 +812,13 @@ bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
       int kind; string label,unit,opts; int minV,maxV; double step;
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
        if(kind!=1) continue;
-       int swX=PnlRowBaseX(g_PnlOpen,r)+PNL_SW_X-PNL_SW_PAD;
-       int swY=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H+PNL_SW_Y-PNL_SW_PAD;
-      if(mx >= swX-5 && mx <= swX+PNL_SW_W+2*PNL_SW_PAD+5 &&
-         my >= swY-5 && my <= swY+PNL_SW_H+2*PNL_SW_PAD+5)
-      {
+        int ry=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H;
+        int swX=PnlRowBaseX(g_PnlOpen,r)+PNL_SW_X-PNL_SW_PAD;
+        int swY=ry+PNL_SW_Y-PNL_SW_PAD;
+        int y0=MathMax(swY-5,ry), y1=MathMin(swY+PNL_SW_H+2*PNL_SW_PAD+5,ry+PNL_ROW_H-1);
+       if(mx >= swX-5 && mx <= swX+PNL_SW_W+2*PNL_SW_PAD+5 &&
+          my >= y0 && my <= y1)
+       {
          item=g_PnlOpen; row=r;
          return true;
       }
@@ -838,8 +861,10 @@ bool PnlClosePressHit(const int mx,const int my)
       return true;
    // Done button (footer)
    int fy = py+PNL_HEAD_H+PnlPairRows(it)*PNL_ROW_H;
-   int dx = px+cw-PNL_PAD_X-PNL_BTN_W;
-   if(mx >= dx && mx <= dx+PNL_BTN_W && my >= fy+10 && my <= fy+10+PNL_BTN_H)
+   int bw = PnlFootBtnW("Done");
+   int dx = px+cw-PNL_PAD_X-bw;
+   if(mx >= dx-PNL_BTN_PAD && mx <= dx+bw+PNL_BTN_PAD &&
+      my >= fy+10-PNL_BTN_PAD && my <= fy+10+PNL_BTN_H+PNL_BTN_PAD)
       return true;
    return false;
 }

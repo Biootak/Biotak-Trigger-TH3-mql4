@@ -2,6 +2,9 @@
 #ifndef DRAW_STRIP_PAINT_MQH
 #define DRAW_STRIP_PAINT_MQH
 
+//--- two latches: the picker sweep owes ONE pass per open, the cell tail one per count change.
+static bool s_dsPaintPickOwed = false;
+static int  s_dsPaintCellN = -1;
 
 //--- ONE painter, called on open and after every tap: reads the held object and
 //--- writes only what changed (the guarded-write law of this codebase), and asks
@@ -20,16 +23,16 @@ void DrawStripPaint()
    DrawStripOrphanSweep();
    if(!s_dsOpen || s_dsObj == "") return;
    if(s_dsKind == DK_NONE || ObjectFind(0, s_dsObj) < 0)
-   { Print("[drawstrip] close: paint found no object obj=\"", s_dsObj, "\" kind=", (int)s_dsKind); DrawStripClose(); return; }
+   { DrawStripDiagEmit("[drawstrip] close: paint found no object obj=\"" + s_dsObj + "\" kind=" + IntegerToString((int)s_dsKind)); DrawStripClose(); return; }
    // P-DRAW-08c: the strip is the indicator's surface, so the indicator's own
    // hide-all (the F key) hides it too — a toolbar left floating over a chart the
    // user just muted is the same complaint as a label that stays lit.
-   if(IsIndicatorHidden()) { Print("[drawstrip] close: indicator hidden (F) obj=\"", s_dsObj, "\""); DrawStripClose(); return; }
+   if(IsIndicatorHidden()) { DrawStripDiagEmit("[drawstrip] close: indicator hidden (F) obj=\"" + s_dsObj + "\""); DrawStripClose(); return; }
    // P-DRAW-08f: and a drawing the user put away ON THIS TIMEFRAME (the terminal's
    // own "hide on this period", which is OBJPROP_TIMEFRAMES) must not leave a
    // toolbar floating over nothing — the strip serves what is on screen.
    if((long)ObjectGetInteger(0, s_dsObj, OBJPROP_TIMEFRAMES) == OBJ_NO_PERIODS)
-   { Print("[drawstrip] close: drawing masked off this timeframe obj=\"", s_dsObj, "\""); DrawStripClose(); return; }
+   { DrawStripDiagEmit("[drawstrip] close: drawing masked off this timeframe obj=\"" + s_dsObj + "\""); DrawStripClose(); return; }
    s_dsN = DrawStripQuickCount(s_dsKind);
    bool dirty = false;
 
@@ -140,13 +143,14 @@ void DrawStripPaint()
    string dsBad = "";
    int dsBadX = 0;
    int dsBadPainted = 0;
-   for(int i = 0; i < DSTRIP_MAX_SLOTS; i++)
+   //--- the LIVE row only; a slot past the count is swept once per count change (below).
+   int dsLim = (s_dsN > DSTRIP_MAX_SLOTS ? DSTRIP_MAX_SLOTS : s_dsN);
+   for(int i = 0; i < dsLim; i++)
    {
       string on = DrawStripObjName(i);
       string ic = DrawStripIconName(i);
-      bool live = (i < s_dsN);
-      int slot = live ? DrawStripQuickSlotAt(s_dsKind, i) : -1;
-      if(!live || slot < 0)
+      int slot = DrawStripQuickSlotAt(s_dsKind, i);
+      if(slot < 0)
       {
           if(ObjectFind(0, on) >= 0) { ObjectDelete(0, on); dirty = true; }
           if(ObjectFind(0, ic) >= 0) { ObjectDelete(0, ic); dirty = true; }
@@ -263,11 +267,7 @@ void DrawStripPaint()
        dirty |= DrawStripBtn(on, x, rowY, DSTRIP_CELL, DSTRIP_CELL, face, ink, rim, "", tip);
        dirty |= DrawStripFace(ic + "C", x, rowY, DSTRIP_CELL, DSTRIP_CELL,
                               chipOn ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
-       //--- a seat that was a COLOUR one up to this paint leaves no half behind:
-       //--- two probes per non-colour cell, on the repaint path only.
-       if(ObjectFind(0, ic + "S") >= 0)  { ObjectDelete(0, ic + "S"); dirty = true; }
-       if(ObjectFind(0, ic + "C2") >= 0) { ObjectDelete(0, ic + "C2"); dirty = true; }
-       if(ObjectFind(0, ic + "R") >= 0)  { ObjectDelete(0, ic + "R"); dirty = true; }  // P-DRAW-64a2
+       //--- S/C2/R exist only at a COLOUR index (painted there, deleted with the close): no probe.
        dirty |= DrawStripFace(ic, x, rowY, DSTRIP_CELL, DSTRIP_CELL, res, tip);
        dsBadPainted++;
        //--- DIAG-135: a raster seat MUST leave its glyph on the chart, and a seat with
@@ -283,6 +283,22 @@ void DrawStripPaint()
           }
        }
 
+   }
+
+   //--- the tail past the live count: one sweep per COUNT CHANGE, never per frame.
+   if(dsLim != s_dsPaintCellN)
+   {
+      s_dsPaintCellN = dsLim;
+      for(int t = dsLim; t < DSTRIP_MAX_SLOTS; t++)
+      {
+         string ton = DrawStripObjName(t), tic = DrawStripIconName(t);
+         if(ObjectFind(0, ton) >= 0) { ObjectDelete(0, ton); dirty = true; }
+         if(ObjectFind(0, tic) >= 0) { ObjectDelete(0, tic); dirty = true; }
+         if(ObjectFind(0, tic + "C") >= 0) { ObjectDelete(0, tic + "C"); dirty = true; }
+         if(ObjectFind(0, tic + "S") >= 0) { ObjectDelete(0, tic + "S"); dirty = true; }
+         if(ObjectFind(0, tic + "C2") >= 0) { ObjectDelete(0, tic + "C2"); dirty = true; }
+         if(ObjectFind(0, tic + "R") >= 0) { ObjectDelete(0, tic + "R"); dirty = true; }
+      }
    }
 
    //--- chrome actions: more / gear / pin / del.
@@ -359,6 +375,7 @@ void DrawStripPaint()
    //--- chip, the rail and the MORE page.
    if(s_dsPicker != DSTRIP_PICK_NONE)
    {
+      s_dsPaintPickOwed = true;   // this pass paints the family, so its close owes one sweep
       //--- P-PAL-21: the slot switch no longer has board chrome to drop.
       //--- P-DRAW-75: the board's plate goes with it, and the ONE decision above the
       //--- branches (family 2 lives iff a colour board is open) has already asked.
@@ -433,27 +450,31 @@ void DrawStripPaint()
       //--- P-DRAW-73 put the purge here, on a bool that could not see a plate; the
       //--- reported artefact is the empty 42px banded tower under the panel (ten
       //--- bands of family 2 at 328 wide, no content, nothing owning them).
-      for(int r = 0; r < DSTRIP_PICK_MAX; r++)
+      //--- the family is dead before this branch runs (DrawStripClosePicker deletes it): one pass per open.
+      if(s_dsPaintPickOwed)
       {
-         bool gone = false;
-         if(ObjectFind(0, DrawStripPickName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickIconName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickIconName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickLabelName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickLabelName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickChipName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickChipName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickRailName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickRailName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickGlassName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickGlassName(r)); gone = true; }
-         //--- P-DRAW-134: the template rows' ✕ family dies with the popover it served.
-         if(ObjectFind(0, DrawStripPickDelName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickDelName(r)); gone = true; }
-         if(ObjectFind(0, DrawStripPickDelFaceName(r)) >= 0)
-         { ObjectDelete(0, DrawStripPickDelFaceName(r)); gone = true; }
-         if(gone) dirty = true;
+         s_dsPaintPickOwed = false;
+         for(int r = 0; r < DSTRIP_PICK_MAX; r++)
+         {
+            bool gone = false;
+            if(ObjectFind(0, DrawStripPickName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickName(r)); gone = true; }
+            if(ObjectFind(0, DrawStripPickIconName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickIconName(r)); gone = true; }
+            if(ObjectFind(0, DrawStripPickLabelName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickLabelName(r)); gone = true; }
+            if(ObjectFind(0, DrawStripPickChipName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickChipName(r)); gone = true; }
+            if(ObjectFind(0, DrawStripPickRailName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickRailName(r)); gone = true; }
+            ObjectDelete(0, DrawStripPickGlassName(r));   // no painter owns it: no find needed
+            //--- P-DRAW-134: the template rows' ✕ family dies with the popover it served.
+            if(ObjectFind(0, DrawStripPickDelName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickDelName(r)); gone = true; }
+            if(ObjectFind(0, DrawStripPickDelFaceName(r)) >= 0)
+            { ObjectDelete(0, DrawStripPickDelFaceName(r)); gone = true; }
+            if(gone) dirty = true;
+         }
       }
    }
 
@@ -472,7 +493,7 @@ void DrawStripPaint()
          if(!said)
          {
             said = true;
-            Print("[drawstrip] panel open with no layout (gearH=", s_dsGearH,
+            DrawStripDiagEmit("[drawstrip] panel open with no layout (gearH=" + IntegerToString(s_dsGearH) +
                   ") — a path changed the content without DrawStripLayout()");
          }
       }
@@ -645,7 +666,7 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    // happen). The ride above keeps what was already open; this is the fresh path.
    int ax = 0, ay = 0;
    if(!DrawAnchorXY(name, 0, ax, ay))
-   { Print("[drawstrip] close: anchor projection failed on \"", name, "\""); return false; }
+   { DrawStripDiagEmit("[drawstrip] close: anchor projection failed on \"" + name + "\""); return false; }
    DrawStripClose();
    // P-DRAW-09b: THE GROUP IS TAKEN HERE, ONCE, and AFTER the close (a close
    // drops the group, because a group belongs to an open strip). The terminal's
@@ -840,7 +861,7 @@ bool DrawStripUndoPop()
    {
       if(ObjectFind(0, s_duCopy) >= 0) ObjectDelete(0, s_duCopy);
       if(s_duCopy == s_dsObj)
-      { Print("[drawstrip] close: undo popped the strip's own copy"); DrawStripClose(); ChartRedraw(); s_duValid = false; return true; }
+      { DrawStripDiagEmit("[drawstrip] close: undo popped the strip's own copy"); DrawStripClose(); ChartRedraw(); s_duValid = false; return true; }
       s_duValid = false;
       DrawStripPaint();
       ChartRedraw();

@@ -403,6 +403,10 @@ static uint   g_cpClickHandledMs = 0;      // twin-transport dedupe
 // the keyboard while focused â€” letter hotkeys must stay silent or typing box
 // text would toggle indicator state (same pattern as the palette hex field).
 static bool g_BkTextFocus = false;
+// Its twin: the palette's hex field owns the keyboard the same way, and the
+// shared router (EventHandlers_Router) reads it, so it lives here too — not in
+// BiotakPanels_PalA, where it was declared until 2026-10-22.
+bool g_PalHexFocus = false;         // hex edit box has keyboard focus
 // A settings card is open (set in PnlOpen, cleared in PnlCloseAll): the menu's
 // custom hover tooltip must not arm/fire over the open panel (phantom tip).
 // Lives here (not Panels) so BiotakMenu â€” included BEFORE BiotakPanels â€” can

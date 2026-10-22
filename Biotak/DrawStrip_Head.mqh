@@ -248,9 +248,6 @@
 // strip; nothing here runs in the mouse stream.
 #define DSTRIP_PICK_NONE (-99)  // no popover open
 #define DSTRIP_MORE      (-60)  // the more-popover (sections, not a slot)
-#define DSTRIP_SLOT_MORE   (-6) // quick: the "..." popover
-#define DSTRIP_SLOT_GEAR   (-7) // quick: the full-settings panel
-#define DSTRIP_SLOT_PIN    (-8) // quick: pin toggle (stays while editing)
 #define DSTRIP_SLOT_LEVELS (-9) // quick: the fibo level-membership editor
 //--- P-DRAW-13: the V6 shell metrics. ONE 30px row, icon-only, 2px gaps — the
 //--- preview's minimal-space rule. Nothing wraps any more: overflow value slots
@@ -320,7 +317,7 @@
 //--- P-DRAW-80: the foot button's width is the CARDS' own formula
 //--- (`max(72, 32 + advance + 8)`, BiotakPanels PnlFootBtnW) — the flat 64 that
 //--- stood here is retired, and with it every reader.
-#define DSTRIP_GEAR_FOOT_BW 72   // the formula's floor; the measured width wins above it
+#define DSTRIP_GEAR_FOOT_BW PNL_BTN_W   // the cards' own button width (CardMetrics) — the formula's floor; the measured width wins above it
 #define DSTRIP_GEAR_FOOT_GAP 8
 //--- P-DRAW-107 (2026-10-01): the ring's advance inside a foot button — 15px of art
 //--- plus its gap, i.e. the cards' own `bx+12 -> bx+32` relation (`32 - 12`), kept
@@ -447,7 +444,7 @@
 //--- is the very same 280 the narrow layout always used and every existing
 //--- block metric (swatch 28, chip 64, row 42) keeps its arithmetic.
 #define DSTRIP_GEAR_W2   (2*PNL_WEL)   // P-DRAW-116: TWO cards side by side, so the wide width IS the card width twice
-#define DSTRIP_GEAR_COL  312   // a block's x shift for the right column
+#define DSTRIP_GEAR_COL  PNL_WEL   // a block's x shift for the right column (one card's own width)
 #define DSTRIP_GEAR_WIDE_ROWS 10 // PNL_WIDE_MIN_ROWS parity: > 10 rows goes wide
 #define DSTRIP_GEAR_BLK_MAX 12 // section blocks one tab may open (<= SECTION_MAX + air)
 #define DSTRIP_RECENT_MAX 5    // the trader's own recent colours
@@ -482,13 +479,13 @@
 //--- already in the origin). One owner of the caption's own seat.
 #define DSTRIP_GEAR_CAP_X  (DSTRIP_GEAR_PAD + DSTRIP_GEAR_CAP_DX)
 //--- P-DRAW-77: THE CARDS' OWN ROW SEATS, SPELLED ONCE HERE. Every number is the
-//--- card's own constant (BiotakPanels 568/586/6155/6158), restated because
-//--- `PNL_*` does not exist in this file (BiotakPanels is included AFTER it).
-//--- 10 = (42-22)/2 chip+switch top · 14 = PNL_LBL_Y · 8 = the label's own gap
-//--- after the chip · 40 = PNL_SW_W. One table, so the panel cannot drift from
-//--- the card it stands beside a unit at a time.
+//--- card's own constant (BiotakPanels 568/586/6155/6158). The old rationale
+//--- ("PNL_* does not exist in this file") was HALF WRONG: the CardMetrics table
+//--- IS readable here — the entry includes CardMetrics.mqh ABOVE DrawStrip.mqh — so
+//--- 14 now names its owner (PNL_LBL_Y). The BiotakPanels_State table (PNL_CHIP_Y,
+//--- PNL_SW_W, PNL_ROW_GAP) is included AFTER this file, so 10 keeps its literal.
 #define DSTRIP_CARD_CHIP_Y 10
-#define DSTRIP_CARD_LBL_Y  14
+#define DSTRIP_CARD_LBL_Y  PNL_LBL_Y
 //--- P-DRAW-66: the quick row's THREE GROUPS — identity | values | commands. A
 //--- separator is a 1x20 hairline centred in the row with 8 air on each side, so
 //--- the chrome never reads as one more value; the head's air is the tight step.
@@ -641,7 +638,6 @@ static bool     s_dsTplNameArmed = false;      // P-DRAW-25: save is armed, name
 static int      s_dsGearMem[DK_COUNT];         // P-DRAW-26: last gear tab per kind (templates at hand)
 static int      s_dsPN = 0;                      // popover rows on screen now
 static int      s_dsPY[DSTRIP_PICK_MAX];         // row tops (rows are full-width)
-static int      s_dsPHexY = -1;                  // color popover hex band top (-1 = none)
 static int      s_dsPHeadY = -1;                 // color popover header band top (-1 = none)
 static int      s_dsPRecY = -1;                  // color popover recents band top (-1 = none)
 static int      s_dsPOpY = -1;                   // its OPACITY band top (P-DRAW-48)
@@ -668,6 +664,12 @@ static bool     s_dsHexFocus = false;            // the HEX field is being typed
 //--- plate stops growing under it, and the popover bands are measured from the
 //--- BOARD's origin (`s_dsBX/s_dsBY`), never the strip's.
 static int      s_dsBX = 0, s_dsBY = 0, s_dsBW = 0, s_dsBH = 0;   // the board's own rect
+//--- P-PAL-21 (2026-10-02): `s_dsBW`/`s_dsBH` are 0 at EVERY write in the tree
+//--- (GearA's layout resets the rect, nothing else assigns it) — the colour board
+//--- itself is gone. They stay declared because two readers still want the rect:
+//--- `DrawStripOpTrackW` (Skin) takes its width from them, and the strip-shot
+//--- harness prints them. So the seven `s_dsBW > 0` clauses that guarded the
+//--- board's occupancy/hover/grip were deleted, not the variables.
 static bool     s_dsBManual = false;             // the hand placed the board: keep that spot
 static bool     s_dsBDock = true;                 // pinned: the placer follows the strip
 static bool     s_dsBGripLive = false;            // its header carries the BOARD

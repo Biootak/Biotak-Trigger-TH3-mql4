@@ -418,24 +418,28 @@ void PnlRestoreSaved()
 void DrawStripStateRestore()
 {
    static bool done = false;
+   static int tries = 0;
+   static uint lastTry = 0;
    if(done) return;
-   done = true;
-   if(s_dsOpen) return;                       // a click already opened one — it wins
+   if(tries >= 5) { done = true; return; }
+   const uint nowMs = GetTickCount();
+   if(lastTry != 0 && (nowMs - lastTry) < 1000) return;
+   if(s_dsOpen) { done = true; return; }      // a click already opened one �?" it wins
    const string sfx = "DS" + IntegerToString(Period());
    string kO = GetGVName(sfx + "O");
-   if(!GlobalVariableCheck(kO)) return;
-   if(GlobalVariableGet(kO) < 0.5) return;    // it was left shut: nothing to bring back
+   if(!GlobalVariableCheck(kO)) { done = true; return; }
+   if(GlobalVariableGet(kO) < 0.5) { done = true; return; }   // it was left shut: nothing to bring back
    string stamp = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
    datetime nowT = TimeCurrent();
    if(nowT > 0 && GlobalVariableCheck(stamp))
    {
       datetime lastSw = (datetime)GlobalVariableGet(stamp);
-      if(lastSw > 0 && (nowT - lastSw) <= 20) return;   // a switch just closed it: stay closed
+      if(lastSw > 0 && (nowT - lastSw) <= 20) { done = true; return; }   // a switch just closed it: stay closed
    }
    string kN = GetGVName(sfx + "N");
-   if(!GlobalVariableCheck(kN)) return;
+   if(!GlobalVariableCheck(kN)) { done = true; return; }
    const double want = GlobalVariableGet(kN);
-   if(want < 0.0) return;
+   if(want < 0.0) { done = true; return; }
    string target = "";
    const int total = ObjectsTotal(0, -1, -1);
    for(int i = 0; i < total; i++)
@@ -448,18 +452,40 @@ void DrawStripStateRestore()
       target = nm;
       break;
    }
-   if(target == "") return;                    // the drawing is gone or renamed: stay shut
-   if(!DrawStripOpen(target)) return;
+   // P-UI-146d: the first frames after attach can run before a drawing is
+   // enumerable or before the window can hold the strip. Retry that miss a
+   // bounded five times, one second apart; a drawing that is really gone (or a
+   // permanent open failure) stops at the same ceiling instead of scanning for
+   // the life of the chart.
+   if(target == "")
+   {
+      tries++;
+      lastTry = nowMs;
+      return;                                  // not enumerable yet, or gone/renamed
+   }
+   // P-UI-146c: the PIN is read and written BEFORE the open, because DrawStripOpenAt
+   // keeps the pin it finds (`keepPin`) and paints at the end of that same pass. A pin
+   // restored after the open would leave the first frame's icon and rim on the old
+   // state; a gear tab may repaint later, but `gid==0` has no repaint at all.
+   bool pin = false;
+   string kP = GetGVName(sfx + "P");
+   if(GlobalVariableCheck(kP)) pin = (GlobalVariableGet(kP) > 0.5);
+   const bool oldPin = s_dsPinned;
+   s_dsPinned = pin;
+   if(!DrawStripOpen(target))
+   {
+      s_dsPinned = oldPin;
+      tries++;
+      lastTry = nowMs;
+      return;
+   }
+   done = true;
    int g = 0;
    string kG = GetGVName(sfx + "G");
    if(GlobalVariableCheck(kG)) g = (int)GlobalVariableGet(kG);
    bool col = false;
    string kC = GetGVName(sfx + "C");
    if(GlobalVariableCheck(kC)) col = (GlobalVariableGet(kC) > 0.5);
-   bool pin = false;
-   string kP = GetGVName(sfx + "P");
-   if(GlobalVariableCheck(kP)) pin = (GlobalVariableGet(kP) > 0.5);
-   s_dsPinned = pin;
    if(g > 0)
       DrawStripGearRestoreTab(g, col);   // the strip's OWN door: a repaint is a
                                          // REQUEST the strip spends (P-PAL-19f),

@@ -1,7 +1,8 @@
 // Sub-menu ladder geometry model — mirrors BiotakMenu.mqh verbatim.
 // Proves, for every tool count 1..20 on every chart size and menu position:
 //   1. no two buttons are closer than their skin allows (BTN+MIN_GAP in the
-//      fan/ring/rail, PITCH in the grid — the tile is narrower than the disc),
+//      fan/ring, TILE+MIN_GAP in row B's rail, PITCH in the grid — the tile is
+//      narrower than the disc),
 //   2. no button ever comes closer to the orb than ORB/2 + half a footprint,
 //   3. every button footprint stays inside the padded chart rect,
 //   4. the grid panel stays fully on-chart,
@@ -22,7 +23,23 @@ const PITCH = CELL_VIS + CELL_GAP;              // 46 — == CELL_CANVAS on purp
 const COLS = 4, GRID_PAD = 10, GRID_HDR = 28, GRID_PGR = 24;
 const PAGE_ROWS = 4;
 const EDGE_TRIGGER = 90, CIRC_GAP = 6;
-const RAIL_PITCH = BTN + CIRC_GAP;
+// P-UI-207 (2026-10-22): ROW B — the Tools sub-menu rail — stands its items on the
+// TILE it PAINTS, not on the 44px seat. `SubRailTile()` returns CIRC_BG_SIZE (52,
+// BiotakMenu_A.mqh:112) and CircRailStep/Lead/Run/Room (BiotakMenu_Ring.mqh) are that
+// tile's ONE owner, so this mirror asks the same four questions the product asks:
+//   pitch = tile + CIRC_GAP                       -> 58 (not 50)
+//   lead  = ORB/2 + tile/2 + CIRC_GAP             -> 64 (not 60)
+//   run   = lead + (n-1)*pitch + tile/2           -> the orb centre to the FAR tile's edge
+//   room  = free - PAD - tile/2                   -> the padded run the tiles must end inside
+// A 52px tile on the retired 50px seat pitch is -2px: tile on tile. `RETIRED_SEAT`
+// keeps the old mirror for ONE purpose — printing which decisions the tile moved.
+const RAIL_TILE = 52;                                        // == CIRC_BG_SIZE
+const RETIRED_SEAT = BTN;                                    // the pre-fix mirror (pitch 50)
+const railStep = (tile) => tile + CIRC_GAP;                  // CircRailStep(tile)
+const railLead = (tile) => ORB_HALF + tile / 2 + CIRC_GAP;   // CircRailLead(tile)
+const railRun  = (tile, n) => railLead(tile) + (n - 1) * railStep(tile) + tile / 2;
+const railRoom = (free, tile) => free - PAD - tile / 2;      // CircRailRoom(free,tile)
+const RAIL_PITCH = railStep(RAIL_TILE);                      // 58 — the printed number
 const HIDE = -500;
 
 const pol = (d, r) => [Math.cos(d * Math.PI / 180) * r, Math.sin(d * Math.PI / 180) * r];
@@ -46,20 +63,21 @@ const fanFitR = (n, ax, ay, cw, ch) => {
   }
   return r;
 };
-// the ring's OWN rail rule (CircLayout): axis by near edge, direction by room
-function railAxis(ox, oy, cw, ch, n) {
+// the rail's OWN rule (SubRailAxis): axis by near edge, direction by room, fit by the
+// tile's run — `tile` is the tile that row PAINTS (row B hands in CIRC_BG_SIZE).
+function railAxis(ox, oy, cw, ch, n, tile) {
   const nearL = ox <= EDGE_TRIGGER, nearR = ox >= cw - EDGE_TRIGGER;
   const nearT = oy <= EDGE_TRIGGER, nearB = oy >= ch - EDGE_TRIGGER;
   if (!(nearL || nearR || nearT || nearB)) return { ax: 0, ay: 0, fits: false };
-  const trainLen = ORB_HALF + BTN / 2 + CIRC_GAP + (n - 1) * RAIL_PITCH + BTN / 2 + BG_MARGIN;
+  const trainLen = railRun(tile, n);
   if (nearL || nearR) {
-    const up = oy - PAD - BTN / 2, down = ch - PAD - oy - BTN / 2;
+    const up = railRoom(oy, tile), down = railRoom(ch - oy, tile);
     let dir = up >= down ? -1 : 1;
     if (dir === -1 && up < trainLen && down >= trainLen) dir = 1;
     else if (dir === 1 && down < trainLen && up >= trainLen) dir = -1;
     return { ax: 0, ay: dir, fits: (dir === -1 ? up : down) >= trainLen };
   }
-  const left = ox - PAD - BTN / 2, right = cw - PAD - ox - BTN / 2;
+  const left = railRoom(ox, tile), right = railRoom(cw - ox, tile);
   let dir = left >= right ? -1 : 1;
   if (dir === -1 && left < trainLen && right >= trainLen) dir = 1;
   else if (dir === 1 && right < trainLen && left >= trainLen) dir = -1;
@@ -106,12 +124,12 @@ function panelRect(ox, oy, cw, ch, rows, paged) {
   y = Math.max(minY, Math.min(maxY, y));
   return { x, y, w: pw, h: ph, rows };
 }
-function layout(n, ox, oy, cw, ch) {
-  const rail = railAxis(ox, oy, cw, ch, n);
+function layout(n, ox, oy, cw, ch, tile = RAIL_TILE) {
+  const rail = railAxis(ox, oy, cw, ch, n, tile);
   if (n <= FAN_MAX) {
     if (rail.ax || rail.ay) {
       if (rail.fits) return { mode: 'RAIL', pts: Array.from({ length: n }, (_, k) => {
-        const d = ORB_HALF + BTN / 2 + CIRC_GAP + k * RAIL_PITCH;
+        const d = railLead(tile) + k * railStep(tile);
         return [ox + rail.ax * d, oy + rail.ay * d];
       }) };
       return grid(n, ox, oy, cw, ch);
@@ -166,8 +184,11 @@ for (const [cw, ch, cn] of CH) {
     for (let n = 1; n <= 20; n++) {
       const L = layout(n, ox, oy, cw, ch);
       const isGrid = L.mode.indexOf('GRID') === 0;
-      const half = isGrid ? CELL_CANVAS / 2 : BTN / 2 + BG_MARGIN;
-      const needD = isGrid ? PITCH : BTN + MIN_GAP;
+      const isRail = L.mode === 'RAIL';
+      // row B's rail stands 52px tiles, so BOTH the footprint half and the collision
+      // floor are the TILE's (row A's fan/ring keep the 44px seat + 4px glow).
+      const half = isGrid ? CELL_CANVAS / 2 : (isRail ? RAIL_TILE / 2 : BTN / 2 + BG_MARGIN);
+      const needD = isGrid ? PITCH : (isRail ? RAIL_TILE + MIN_GAP : BTN + MIN_GAP);
       const vis = L.pts.filter(p => p[0] > -100);
       checked++;
       let minD = Infinity, minOrb = Infinity;
@@ -236,3 +257,45 @@ const L2 = layout(12, 42, 42, 1920, 1080);
 console.log(`12 tools @ 1920 top-left -> ${L2.mode}, panel ${L2.panel.w}x${L2.panel.h} at (${L2.panel.x},${L2.panel.y})`);
 const L3 = layout(12, 300, 450, 600, 900);
 console.log(`12 tools @ 600x900 narrow-> ${L3.mode}, panel ${L3.panel.w}x${L3.panel.h} at (${L3.panel.x},${L3.panel.y})`);
+
+// ---- ROW B: the rail's TILE, and every decision it moves ---------------------
+// P-UI-207 (2026-10-22). The rail used to be modelled on the 44px SEAT (pitch 50)
+// while the product paints a 52px TILE (pitch 58, lead 64) — a 52 tile on a 50 pitch
+// is -2px, tile on tile. The difference is not cosmetic: on a cramped chart it is
+// exactly the decision between a rail that fits and one that has to escalate. This
+// section names every (chart, position, N) the tile MOVES against the retired seat
+// mirror, so a mirror that drifts back to the seat pitch — or a layout constant that
+// moves one more decision — fails here WITH the case's own name.
+const EXPECT_FLIPS = [
+  ['short', 'top-left', 4], ['short', 'bottom-right', 4],
+  ['v-short', 'top-left', 2], ['v-short', 'bottom-right', 2],
+  ['v-narrow', 'top-edge', 1], ['v-narrow', 'left-edge', 1],
+  ['v-narrow', 'bottom-edge', 1], ['v-narrow', 'right-edge', 1],
+  ['v-narrow', 'mid-low', 2],
+];
+const flips = [];
+for (const [cw, ch, cn] of CH) {
+  for (const [fx, fy, pn] of POSF) {
+    const ox = Math.max(PAD + ORB_HALF, Math.min(cw - PAD - ORB_HALF, Math.round(cw * fx)));
+    const oy = Math.max(PAD + ORB_HALF, Math.min(ch - PAD - ORB_HALF, Math.round(ch * fy)));
+    for (let n = 1; n <= 20; n++) {
+      const now = layout(n, ox, oy, cw, ch, RAIL_TILE).mode;
+      const was = layout(n, ox, oy, cw, ch, RETIRED_SEAT).mode;
+      if (now !== was) flips.push({ key: `${cn} ${pn} n=${n}`, cn, pn, n, was, now, ox, oy });
+    }
+  }
+}
+const want = new Set(EXPECT_FLIPS.map(([cn, pn, n]) => `${cn} ${pn} n=${n}`));
+console.log(`\nrow B rail — the TILE it paints: tile=${RAIL_TILE} (== CIRC_BG_SIZE), pitch=${RAIL_PITCH}, ` +
+            `lead=${railLead(RAIL_TILE)}, run(${RAIL_TILE},n)=${railRun(RAIL_TILE, 2)} at n=2`);
+console.log(`  decisions the tile MOVES vs the retired ${RETIRED_SEAT}px seat (pitch ${railStep(RETIRED_SEAT)}):`);
+for (const f of flips) {
+  console.log(`    ${f.cn.padEnd(8)} ${f.pn.padEnd(12)} n=${String(f.n).padEnd(2)} ${f.was} -> ${f.now}  (orb ${f.ox},${f.oy})`);
+}
+const extra = flips.filter(f => !want.has(f.key)).map(f => f.key);
+const lost = [...want].filter(k => !flips.some(f => f.key === k));
+const flipOk = extra.length === 0 && lost.length === 0;
+console.log(`  flips: ${flips.length} (expected ${want.size}) — ` + (flipOk
+  ? 'PASS: row B lays its items on the tile it paints, and only these nine decisions move'
+  : `FAIL: unexpected [${extra.join(', ') || 'none'}] · missing [${lost.join(', ') || 'none'}]`));
+if (!flipOk) process.exitCode = 1;

@@ -437,18 +437,23 @@ void RestoreDiscreteToggles()
 }
 
 int OnInitHandler() {
-    // P-ARCH-03: the one-chart-one-unit rule lands before ANY observable work — before
-    // the legacy sweep, before the settings seed, before a single object. A refused
-    // unit must not have touched the chart it refuses to share.
+    // THE SETTINGS SEED IS THE FIRST STATEMENT OF THE INIT PATH (AGENTS.md: settings
+    // live in RuntimeSettings.mqh, seeded before anything reads one). It copies the MT4
+    // Inputs-dialog values into the runtime mirrors and touches NO chart object, no
+    // GlobalVariable and no surface — so nothing above it can read a fake default, and
+    // a refused unit (below) still has not touched the chart it refuses to share.
+    RuntimeSettingsInit();
+    // P-ARCH-03: the one-chart-one-unit REFUSAL lands before the first piece of chart
+    // work — the legacy sweep below DELETES objects, and a unit that will not load must
+    // not delete a live unit's objects. (The seed above is a pure copy, not chart work.)
     if(TH3SiblingUnitOnChart()) return INIT_FAILED;
     // P-PERF-38c: the one-time legacy sweep must land before the first render, so
     // a chart drawn by an older build cannot blend two naming schemes.
+    // It reads `inpObjectPrefix`, a real MT4 input with no runtime mirror, so it is
+    // correct on either side of the seed.
     MigrateTimeframeNamedObjects();
     // P-PERF-10: phase ledger for the init path (see g_pInitMs* in GlobalVariables).
     uint pInitTick = GetTickCount();
-    // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
-    // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
-    RuntimeSettingsInit();
     CalcAnchorLoad();   // P-ANCHOR-LAST: the per-chart LAST OBJECT switch survives attach
     //--- P-UI-185 (2026-10-20): the hotkeys are audited ONCE, here: a shortcut the
     //--- terminal cannot deliver, or two shortcuts on one key, is named instead of

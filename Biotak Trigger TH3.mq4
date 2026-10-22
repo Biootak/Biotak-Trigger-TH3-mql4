@@ -157,16 +157,16 @@ int OnInit()
     // This is the destroy an attach can prove: at OnInit this instance has painted
     // nothing, so every `PnlDrawS_*` object on the chart is someone else's. One prefix
     // scan per ATTACH, never per frame.
-#ifndef BUILD_LITE
-    DrawStripSweepStale();
-#endif
-
     uint p4i = GetTickCount();
     int result = OnInitHandler();
     uint p4ind = GetTickCount() - p4i;
     p4i = GetTickCount();
     if(result == INIT_SUCCEEDED)
     {
+        // P-DRAW-120: the sweep is a chart WRITE — after the seed, after the refusal.
+#ifndef BUILD_LITE
+        DrawStripSweepStale();
+#endif
         // --- Circular menu / settings panels / HTF candles ---
         InitializeUIStates();      // menu + UI globals
         InitializeBiotakKit();   // panel state, colors, boxes, custom lines

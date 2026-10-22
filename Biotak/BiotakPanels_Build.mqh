@@ -418,11 +418,9 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          // a value longer than one character drew its arrow on top of its own
          // text (BASIS "Control" read "Contro⌄"). The preview's .dd is
          // content-fitted (padding 10/9, gap 8, 7px chevron ≈ 50 + textW).
-         int dw = 50 + PnlTextW(PnlDdOptText(item,row),PNL_PT_CTL);   // P-UI-30
-         if(dw < 72) dw = 72;
-         int dx = px + PNL_WEL - PNL_PAD_X - dw;
-         int dy = ry + PNL_CTL_Y - 1;
-          PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, 26, "",
+         int dx,dy,dw,dh;
+         PnlDdRect(item,row,dx,dy,dw,dh);
+          PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, dh, "",
                        PNL_CLR_FIELD, PNL_CLR_FIELD_BD, true);
          PnlSetBitmap(PnlName(item,row,"DDI"), dx+7, dy+7, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
                       PnlGlyphRes(item,PnlRowIcon(item,row),true), Z_PANEL_INK);

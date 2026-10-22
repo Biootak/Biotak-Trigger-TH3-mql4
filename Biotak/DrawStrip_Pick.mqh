@@ -279,32 +279,9 @@ int DrawStripColorHoverCellAt(const int mx, const int my)
 
       }
    }
-   //--- P-DRAW-48: the colour board's bands are the BOARD's (its own origin), so
-   //--- the hover must read them there — the strip's origin previewed the colour of
-   //--- a phantom cell one row away (reported: the pointer sits on one colour and
-   //--- the drawing takes another).
-   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0)
-   {
-      // TV parity board: the grid's own cells, then the RECENT band's.
-      for(int r = 0; r < s_dsPN; r++)
-      {
-          int x = s_dsBX + DSTRIP_PAD + (r % BIOPICK_COLS) * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
-          int y = s_dsBY + s_dsPY[r] + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
-          if(mx >= x && mx <= x + DSTRIP_PICK_CELL && my >= y && my <= y + DSTRIP_PICK_CELL)
-
-            return DSTRIP_HOVER_POP_BASE + r;
-      }
-      if(s_dsPRecY >= 0)
-      {
-         int ry = s_dsBY + s_dsPRecY + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
-         for(int i = 0; i < s_dsRecentN; i++)
-         {
-            int rx = s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW + i * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
-            if(mx >= rx && mx <= rx + DSTRIP_PICK_CELL && my >= ry && my <= ry + DSTRIP_PICK_CELL)
-               return DSTRIP_HOVER_REC_BASE + i;
-         }
-      }
-   }
+   //--- P-PAL-21 (2026-10-02): the colour board's hover bands are retired with the
+   //--- board — `s_dsBW/s_dsBH` are 0 at every write, so this walk ran up to 72
+   //--- iterations (4 compares each) on every mouse move and could never return a cell.
    return -1;
 }
 

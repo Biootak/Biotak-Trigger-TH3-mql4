@@ -438,10 +438,25 @@ bool CircRailShape(bool &vertical, int &dir)
    return true;
 }
 
+//--- P-UI-207 (2026-10-22): A RAIL IS LAID OUT BY THE TILE IT PAINTS, never by
+//--- the seat. Row A (the star ring's train, CircLayout) paints a tile of
+//--- CircBtnSize()+2*CIRC_BG_MARGIN; row B (the Tools rail, SubPlaceItem) paints
+//--- SubBgSize() == CIRC_BG_SIZE (52). Each row hands ITS OWN tile in here, so
+//--- the fits test and the placement can only ever speak one number.
+//--- MEASURED before this: row B stepped 50 (44+6) under a 52 tile — 2px of tile
+//--- ON tile in every cell — and reserved 22px of cross-axis room where the
+//--- tile's own half is 26. Row B names its tile in SubRailTile() rather than
+//--- SubBgSize(), which asks SubMode() and would recurse back into this fits test.
+int CircRailStep(const int tile) { return tile + CIRC_GAP; }                            // one tile centre -> the next
+int CircRailLead(const int tile) { return CIRC_ORB_SIZE / 2 + tile / 2 + CIRC_GAP; }    // orb centre -> first tile centre
+int CircRailRun(const int tile, const int n)                                            // orb centre -> the FAR tile's edge
+{ return CircRailLead(tile) + (n - 1) * CircRailStep(tile) + tile / 2; }
+int CircRailRoom(const int freeRun, const int tile) { return freeRun - CIRC_PAD - tile / 2; }   // the padded run the tiles must end inside
+
 // The train's own fit walk: the longest count whose run at ITS OWN side seats
 // the last seat's far edge inside the padded bound — the same numbers
-// CircLayout paints with (room = dist - CIRC_PAD - s/2, len = ORB/2 + s/2 +
-// GAP + (k-1)*(s+GAP)). 1 (the door alone) is the floor: degrade to the
+// CircLayout paints with (room = dist - CIRC_PAD - box/2, len = ORB/2 + box/2 +
+// GAP + (k-1)*(box+GAP)). 1 (the door alone) is the floor: degrade to the
 // previous surface, never to nothing and never to a stack (P-UI-13).
 int CircRailCapacity(const int n, const bool vertical, const int dir)
 {
@@ -452,9 +467,10 @@ int CircRailCapacity(const int n, const bool vertical, const int dir)
    for(int k = n; k >= 2; k--)
    {
       int s    = CircBtnSizeForN(k);   // each candidate at ITS OWN side — the paint's own number
-      int room = (dir < 0) ? (vertical ? oy : ox) - CIRC_PAD - s / 2
-                           : (vertical ? ch - oy : cw - ox) - CIRC_PAD - s / 2;
-      int len  = CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + (k - 1) * (s + CIRC_GAP);
+      int box  = s + 2 * CIRC_BG_MARGIN;   // P-UI-204: the TILE the paint draws, not the seat
+      int room = (dir < 0) ? (vertical ? oy : ox) - CIRC_PAD - box / 2
+                           : (vertical ? ch - oy : cw - ox) - CIRC_PAD - box / 2;
+      int len  = CIRC_ORB_SIZE / 2 + box / 2 + CIRC_GAP + (k - 1) * (box + CIRC_GAP);
       if(len <= room) return k;
    }
    return 1;   // the door alone — a degrade to the previous surface, never to nothing (P-UI-13)

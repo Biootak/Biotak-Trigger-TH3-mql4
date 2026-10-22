@@ -1052,7 +1052,6 @@ void DrawStripLayout()
    int maxW = quickW;
     //--- popover block (ONE at a time): colour grid, or full-width list rows.
     s_dsPN = 0;
-    s_dsPHexY = -1;
     s_dsPHeadY = -1;
     s_dsPRecY = -1;
     s_dsPOpY = -1;s_dsBW = 0; s_dsBH = 0;   // P-DRAW-48: the board's rect exists only for a colour board
@@ -1185,7 +1184,6 @@ void DrawStripClosePicker()
      }
     s_dsPicker = DSTRIP_PICK_NONE;
     s_dsPN = 0;
-    s_dsPHexY = -1;
     s_dsPHeadY = -1;
     s_dsPRecY = -1;
     s_dsPOpY = -1;

@@ -597,13 +597,21 @@ function rrSdf(x, y, cx, cy, hw, hh, rad) {
 //                               on  = same base + amber tint + amber border/glow
 function circSkin(on, s = 44) {
   const S = s + 8, c = S / 2, r = s / 2;
+  // P-UI-201: the halo must DIE before the canvas edge. MEASURED 2026-10-22: the
+  // border alpha of every circ_*.bmp was 29..87 (off) / 29..104 (on) — MT4 clips a
+  // bitmap label at its box, so the cut glow drew four STRAIGHT edges around the
+  // disc and the seat read as a rounded SQUARE on a light chart («بعضی وقتا»: the
+  // ON seats' cyan rim cut hardest). A radial window at rmax (inside the 4px
+  // margin) keeps the inner glow untouched and the silhouette circular.
+  const rmax = r + 2.8;
+  const win = (x, y) => clamp01((rmax - Math.hypot(x - c, y - c)) / 0.9);
   return renderFx(S, (x, y) => {
     let col = [0, 0, 0, 0];
     const s = halo(x, y, c, c, r, 3.5, 89, [0, 0, 0], 3);        // drop shadow
-    if (s) col = over(col, s);
+    if (s) { const k = win(x, y); if (k > 0) col = over(col, [s[0] * k, s[1] * k, s[2] * k, s[3] * k]); }
     if (on) {
       const g = halo(x, y, c, c, r, 3.2, 85, CYAN);               // amber glow
-      if (g) col = over(col, g);
+      if (g) { const k = win(x, y); if (k > 0) col = over(col, [g[0] * k, g[1] * k, g[2] * k, g[3] * k]); }
     }
     const f = gradCircle(x, y, c, c, r,
       on ? [74, 62, 36, 244] : [62, 72, 92, 244],                 // warm/slate top

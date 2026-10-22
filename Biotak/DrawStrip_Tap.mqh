@@ -1216,15 +1216,8 @@ int DrawStripGripWhich(const int mx, const int my)
    //--- with no dead pixel between them (the old pair left the 4px gap ownerless).
    if(my >= rowY && my <= rowY + DSTRIP_CELL &&
       mx >= s_dsX + DSTRIP_PAD && mx <= s_dsX + s_dsBadgeX + s_dsBadgeW) return 1;
-    // P-DRAW-48: the BOARD's own header carries the BOARD (its two seats — pin
-    // and close — excluded). It is asked FIRST: the board can sit anywhere,
-    // including over the strip, and a press on ITS header is never the strip's.
-    if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0 && s_dsPHeadY >= 0)
-    {
-       int hy0 = s_dsBY + s_dsPHeadY, hy1 = hy0 + DSTRIP_BOARD_HDR;
-       int xx0 = s_dsBX + s_dsBW - DSTRIP_PAD - 2 * DSTRIP_PHEAD_XW - 2 - 2;
-       if(my >= hy0 && my <= hy1 && mx >= s_dsBX && mx <= s_dsBX + s_dsBW && mx < xx0) return 3;
-    }
-    return 0;
+   //--- P-PAL-21: the BOARD's own header clause is retired with the board
+   //--- (`s_dsBW/s_dsBH` are 0 at every write, so the clause never fired).
+   return 0;
 }
 #endif // DRAW_STRIP_TAP_MQH

@@ -1970,7 +1970,6 @@ function main() {
     for (const [file, sig, name] of [
       [GEAR_B, 'bool DrawStripRect(', 'DrawStripRect'],
       [GEAR_B, 'bool DrawStripEdit(', 'DrawStripEdit'],
-      [GEAR_B, 'bool DrawStripPopHex(', 'DrawStripPopHex'],
       [STRIP_SKIN, 'bool DrawStripSkinPaintAt(', 'DrawStripSkinPaintAt'],
       [STRIP_PAINT, 'void DrawStripPaint(', 'DrawStripPaint'],
     ]) {
@@ -2103,11 +2102,11 @@ function main() {
     const menuDLines = linesOf(MENU_D) || [];
     const create = bodyOf(menuCLines, 'void CreateMenu(');
     if (!create) broken.push('CreateMenu is gone from ' + path.basename(MENU_C));
-    else if (!create.text.includes('CircCreateItem(i)') || !/!\s*g_ToolsOpen/.test(create.text))
+    else if (!/Circ(RebuildRing|CreateItem)\(/.test(create.text) || !/!\s*g_ToolsOpen/.test(create.text))
       broken.push('CreateMenu must build the ring ONLY when the Tools submenu is shut (P-MENU-01): an open submenu plus a rebuilt ring painted both');
     const toggle = bodyOf(menuDLines, 'void ToggleMenuVisibility(');
     if (!toggle) broken.push('ToggleMenuVisibility is gone from ' + path.basename(MENU_D));
-    else if (!toggle.text.includes('CircCreateItem(i)') || !/!\s*g_ToolsOpen/.test(toggle.text))
+    else if (!/Circ(RebuildRing|CreateItem)\(/.test(toggle.text) || !/!\s*g_ToolsOpen/.test(toggle.text))
       broken.push('ToggleMenuVisibility show must build the ring ONLY when the Tools submenu is shut (P-MENU-01)');
     const hit = bodyOf(menuALines, 'int CircItemAt(');
     if (!hit) broken.push('CircItemAt is gone from ' + path.basename(MENU_A));
@@ -4197,6 +4196,102 @@ function main() {
     }
   }
 
+  // ── P-UI-146c (2026-10-22) — THE PIN IS WRITTEN BEFORE THE ONE PAINT PASS ──
+  // DrawStripOpenAt keeps the pin it finds (`keepPin`) and paints at the end of
+  // that same pass. The restore's old order wrote `s_dsPinned` AFTER the open, so
+  // the first frame kept the old icon and rim; when no gear tab was open nothing
+  // repainted and the wrong pin stayed visible. The write must precede the call,
+  // and a failed open must put the old value back.
+  {
+    const lifeLines = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh')) || [];
+    const rest = bodyOf(lifeLines, 'void DrawStripStateRestore()');
+    const pinAt = rest ? rest.text.indexOf('s_dsPinned = pin;') : -1;
+    const openAt = rest ? rest.text.indexOf('DrawStripOpen(target)') : -1;
+    const restoreAt = rest ? rest.text.indexOf('s_dsPinned = oldPin;') : -1;
+    if (!rest || pinAt < 0 || openAt < 0 || pinAt > openAt) {
+      failures.push('P-UI-146c: DrawStripStateRestore() writes the restored pin after the open — the first frame keeps the old pin (Biotak/BiotakPanels_Life.mqh)');
+    } else if (restoreAt < 0) {
+      failures.push('P-UI-146c: DrawStripStateRestore() does not restore oldPin when the open fails — a failed restore leaves the pin set (Biotak/BiotakPanels_Life.mqh)');
+    } else {
+      console.log('[PASS] P-UI-146c the restored pin is written before DrawStripOpen(), so the strip’s first frame carries it, and a failed open restores the old value');
+    }
+  }
+
+  // ── P-UI-146d (2026-10-22) — A MISSED RESTORE IS RETRIED, BOUNDED ──
+  // The restore runs on the first ticks after attach. A drawing can still be
+  // absent from the object list there, and a failed open can be transient; the
+  // old one-shot latched `done` before either fact was known and never tried
+  // again. Retry only those two misses, five times at one-second spacing, then
+  // settle. A shut strip, a recent timeframe switch or a missing state GV is
+  // final on the first look.
+  {
+    const lifeLines = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh')) || [];
+    const rest = bodyOf(lifeLines, 'void DrawStripStateRestore()');
+    const broken = [];
+    const t = rest ? rest.text : '';
+    if (!t || !/static\s+int\s+tries\s*=\s*0;/.test(t) || !/static\s+uint\s+lastTry\s*=\s*0;/.test(t))
+      broken.push('the restore has no bounded retry counter');
+    if (!t || !/if\(tries\s*>=\s*5\)\s*\{\s*done\s*=\s*true;\s*return;\s*\}/.test(t))
+      broken.push('the retry has no five-attempt ceiling');
+    if (!t || !/\(nowMs\s*-\s*lastTry\)\s*<\s*1000/.test(t))
+      broken.push('the retry has no one-second spacing');
+    if (t && /if\s*\(done\)\s*return;\s*done\s*=\s*true;/.test(t.replace(/\s+/g, ' ')))
+      broken.push('the restore still latches done before it knows the state');
+    if (!t || !/if\s*\(target\s*==\s*""\)\s*\{[^}]*tries\+\+/.test(t))
+      broken.push('an unenumerable drawing is not retried');
+    if (!t || !/if\s*\(!DrawStripOpen\(target\)\)\s*\{[^}]*tries\+\+/.test(t))
+      broken.push('a failed open is not retried');
+    if (!t || t.lastIndexOf('done = true;') < t.indexOf('DrawStripOpen(target)'))
+      broken.push('success does not settle the restore after the open');
+    if (broken.length) {
+      failures.push('P-UI-146d: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Life.mqh)');
+    } else {
+      console.log('[PASS] P-UI-146d a restore that misses the drawing or fails the open retries five times at one-second spacing, then settles');
+    }
+  }
+
+  // ── P-UI-81b (2026-10-22) — A CLOSE REAPS THE GESTURE IT CLOSES OVER ──
+  // PnlCloseAll unlocked only the panel's own chart-lock claim. A move or slider
+  // gesture owns a second claim; closing the card under it (Esc, a hotkey, a
+  // delete) left that claim alive until some later press reached
+  // PnlReapStaleGestures. The close must use the same owner, before PalClose
+  // flushes the palette the mixer may still need.
+  {
+    const hitLines = linesOf(path.join(BIOTAK, 'BiotakPanels_Hit.mqh')) || [];
+    const routeLines = linesOf(path.join(BIOTAK, 'BiotakPanels_Route.mqh')) || [];
+    const close = bodyOf(hitLines, 'void PnlCloseAll()');
+    const move = bodyOf(routeLines, 'void PnlHandleMouseMove(');
+    const reapAt = close ? close.text.indexOf('PnlReapStaleGestures(false);') : -1;
+    const palAt = close ? close.text.indexOf('PalClose();') : -1;
+    if (!close || reapAt < 0 || palAt < 0 || reapAt > palAt) {
+      failures.push('P-UI-81b: PnlCloseAll() does not reap the live gesture before it closes — the move/slider chart lock outlives the panel (Biotak/BiotakPanels_Hit.mqh)');
+    } else if (!move || !/PnlReapStaleGestures\(s_PnlMoveMoved\);/.test(move.text)) {
+      failures.push('P-UI-81b: the press edge no longer reaps a stale gesture — a missed release can brick every card control (Biotak/BiotakPanels_Route.mqh)');
+    } else {
+      console.log('[PASS] P-UI-81b a close reaps the move/slider gesture before wiping the card, and the press edge still reaps a missed release');
+    }
+  }
+
+  // ── P-UI-81c (2026-10-22) — A PALETTE CLOSE ENDS ITS OWN MIXER ──
+  // A mixer drag owns DRAG_PANEL_KNOB, the heavy-pass budget and a chart lock.
+  // PalClose reset g_PalMixDrag but ended none of them, so Done/Esc/a card switch
+  // during a mixer left the chart modal until a later press reaped it. The close
+  // ends the gesture through the pointer's own release path, before g_PalOpen dies.
+  {
+    const palALines = linesOf(path.join(BIOTAK, 'BiotakPanels_PalA.mqh')) || [];
+    const pal = bodyOf(palALines, 'void PalClose()');
+    const mixAt = pal ? pal.text.indexOf('if(g_PalMixDrag > 0)') : -1;
+    const unlockAt = pal ? pal.text.indexOf('CircUnlockChart();') : -1;
+    const recentsAt = pal ? pal.text.indexOf('PalRefreshRecents(true);') : -1;
+    const resetAt = pal ? pal.text.indexOf('g_PalMixDrag = 0;') : -1;
+    if (!pal || mixAt < 0 || unlockAt < 0 || recentsAt < 0 || resetAt < 0 ||
+        mixAt > unlockAt || mixAt > recentsAt || mixAt > resetAt) {
+      failures.push('P-UI-81c: PalClose() resets the mixer without ending its chart-lock claim — the popup closes and the chart stays modal (Biotak/BiotakPanels_PalA.mqh)');
+    } else {
+      console.log('[PASS] P-UI-81c a palette close ends its live mixer through the same release path (recents tail, drag owner, budget and chart lock) before the popup dies');
+    }
+  }
+
   // ── P-UI-145c (2026-10-13) — A DEAD FAMILY HANDS ITS SLOT BACK ──
   // P-UI-145 gave every card and palette control a seat registry so a native drag
   // is undone in the same event. It bounded the registry with `PNL_SEAT_MAX` and
@@ -5403,16 +5498,24 @@ function main() {
       else {
         if (!delTools.text.includes('ObjectDelete(0, ToolsStar(t))'))
           broken.push('the Tools sweep stopped deleting ToolsStar - the star survives its cell (an orphan paints beside the ring)');
-        if (!noteFirst161(delTools.text, 'for(int i = 0; i < CircPlacedCountLive(); i++) CircCreateItem(i);'))
+        if (!delTools.text.includes('CircRebuildRing()'))
           broken.push('DeleteToolsMenu\'s restore no longer rebuilds the ring from the LIVE mask - the create reads the frozen grid, or a star toggled in Tools never reaches the ring');
       }
-      const ringLoop161 = 'for(int i = 0; i < CircPlacedCountLive(); i++)';
+      // P-UI-203: the note/loop pair lives in CircRebuildRing now (one owner); the three
+      // rebuild doors must call it, and the owner itself must note BEFORE its create.
+      const rebuild161 = bodyOf(menuC, 'void CircRebuildRing()');
+      const ringLoop161 = 'for(int i = 0; i < n; i++) CircCreateItem(i);';
+      if (!rebuild161 || !noteFirst161(rebuild161.text, ringLoop161) ||
+          !rebuild161.text.includes('CircPlacedCount()'))
+        broken.push('CircRebuildRing creates before noting the LIVE count - CircLayout\'s frozen n lays the seats out on the old grid');
+      if (!rebuild161 || !rebuild161.text.includes('RING_MAX_SEATS'))
+        broken.push('CircRebuildRing lost the tail sweep (P-UI-203) - removing a star leaves the old seats painted at their old places');
       const createMenu = bodyOf(menuC, 'void CreateMenu()');
-      if (!createMenu || !noteFirst161(createMenu.text, ringLoop161))
-        broken.push('CreateMenu creates before noting the LIVE count - CircLayout\'s frozen n lays the seats out on the old grid');
+      if (!createMenu || !createMenu.text.includes('CircRebuildRing()'))
+        broken.push('CreateMenu stopped rebuilding the ring through CircRebuildRing - a shrunken mask leaves its tail behind');
       const toggle161 = bodyOf(linesOf(MENU_D) || [], 'void ToggleMenuVisibility(');
-      if (!toggle161 || !noteFirst161(toggle161.text, ringLoop161))
-        broken.push('ToggleMenuVisibility creates before noting the LIVE count - the opening press paints the old grid');
+      if (!toggle161 || !toggle161.text.includes('CircRebuildRing()'))
+        broken.push('ToggleMenuVisibility stopped rebuilding the ring through CircRebuildRing - the opening press paints the old grid');
       const subRebuild = bodyOf(menuC, 'void SubRebuild()');
       if (!subRebuild || !subRebuild.text.includes('ObjectDelete(0, ToolsStar(t))'))
         broken.push('SubRebuild\'s sweep stopped deleting ToolsStar — a page reshape leaves a stale star');
@@ -5957,14 +6060,20 @@ function main() {
     const menuC = linesOf(MENU_C);
     if (!menuC) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
     else {
+      // P-UI-202: the skin resolution lives in ONE owner now (CircEnsureBg) and both
+      // writers call it; the box==canvas law is asserted on the owner, the call on
+      // the writers, so neither half can drift alone.
+      const ensure = bodyOf(menuC, 'void CircEnsureBg(');
+      if (!ensure || !ensure.text.includes('CircBgRes(s, on)') || !ensure.text.includes('CircSeatSize(i)'))
+        broken.push('CircEnsureBg stopped resolving its skin through CircBgRes at the seat\'s own side (CircSeatSize) — a fixed canvas name is the reported defect');
       const create = bodyOf(menuC, 'void CircCreateItem(');
-      if (!create || !create.text.includes('CircBgRes(s, on)') || !create.text.includes('CircSeatSize(i)'))
-        broken.push('CircCreateItem stopped resolving its skin through CircBgRes at the seat\'s own side (CircSeatSize) — a fixed canvas name is the reported defect');
+      if (!create || !create.text.includes('CircEnsureBg(i, x, y, on)'))
+        broken.push('CircCreateItem stopped drawing its bg through CircEnsureBg — the create and the state pass own two canvases again');
       else if (!create.text.includes('CircConfigureIcon(icon, feat, on, x, y)'))
         broken.push('CircCreateItem no longer seats the glyph at CIRC_ICON_SIZE (no size argument)');
       const update = bodyOf(menuC, 'void CircUpdateItemState(');
-      if (!update || !update.text.includes('CircBgRes(CircSeatSize(i), on)'))
-        broken.push('CircUpdateItemState stopped resolving its skin through CircBgRes at the seat\'s own side — an update re-writes a wrong canvas onto a correct box');
+      if (!update || !update.text.includes('CircEnsureBg(i, ix, iy, on)'))
+        broken.push('CircUpdateItemState stopped resolving its skin through the seat\'s own side — an update re-writes a wrong canvas onto a correct box');
       const move = bodyOf(menuC, 'void CircMoveItem(');
       if (!move || !move.text.includes('CIRC_ICON_SIZE / 2'))
         broken.push('CircMoveItem stopped seating the glyph by CIRC_ICON_SIZE/2 — a drag shifts the glyph off its disc');
@@ -6084,6 +6193,69 @@ function main() {
       failures.push('P-UI-163: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C/D.mqh + BiotakKit.mqh)');
     } else {
       console.log('[PASS] P-UI-163 a missing glyph is repaired, never skipped: the icon is created-if-missing on the ring and the tools cells, a failed create heals through CircUpdateItemState/CircHealRingStep with flushed witnesses, and the per-tick probe runs (2 ObjectFind/tick, 0 writes while whole). P-UI-163c: the sync stands down while the fan is open, the open sweep takes the whole seat family (badge included), both tip edges disarm, and the per-tick probe serves the fan\'s cells meanwhile');
+    }
+  }
+
+  // -- 54b. P-UI-202 (2026-10-22): the bg heals on the state pass too ---------
+  // The mirrored half of P-UI-163. MEASURED on the user's own frame (09:52): 11 of
+  // 13 ring seats drew a BARE GLYPH — the icon healed (`if(ObjectFind < 0)`
+  // create), while the bg half still read `if(ObjectFind(bg) >= 0)` and only wrote
+  // BMPFILE to a bg that ALREADY existed. A bg whose create lost the first tick
+  // (the chart box is unmeasured at OnInit) could never come back; one click on
+  // the orb ran CreateMenu and «همه چی درست میشه». The create + box + art now live
+  // in CircEnsureBg/ToolsEnsureBg and BOTH the create and the state path call them.
+  {
+    const broken = [];
+    const menuC54b = linesOf(MENU_C);
+    if (!menuC54b) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
+    else {
+      const ring54b = bodyOf(menuC54b, 'void CircEnsureBg(');
+      if (!ring54b) broken.push('CircEnsureBg is gone — the bg has no create-if-missing owner');
+      else {
+        if (!ring54b.text.includes('ObjectCreate'))
+          broken.push('CircEnsureBg stops creating a missing bg — the bare-glyph seat returns');
+        if (!ring54b.text.includes('OBJPROP_BMPFILE'))
+          broken.push('CircEnsureBg no longer writes the art — the box would sit empty');
+        if (!ring54b.text.includes('[P-UI-202] bg heal seat=') || !ring54b.text.includes('[P-UI-202] bg create FAILED'))
+          broken.push('CircEnsureBg lost a flushed witness — a heal or a failure would be unprovable (P-LOG-3)');
+      }
+      for (const fn of ['void CircCreateItem(', 'void CircUpdateItemState(']) {
+        const b = bodyOf(menuC54b, fn);
+        if (!b) { broken.push(fn.trim() + ' is gone'); continue; }
+        if (!b.text.includes('CircEnsureBg('))
+          broken.push(fn.trim() + ' stopped calling CircEnsureBg — one of the two writers bypasses the owner');
+        if (b.text.includes('if(ObjectFind(0, bg) >= 0)'))
+          broken.push(fn.trim() + ' gates the bg on existence again — the measured asymmetry');
+      }
+      const tbg54b = bodyOf(menuC54b, 'void ToolsEnsureBg(');
+      if (!tbg54b) broken.push('ToolsEnsureBg is gone — the cells have no create-if-missing bg owner');
+      else if (!tbg54b.text.includes('[P-UI-202] tools bg heal cell='))
+        broken.push('ToolsEnsureBg lost its flushed witness');
+      for (const fn of ['void ToolsCreateItem(', 'void ToolsUpdateItemState(']) {
+        const b = bodyOf(menuC54b, fn);
+        if (!b) { broken.push(fn.trim() + ' is gone'); continue; }
+        if (!b.text.includes('ToolsEnsureBg('))
+          broken.push(fn.trim() + ' stopped calling ToolsEnsureBg — the cell twin of the same hole');
+        if (b.text.includes('if(ObjectFind(0, bg) >= 0)'))
+          broken.push(fn.trim() + ' gates its bg on existence again');
+      }
+      const tup54b = bodyOf(menuC54b, 'void ToolsUpdateItemState(');
+      if (tup54b && (!tup54b.text.includes('ObjectCreate') || !tup54b.text.includes('[P-UI-202] tools icon heal cell=')))
+        broken.push('ToolsUpdateItemState stopped healing a missing glyph — a cell can be a bare hole again');
+    }
+    // P-UI-201: the baker keeps the radial window (the pixel test is the deploy gate's).
+    const gen54b = linesOf(ICON_GEN);
+    if (!gen54b) broken.push('tools/gen-th3-icons.js is gone — the seat art has no baker');
+    else {
+      const skin54b = bodyOf(gen54b, 'function circSkin(');
+      if (!skin54b) broken.push('circSkin is gone — the seat skin has no owner');
+      else if (!skin54b.text.includes('const rmax = r + 2.8;') || !skin54b.text.includes('win('))
+        broken.push('circSkin dropped the radial window — the rebaked halo is cut at the canvas border again (the square seat, P-UI-201)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-202: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh)');
+    } else {
+      console.log('[PASS] P-UI-202 the bg is created-if-missing on the state pass too: CircEnsureBg/ToolsEnsureBg own the create + box + art, both the create and the state writer call them, and the flushed heal witnesses name the seat');
     }
   }
 
@@ -6272,9 +6444,9 @@ function main() {
       broken.push('CircLayout does not ask CircSeatOuter — the paint draws one circle while the hit test answers two');
     if (!layout195 || !layout195.text.includes('CircRing2StartDeg()') || !layout195.text.includes('CircRing2StepDeg()'))
       broken.push('CircLayout computes the outer angle on its own again — the paint and the row-gap law are two grids (P-UI-195b)');
-    const create195 = bodyOf(linesOf(MENU_C) || [], 'void CircCreateItem(');
-    if (!create195 || !create195.text.includes('CircSeatSize(i)'))
-      broken.push('CircCreateItem stopped reading CircSeatSize — the outer seat is born at the inner side and its skin clips (P-UI-162)');
+    const ensure195 = bodyOf(linesOf(MENU_C) || [], 'void CircEnsureBg(');
+    if (!ensure195 || !ensure195.text.includes('CircSeatSize(i)'))
+      broken.push('the seat\'s bg no longer reads CircSeatSize — the outer seat is born at the inner side and its skin clips (P-UI-162)');
     if (broken.length) {
       failures.push('P-UI-195: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_RING1_SEATS/CIRC_RING2_BTN_SIZE + BiotakMenu_Ring.mqh CircRing1Count/CircSeatOuter/CircRing2StartDeg/CircRing2StepDeg/CircRing2Radius/CircFitLimitOuter/CircSeatSize + BiotakMenu_B.mqh CircLayout + BiotakMenu_C.mqh CircCreateItem)');
     } else {
@@ -7801,6 +7973,270 @@ function main() {
       failures.push('P-BK-116: ' + broken.join('; ') + ' (BaseKnot_Note / BaseKnot_Plan / BaseKnot_Drag / BaseKnot_Witness / BiotakKit / EventHandlers_Objects)');
     } else {
       console.log('[PASS] P-BK-116 the line-end column is pips + money for ONE selected box, sized from the risk % through the terminal\'s own tick value, deleted with its box, and witnessed on the flushed channel');
+    }
+  }
+
+  // -- 77. P-UI-204 (2026-10-22): THE TRAIN'S PITCH IS ITS TILE'S WIDTH --
+  // MEASURED 10:29 (biotak_diag_XAUUSD_...): the release re-laid a 16-star ring as a
+  // 12-seat TRAIN - and every bg box was 43x43 on a 41px pitch, so each tile overlapped
+  // its neighbour by 2px and the train read as one comb. The seat's SIDE is not what the
+  // paint draws; the tile is (s + 2*margin), and the box is the unit the hand sees.
+  // The same law binds the capacity walk (its room and its length) and the census rect
+  // (a 12-seat train ran to x=1182 while the ring's radius-rect ended at 804: hit=7 and
+  // the tail sat outside the judge's view).
+  {
+    const broken = [];
+    const menuB = linesOf(MENU_B) || [];
+    const ring = linesOf(MENU_RING) || [];
+    const census = linesOf(path.join(BIOTAK, 'BiotakMenu_RingCensus.mqh'));
+    const layout = bodyOf(menuB, 'void CircLayout(');
+    const cap = bodyOf(ring, 'int CircRailCapacity(');
+    const cen = census ? bodyOf(census, 'void CircRingCensus(') : null;
+    if (!layout || !layout.text.includes('int box = s + 2 * CIRC_BG_MARGIN;') ||
+        !layout.text.includes('int step = box + CIRC_GAP;') ||
+        !layout.text.includes('int half = box / 2 + CIRC_PAD;'))
+      broken.push('CircLayout went back to the SEAT pitch - the tiles overlap and the train reads as a comb');
+    if (layout && (layout.text.match(/CIRC_ORB_SIZE \/ 2 \+ box \/ 2 \+ CIRC_GAP/g) || []).length < 2)
+      broken.push('the train\'s first seat is no longer placed by the TILE half - it crowds the orb');
+    if (!cap || !cap.text.includes('int box  = s + 2 * CIRC_BG_MARGIN;') ||
+        !cap.text.includes('(box + CIRC_GAP)'))
+      broken.push('CircRailCapacity walks the seat pitch while the paint draws the tile - the capacity admits a seat that does not fit');
+    if (!cen || !cen.text.includes('MathMax(x1, bx + bw)') || !cen.text.includes('MathMin(x0, bx)'))
+      broken.push('the census rect is a radius again - a train\'s tail falls outside the judge (P-UI-204)');
+    if (broken.length) {
+      failures.push('P-UI-204: ' + broken.join('; ') + ' (BiotakMenu_B / BiotakMenu_Ring / BiotakMenu_RingCensus)');
+    } else {
+      console.log('[PASS] P-UI-204 the train pitch, its capacity and the census rect all read the TILE (s + 2*margin), so tiles never overlap and the judge sees the whole row');
+    }
+  }
+
+  // -- 78. P-UI-205 (2026-10-22): A SEAT PAST THE PLACED SET IS SWEPT, NOT LEFT --
+  // A drag paints with the FROZEN count, so a release that re-derives a smaller set can
+  // leave the tail of the old one on the chart: the ring's seat names carry no state of
+  // their own, so nothing but a rebuild ever removed them, and the user's next look shows
+  // glyphs the ring no longer owns. The per-tick heal step is the one pass that already
+  // walks the ring's names; it now sweeps a slot past the placed set too - one candidate
+  // per tick, zero writes when clean.
+  {
+    const broken = [];
+    const menuD = linesOf(MENU_D) || [];
+    const heal = bodyOf(menuD, 'void CircHealRingStep(');
+    if (!heal || !heal.text.includes('s_healSeat >= RING_MAX_SEATS'))
+      broken.push('the heal walk is clamped to the placed count again - it can never look past it');
+    if (!heal || !heal.text.includes('if(i >= n)') || !heal.text.includes('ObjectDelete(0, CircBg(i))') ||
+        !heal.text.includes('[P-UI-205] orphan seat='))
+      broken.push('the tail sweep is gone - a shrunken set leaves its old seats painted (P-UI-205)');
+    if (broken.length) {
+      failures.push('P-UI-205: ' + broken.join('; ') + ' (BiotakMenu_D)');
+    } else {
+      console.log('[PASS] P-UI-205 the heal step sweeps a seat name PAST the placed set (one slot per tick, flushed witness), so a drag-time tail can never survive the frame that shrank it');
+    }
+  }
+
+  // -- 79. P-UI-207 (2026-10-22): ROW B LAYS ITS ITEMS ON THE TILE IT PAINTS --
+  // The Tools sub-menu rail used to be laid out on the 44px SEAT (pitch 50) while its
+  // skin PAINTS a 52px tile (CIRC_BG_SIZE): -2px, tile on tile, and on a cramped chart
+  // the fits test answered a run the paint then overran. Row A (the star ring's train,
+  // CircLayout) reads its own box + BG_MARGIN and is NOT this rule.
+  // The fix is one owner — CircRailStep/Lead/Run/Room take the TILE — and BOTH row-B
+  // sites must hand it SubRailTile() (== CIRC_BG_SIZE). This asserts the literals, so
+  // re-hardcoding the old 50px pitch, or putting CIRC_BTN_SIZE back in this row, fails
+  // here at the name instead of shipping a rail that overlaps itself.
+  {
+    const broken = [];
+    const menuB = linesOf(MENU_B) || [];
+    const menuA = linesOf(MENU_A) || [];
+    const fits = bodyOf(menuB, 'bool SubRailAxis(');
+    const paint = bodyOf(menuB, 'void SubPlaceItem(');
+    const tileFn = (codeOf(menuB).match(/int\s+SubRailTile\s*\(\s*\)\s*\{\s*return\s+CIRC_BG_SIZE\s*;\s*\}/g) || []).length;
+    const bgDef = menuA.some((l) => /#define\s+CIRC_BG_SIZE\s+52\b/.test(l));
+    if (!bgDef) broken.push('CIRC_BG_SIZE is no longer 52 (BiotakMenu_A.mqh) — the tile this row paints moved');
+    if (tileFn !== 1)
+      broken.push('SubRailTile() no longer returns CIRC_BG_SIZE — row B reads something other than the tile it paints');
+    // the FITS half: the shared owner + the run it answers, asked four times (both axes)
+    if (!fits || !/int\s+tile\s*=\s*SubRailTile\(\)\s*;/.test(fits.text))
+      broken.push('SubRailAxis stopped asking SubRailTile() — the fits test measures a seat the paint does not draw');
+    if (!fits || (fits.text.match(/CircRailRun\(tile,\s*n\)/g) || []).length !== 1)
+      broken.push('SubRailAxis stopped measuring CircRailRun(tile, n) — the train length is not the tile\'s run');
+    if (!fits || (fits.text.match(/CircRailRoom\(/g) || []).length < 4)
+      broken.push('SubRailAxis stopped measuring CircRailRoom(...) on all four axes — a room test with its own arithmetic is a second grid');
+    if (fits && /CIRC_BTN_SIZE/.test(fits.text))
+      broken.push('the 44px SEAT is back in the row-B fits test — a 52 tile on a 50 pitch overlaps by 2px (the old defect)');
+    // the PAINT half: the same owner, and the same tile
+    if (!paint || !/int\s+tile\s*=\s*SubRailTile\(\)\s*;/.test(paint.text))
+      broken.push('SubPlaceItem stopped asking SubRailTile() — the paint lays a pitch the fits test never measured');
+    if (!paint || !paint.text.includes('int dist = CircRailLead(tile) + i * CircRailStep(tile);'))
+      broken.push('the row-B paint is not CircRailLead(tile) + i * CircRailStep(tile) — a hardcoded pitch can drift from the shared owner');
+    if (paint && /CIRC_BTN_SIZE\s*\+\s*CIRC_GAP|CIRC_BTN_SIZE\s*\/\s*2/.test(paint.text))
+      broken.push('the 44px seat arithmetic is back at the row-B paint site — that is the retired 50px pitch, tile on tile');
+    if (broken.length) {
+      failures.push('P-UI-207: ' + broken.join('; ') + ' (Biotak/BiotakMenu_B / BiotakMenu_Ring)');
+    } else {
+      console.log('[PASS] P-UI-207 row B lays its items on the TILE it paints: SubRailTile() == CIRC_BG_SIZE (52), the fits test reads CircRailRun/Room(tile) on both axes, the paint reads CircRailLead/Step(tile), and neither site carries the 44px seat arithmetic (pitch 58, lead 64 — not 50/60)');
+    }
+  }
+
+  // -- 80. P-UI-208 (2026-10-22): THE AXIS A LINE DOES NOT OWN IS NOT AN ANCHOR --
+  // MT4 stores TIME1 = 0 on every OBJ_HLINE (and PRICE1 = 0 on every OBJ_VLINE), and
+  // this tree's own painters create them that way (`ObjectCreate(..., 0, 0, price)`).
+  // DrawAnchorXY asked both axes, so those lines never projected: the press named
+  // nothing and the strip refused to open them. MEASURED 2026-10-22 12:56:27
+  // XAUUSD,M15 `[drawstrip] close: anchor projection failed on "Horizontal Line
+  // 43389"`. The missing axis is borrowed from the middle of the live window; the
+  // axis the object owns still has to be valid, so a dead object still fails.
+  {
+    const broken = [];
+    const anchor = bodyOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')), 'bool DrawAnchorXY(');
+    if (!anchor || !/if\s*\(\s*\(t\s*<=\s*0\s*&&\s*type\s*==\s*OBJ_HLINE\)\s*\|\|\s*\(!\(p\s*>\s*0\.0\)\s*&&\s*type\s*==\s*OBJ_VLINE\)\s*\)/.test(anchor.text))
+      broken.push('the missing-axis guard is gone — an HLINE born with time 0 can never project (P-UI-208)');
+    if (!anchor || (anchor.text.match(/ChartXYToTimePrice\(0,\s*cw\s*\/\s*2,\s*chh\s*\/\s*2/g) || []).length !== 1)
+      broken.push('the fallback no longer asks the MIDDLE of the live window — a fixed time can sit off the visible chart');
+    if (!anchor || !/if\s*\(\s*t\s*<=\s*0\s*&&\s*type\s*==\s*OBJ_HLINE\s*\)\s*t\s*=\s*tc;/.test(anchor.text) ||
+        !/if\s*\(\s*!\(p\s*>\s*0\.0\)\s*&&\s*type\s*==\s*OBJ_VLINE\s*\)\s*p\s*=\s*pc;/.test(anchor.text))
+      broken.push('the borrowed axis is not written into the projection — the fallback borrows and discards');
+    if (!anchor || !/if\s*\(\s*t\s*<=\s*0\s*\|\|\s*!\(p\s*>\s*0\.0\)\s*\)\s*return false;/.test(anchor.text))
+      broken.push('the projection stopped requiring a valid value on the axis the object DOES own');
+    if (!anchor || !anchor.text.includes('ChartTimePriceToXY(0, 0, t, p, x, y)'))
+      broken.push('the final projection is no longer ChartTimePriceToXY(t, p) — a second grid');
+    if (broken.length) {
+      failures.push('P-UI-208: ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh)');
+    } else {
+      console.log('[PASS] P-UI-208 a horizontal line projects from its PRICE and a vertical from its TIME (the missing axis comes from the middle of the live window), so a press on a line born with TIME1=0 / PRICE1=0 can still open the strip');
+    }
+  }
+
+  // -- 81. P-UI-209 (2026-10-22): THE DONE BUTTON'S PRESS READS THE PAINT --
+  // `PnlFootBtnW("Done")` is the paint's one width owner (content-fitted at the
+  // current DPI). The press still read the 72px floor, so at 150% (75px painted)
+  // and 200% (88px) the button's right band was painted and could not close.
+  {
+    const broken = [];
+    const hit = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Hit.mqh')), 'bool PnlClosePressHit(');
+    if (!hit || !/int\s+bw\s*=\s*PnlFootBtnW\("Done"\)/.test(hit.text))
+      broken.push('the Done press no longer reads PnlFootBtnW("Done") — its width is a second number');
+    if (!hit || !/int\s+dx\s*=\s*px\+cw-PNL_PAD_X-bw/.test(hit.text))
+      broken.push('the Done press x no longer derives from the painted width');
+    if (!hit || !/mx\s*>=\s*dx-PNL_BTN_PAD\s*&&\s*mx\s*<=\s*dx\+bw\+PNL_BTN_PAD/.test(hit.text))
+      broken.push('the Done press does not test the painted width plus its skin pad on both edges');
+    if (!hit || !/my\s*>=\s*fy\+10-PNL_BTN_PAD\s*&&\s*my\s*<=\s*fy\+10\+PNL_BTN_H\+PNL_BTN_PAD/.test(hit.text))
+      broken.push('the Done press does not test the painted skin on both vertical edges');
+    if (hit && /\bPNL_BTN_W\b/.test(hit.text))
+      broken.push('PNL_BTN_W is back in PnlClosePressHit �?" the fixed floor the paint left behind');
+    if (broken.length) {
+      failures.push('P-UI-209: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Hit.mqh + Biotak/BiotakPanels_Build.mqh)');
+    } else {
+      console.log('[PASS] P-UI-209 the Done press covers the painted skin (PnlFootBtnW("Done") + PNL_BTN_PAD) on the same right edge, at every DPI');
+    }
+  }
+
+  // -- 82. P-UI-210 (2026-10-22): ONE CLOSED-DROPDOWN RECT --
+  // The paint was content-fitted (max(72, 50+textW), 26 tall, y-1) and the
+  // hit/popup anchor used max(104, min(190, maxLen*7+54)), 24 tall, y — a
+  // second grid: up to 32px of the hit had no button under it, and the popup
+  // could open left of its own anchor. PnlDdRect is the one owner now.
+  {
+    const broken = [];
+    const rows = linesOf(path.join(BIOTAK, 'BiotakPanels_Rows.mqh'));
+    const rect = bodyOf(rows, 'void PnlDdRect(');
+    const build = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Build.mqh')), 'void PnlCreateRow(');
+    if (!rect || !/w\s*=\s*MathMax\(PNL_BTN_W\s*,\s*50\s*\+\s*PnlTextW\(PnlDdOptText\(item,row\),PNL_PT_CTL\)\)/.test(rect.text))
+      broken.push('PnlDdRect no longer uses the paint width: max(PNL_BTN_W, 50+textW)');
+    if (!rect || !/y\s*=\s*py\+PNL_HEAD_H\+PnlRowLine\(item,row\)\*PNL_ROW_H\+PNL_CTL_Y-1/.test(rect.text))
+      broken.push('PnlDdRect no longer uses the painted y (PNL_CTL_Y-1)');
+    if (!rect || !/\bh\s*=\s*26\b/.test(rect.text))
+      broken.push('PnlDdRect no longer uses the painted height (26)');
+    if (rect && /maxLen\s*\*\s*7\s*\+\s*54|MathMax\(104/.test(rect.text))
+      broken.push('the retired 104/190 maxLen*7+54 width is back in PnlDdRect');
+    if (!build || !/PnlDdRect\(item,row,dx,dy,dw,dh\)/.test(build.text))
+      broken.push('PnlCreateRow no longer reads PnlDdRect — the paint has its own dropdown geometry again');
+    if (build && /int\s+dw\s*=\s*50\s*\+\s*PnlTextW/.test(build.text))
+      broken.push('PnlCreateRow computes a second dropdown width beside PnlDdRect');
+    if (broken.length) {
+      failures.push('P-UI-210: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Rows.mqh + Biotak/BiotakPanels_Build.mqh)');
+    } else {
+      console.log('[PASS] P-UI-210 the closed dropdown paints, hit-tests and anchors its popup from one rect: max(72, 50+textW) x 26 at CTL_Y-1');
+    }
+  }
+
+  // -- 82b. P-UI-213 (2026-10-22): THE DROPDOWN'S PAD IS NOT A ROW --
+  // The popup is PNL_DD_PAD tall above the first row and below the last. A press
+  // in either band was clamped to row 0 / row N-1 and applied it, so the padding
+  // acted like a second, invisible row. The guard consumes the press with no
+  // change; only the N row bands apply an option.
+  {
+    const broken = [];
+    const hit = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Hit.mqh')), 'int PnlDdHit(');
+    if (!hit || !/const\s+int\s+local\s*=\s*my-\(g_PnlDdY\+PNL_DD_PAD\)/.test(hit.text))
+      broken.push('PnlDdHit lost the popup-local y');
+    if (!hit || !/if\s*\(local<0\s*\|\|\s*local>=g_PnlDdN\*PNL_DD_ROW_H\)\s*return\s+REFRESH_NONE/.test(hit.text))
+      broken.push('the popup padding still falls through to the first or last option');
+    if (!hit || !/ClampInt\(local\/PNL_DD_ROW_H/.test(hit.text))
+      broken.push('the row index no longer divides the popup-local y');
+    if (broken.length) {
+      failures.push('P-UI-213: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Hit.mqh)');
+    } else {
+      console.log('[PASS] P-UI-213 a press in the dropdown padding is consumed without applying the first or last option');
+    }
+  }
+
+  // -- 83. P-UI-211 (2026-10-22): A SWITCH TARGET STOPS AT ITS OWN ROW --
+  // The switch hit was the painted pill + a 5px halo, but the halo was measured
+  // past the row (44px tall on a 42px pitch): a press in the last 2px of one
+  // row flipped the row before it. Clamp the halo to [ry, ry+PNL_ROW_H-1].
+  {
+    const broken = [];
+    const hit = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Hit.mqh')), 'bool PnlSwitchHit(');
+    if (!hit || !/y0\s*=\s*MathMax\(swY-5,ry\)/.test(hit.text) || !/y1\s*=\s*MathMin\(swY\+PNL_SW_H\+2\*PNL_SW_PAD\+5,ry\+PNL_ROW_H-1\)/.test(hit.text))
+      broken.push('the switch halo is not clamped to its own row');
+    if (!hit || !/my\s*>=\s*y0\s*&&\s*my\s*<=\s*y1/.test(hit.text))
+      broken.push('the switch press no longer tests the clamped row band');
+    if (hit && /my\s*>=\s*swY-5\s*&&\s*my\s*<=\s*swY\+PNL_SW_H/.test(hit.text))
+      broken.push('the unclamped 44px switch halo is back — it can flip the row above');
+    if (broken.length) {
+      failures.push('P-UI-211: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Hit.mqh)');
+    } else {
+      console.log('[PASS] P-UI-211 a switch press is clamped to its own row, so the 5px halo cannot flip the row above');
+    }
+  }
+
+  // -- 84. P-UI-212 (2026-10-22): THE BAND HIT IS THE BAND PAINT --
+  // A section band paints the full card rect (PnlSetBitmap at px,ry,cardW,42).
+  // Its hit was inset (PAD-6, ry+5..ry+37), so the edges were painted and fell
+  // through to the card grab. The painted rect is the target.
+  {
+    const broken = [];
+    const hit = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Rows.mqh')), 'bool PnlBandHit(');
+    if (!hit || !/mx\s*>=\s*bx\s*&&\s*mx\s*<=\s*bx\+PnlCardW\(it\)\s*&&\s*my\s*>=\s*ry\s*&&\s*my\s*<=\s*ry\+PNL_ROW_H-1/.test(hit.text))
+      broken.push('the band hit is not the painted card rect');
+    if (hit && /PNL_PAD_X-6|ry\+5|ry\+37/.test(hit.text))
+      broken.push('the inset band hit is back — its painted edges fall through');
+    if (broken.length) {
+      failures.push('P-UI-212: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Rows.mqh)');
+    } else {
+      console.log('[PASS] P-UI-212 a section band hit-tests the rect it paints (full card width, 42px row), so its edges toggle like its middle');
+    }
+  }
+
+  // -- 85. P-PERF-56 (2026-10-22): A MOVE WITH NO GRIP ASKS THE CHART NOTHING --
+  // DrawStripGripMove read two ChartGetInteger values before its own live-flag
+  // guards on every left-down move. A move with neither grip live draws nothing,
+  // so it now returns first. Cost: two syscalls per move on a still/dragged
+  // surface, zero pixels changed.
+  {
+    const broken = [];
+    const fn = bodyOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')), 'void DrawStripGripMove(');
+    const guard = fn ? fn.text.indexOf('if(!s_dsGripLive && !s_dsGGripLive) return;') : -1;
+    const read = fn ? fn.text.indexOf('ChartGetInteger(0, CHART_WIDTH_IN_PIXELS') : -1;
+    if (!fn || guard < 0)
+      broken.push('the no-grip early return is gone');
+    if (!fn || read < 0)
+      broken.push('the chart width read is gone — this is not the function under test');
+    if (guard >= 0 && read >= 0 && guard > read)
+      broken.push('the chart reads happen before the no-grip return');
+    if (broken.length) {
+      failures.push('P-PERF-56: ' + broken.join('; ') + ' (Biotak/DrawStrip_Router.mqh)');
+    } else {
+      console.log('[PASS] P-PERF-56 a left-down move with neither grip live returns before the two ChartGetInteger reads');
     }
   }
 

@@ -225,7 +225,6 @@ void DrawStripClose()
    DrawStripSurfaceClear();  // P-PAL-20: owns no popup pixels either — the ledger dies with its owner
     s_dsPicker = DSTRIP_PICK_NONE;   // the popover dies with the strip
     s_dsPN = 0;                      // (the recent colours survive: they are the trader's)
-    s_dsPHexY = -1;
     s_dsPHeadY = -1;
     s_dsPOpY = -1;
     s_dsOpGrab = false;
@@ -409,7 +408,7 @@ bool DrawStripLblAt(const string nm, const int x, const int inkTop, const string
          if(!saidLblBirth)
          {
             saidLblBirth = true;
-            Print("[drawstrip] label birth failed obj=", nm, " err=", GetLastError());
+            DrawStripDiagEmit("[drawstrip] label birth failed obj=" + nm + " err=" + IntegerToString(GetLastError()));
          }
          return false;
       }
@@ -680,7 +679,7 @@ string DrawStripSepName(const int g) { return "PnlDrawS_SEP" + IntegerToString(g
 //--- drawing changed while the field kept the old hex — the one field whose whole
 //--- job is to state the current value, stating a value the drawing had left. The
 //--- board's own hex field already solved this and its law is copied here verbatim
-//--- (`DrawStripPopHex`, this file): a guarded write that follows the value, and an
+//--- (the guarded write below): a guarded write that follows the value, and an
 //--- EMPTY seed never writes, so the field the user is typing in is the caller's
 //--- word to keep. `reseed` is that word: the two hex seats pass the value while
 //--- `s_dsHexFocus` is false, the three typed seats pass false and are untouched.
@@ -722,51 +721,6 @@ bool DrawStripEdit(const int e, const int x, const int y, const int w,
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
    dirty |= DrawStripSetInt(nm, OBJPROP_YSIZE, DSTRIP_GEAR_EDIT_H);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
-   return dirty;
-}
-//--- TV parity board: the HEX field. It is NOT a gear edit (`DrawStripEdit` adds
-//--- the settings panel's own origin), so it has its own owner and its own name.
-//--- P-DRAW-48: the seed is the LIVE colour now — the field used to be seeded once
-//--- and a grid pick left the old hex on screen («hex ناقص پیاده سازی شده»);
-//--- `s_dsHexFocus` is the one guard: while the user is typing, nothing writes.
-bool DrawStripPopHex(const int x, const int y, const int w, const string seed)
-{
-   string nm = DrawStripPHexEdName();
-   bool dirty = false;
-   if(ObjectFind(0, nm) < 0)
-   {
-      if(!ObjectCreate(0, nm, OBJ_EDIT, 0, 0, 0)) return false;
-      ObjectSetInteger(0, nm, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, PnlPt(8));
-      ObjectSetString(0, nm, OBJPROP_FONT, BIO_FONT_MONO);
-      ObjectSetInteger(0, nm, OBJPROP_COLOR, DSTRIP_CLR_LABEL);
-      ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, DSTRIP_CLR_FIELD);
-      ObjectSetInteger(0, nm, OBJPROP_BORDER_COLOR, DSTRIP_CLR_FIELD_BD);
-      ObjectSetInteger(0, nm, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-      ObjectSetInteger(0, nm, OBJPROP_ALIGN, ALIGN_LEFT);
-      ObjectSetInteger(0, nm, OBJPROP_READONLY, false);
-      ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_STRIP_ICON);
-      ObjectSetString(0, nm, OBJPROP_TEXT,
-                      DrawStripColorHex((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR)));
-      dirty = true;
-   }
-   //--- the live seed: a guarded write, so a repaint that changed nothing writes
-   //--- nothing — and the field follows a colour picked on the grid or typed
-   //--- elsewhere. An empty seed (the field holds the focus) never writes.
-   if(seed != "" && ObjectGetString(0, nm, OBJPROP_TEXT) != seed)
-      dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, seed);
-   //--- P-DRAW-122: the layer, every paint (same heal as the panel's fields and rects:
-   //--- a bare HEX box on the board is this field painting under the plate).
-   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, Z_STRIP_ICON);
-   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
-   dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
-   dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, y);
-   dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
-   dirty |= DrawStripSetInt(nm, OBJPROP_YSIZE, DSTRIP_POP_EDIT_H);
-   dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP,
-                            "Type #RRGGBB, Enter applies it" + DrawStripTipScope());
    return dirty;
 }
 //--- P-DRAW-90 (2026-09-30) — THE FOOT'S THREE COMMANDS AND ITS OWN GRID.
@@ -1395,8 +1349,8 @@ bool DrawStripGearPaint()
       //--- P-DRAW-118 (2026-10-01): the two colour seats are gone with their boxes
       //--- (see the `want` above); the three that remain are typed VALUES, not
       //--- readings, so none of them re-seeds itself while a hand is in it.
-      //--- The board's own HEX field still follows the colour it states — that law is
-      //--- `DrawStripPopHex`'s, and it is the one the retired panel boxes copied
+      //--- The gear's typed seats still follow the value they state — that law is
+      //--- the guarded write's, and it is the one the retired panel boxes copied
       //--- (P-DRAW-100, whose site moved with the field).
       if(e == 1)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
