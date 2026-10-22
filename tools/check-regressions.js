@@ -5958,13 +5958,13 @@ function main() {
     if (!menuC) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
     else {
       const create = bodyOf(menuC, 'void CircCreateItem(');
-      if (!create || !create.text.includes('CircBgRes(on)'))
-        broken.push('CircCreateItem stopped resolving its skin through CircBgRes — a fixed canvas name is the reported defect');
+      if (!create || !create.text.includes('CircBgRes(s, on)') || !create.text.includes('CircSeatSize(i)'))
+        broken.push('CircCreateItem stopped resolving its skin through CircBgRes at the seat\'s own side (CircSeatSize) — a fixed canvas name is the reported defect');
       else if (!create.text.includes('CircConfigureIcon(icon, feat, on, x, y)'))
         broken.push('CircCreateItem no longer seats the glyph at CIRC_ICON_SIZE (no size argument)');
       const update = bodyOf(menuC, 'void CircUpdateItemState(');
-      if (!update || !update.text.includes('CircBgRes(on)'))
-        broken.push('CircUpdateItemState stopped resolving its skin through CircBgRes — an update re-writes a wrong canvas onto a correct box');
+      if (!update || !update.text.includes('CircBgRes(CircSeatSize(i), on)'))
+        broken.push('CircUpdateItemState stopped resolving its skin through CircBgRes at the seat\'s own side — an update re-writes a wrong canvas onto a correct box');
       const move = bodyOf(menuC, 'void CircMoveItem(');
       if (!move || !move.text.includes('CIRC_ICON_SIZE / 2'))
         broken.push('CircMoveItem stopped seating the glyph by CIRC_ICON_SIZE/2 — a drag shifts the glyph off its disc');
@@ -6213,9 +6213,12 @@ function main() {
   // P-UI-161's taper (the ring grew by shrinking) and P-UI-166's twelve-seat cap
   // are RETIRED for the ring: the first circle is the shipped nine at 44px/r80 and
   // the rest — plus the Tools door, still the LAST seat — ride a second circle at
-  // 32px on a bigger radius, half an inner step clockwise from 12 o'clock, so each
-  // outer seat sits BETWEEN two inner seats. The train keeps the 35 floor and the
-  // twelve cap (P-UI-166): it is the near-edge degrade, not the default surface.
+  // 32px on a bigger radius. P-UI-195b (2026-10-22, «دایره کوچیک‌تر به ردیف باشه»
+  // + the drawing): the outer seats take the LAST n2 GAPS of the row, at the
+  // row's own pitch, ending just before 12 o'clock — not a 360/n2 scatter, which
+  // put the second small at 110 deg, radially behind an inner seat (the measured
+  // 08:38 frame: seats=11 ring1=9 ring2=2 r2=124). The train keeps the 35 floor
+  // and the twelve cap (P-UI-166): it is the near-edge degrade, not the default.
   {
     const broken = [];
     const menuA195 = linesOf(MENU_A);
@@ -6235,12 +6238,18 @@ function main() {
       const outer = bodyOf(ringLines195, 'bool CircSeatOuter(');
       if (!outer || !outer.text.includes('CircRing1Count()'))
         broken.push('CircSeatOuter lost the first circle\'s own count — the paint and the size read two different splits');
+      const step195 = bodyOf(ringLines195, 'double CircRing2StepDeg()');
+      if (!step195 || !step195.text.includes('360.0 / n1'))
+        broken.push('CircRing2StepDeg is gone or no longer borrows the inner pitch — the outer row scatters at 360/n2 and one small lands radially behind an inner seat (the measured 110 deg, P-UI-195b)');
       const start = bodyOf(ringLines195, 'double CircRing2StartDeg()');
-      if (!start || !start.text.includes('-90.0') || !start.text.includes('step / 2.0'))
-        broken.push('CircRing2StartDeg lost 12 o\'clock or the half inner step — the outer seats sit radially behind the inner ones instead of BETWEEN them');
+      if (!start || !start.text.includes('-90.0') || !start.text.includes('n1 - n2') || !start.text.includes('180.0 / n1'))
+        broken.push('CircRing2StartDeg lost the row-gap law — the outer seats no longer take the LAST n2 gaps before 12 o\'clock (the user\'s drawing: the three gap slots at 170/210/250)');
       const r2 = bodyOf(ringLines195, 'double CircRing2Radius()');
       if (!r2 || !r2.text.includes('CIRC_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_RING2_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_GAP'))
         broken.push('CircRing2Radius lost the inner-disc clearance or the chord floor — the outer circle cuts into the first (two discs on one pixel)');
+      const fitOuter = bodyOf(ringLines195, 'double CircFitLimitOuter()');
+      if (!fitOuter || !fitOuter.text.includes('CircRing2StepDeg()') || !fitOuter.text.includes('CircRing2StartDeg()'))
+        broken.push('CircFitLimitOuter walks its own angles again — the fit and the paint are two grids (P-UI-195b)');
       const size195 = bodyOf(ringLines195, 'int CircSeatSize(');
       if (!size195 || !size195.text.includes('CircSeatOuter(i)') || !size195.text.includes('CIRC_RING2_BTN_SIZE') || !size195.text.includes('CIRC_BTN_SIZE'))
         broken.push('CircSeatSize no longer answers the two circles (outer 32 / inner 44) — a 32px skin inside a 44px box clips the disc (P-UI-162)');
@@ -6256,18 +6265,20 @@ function main() {
       if (!(minDef195 >= 35))
         broken.push(`CIRC_BTN_MIN is ${minDef195 || '?'} — the train's taper floor (P-UI-166) is below 35`);
     }
-    // the paint: the layout must read the same split AND the same side owner
+    // the paint: the layout must read the same split, the same side AND angle owners
     const menuB195 = linesOf(MENU_B);
     const layout195 = bodyOf(menuB195 || [], 'void CircLayout(');
     if (!layout195 || !layout195.text.includes('CircSeatOuter(i)'))
       broken.push('CircLayout does not ask CircSeatOuter — the paint draws one circle while the hit test answers two');
+    if (!layout195 || !layout195.text.includes('CircRing2StartDeg()') || !layout195.text.includes('CircRing2StepDeg()'))
+      broken.push('CircLayout computes the outer angle on its own again — the paint and the row-gap law are two grids (P-UI-195b)');
     const create195 = bodyOf(linesOf(MENU_C) || [], 'void CircCreateItem(');
     if (!create195 || !create195.text.includes('CircSeatSize(i)'))
       broken.push('CircCreateItem stopped reading CircSeatSize — the outer seat is born at the inner side and its skin clips (P-UI-162)');
     if (broken.length) {
-      failures.push('P-UI-195: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_RING1_SEATS/CIRC_RING2_BTN_SIZE + BiotakMenu_Ring.mqh CircRing1Count/CircSeatOuter/CircRing2StartDeg/CircRing2Radius/CircSeatSize + BiotakMenu_B.mqh CircLayout + BiotakMenu_C.mqh CircCreateItem)');
+      failures.push('P-UI-195: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_RING1_SEATS/CIRC_RING2_BTN_SIZE + BiotakMenu_Ring.mqh CircRing1Count/CircSeatOuter/CircRing2StartDeg/CircRing2StepDeg/CircRing2Radius/CircFitLimitOuter/CircSeatSize + BiotakMenu_B.mqh CircLayout + BiotakMenu_C.mqh CircCreateItem)');
     } else {
-      console.log('[PASS] P-UI-195 two circles: the first is the shipped nine at 44px/r80, the rest + the door ride a 32px outer ring on a bigger radius, half an inner step clockwise from 12 o\'clock (between two inner seats), and the train keeps its twelve/35 law');
+      console.log('[PASS] P-UI-195 two circles: the first is the shipped nine at 44px/r80, the rest + the door ride a 32px outer ring on a bigger radius, seated in the LAST n2 gaps of the row at the inner pitch (ending before 12 o\'clock), and the train keeps its twelve/35 law');
     }
   }
 

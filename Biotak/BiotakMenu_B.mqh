@@ -634,13 +634,13 @@ int CircPlacedCount()
 void CircNoteBuilt()
 {
    s_circBuiltSeats = CircPlacedCountLive();   // note BEFORE a create: CircLayout reads this n
-   // P-UI-195: the two circles name themselves once per build (open / restore /
-   // relayout), through the FLUSHED channel (P-LOG-3) — the seat count, the split,
-   // the outer side and radius, and whether the door really rides the outer one.
-   DrawStripDiagEmit(StringFormat("[P-UI-195] seats=%d ring1=%d ring2=%d s1=%d s2=%d r2=%.1f door_outer=%d",
-                                  s_circBuiltSeats, CircRing1Count(), CircRing2Count(),
-                                  CIRC_BTN_SIZE, CIRC_RING2_BTN_SIZE, CircRing2Radius(),
-                                  (CircSeatOuter(s_circBuiltSeats - 1) ? 1 : 0)));
+   // P-UI-195/200: the two circles and the ring's census name themselves once per build
+   // (open / restore / relayout) through the FLUSHED channel (P-LOG-3), not the journal.
+   DrawStripDiagEmit(StringFormat("[P-UI-195] seats=%d ring1=%d ring2=%d s1=%d s2=%d r2=%.1f th0=%.1f step=%.1f door_outer=%d",
+                                   s_circBuiltSeats, CircRing1Count(), CircRing2Count(),
+                                   CIRC_BTN_SIZE, CIRC_RING2_BTN_SIZE, CircRing2Radius(),
+                                   CircRing2StartDeg(), CircRing2StepDeg(),
+                                   (CircSeatOuter(s_circBuiltSeats - 1) ? 1 : 0)));
 }
 
 int CircBtnSize()  { return CircBtnSizeForN(CircPlacedCount()); }   // the TRAIN's taper (P-UI-166)
@@ -678,13 +678,12 @@ void CircLayout(const int i, int &x, int &y)
    }
    else if(CircSeatOuter(i))
    {
-      // P-UI-195: the SECOND circle — the stars past the ninth and the Tools door,
-      // on a bigger radius at 32px, starting half an inner step clockwise from 12
-      // o'clock so every outer seat sits BETWEEN two inner seats.
+      // P-UI-195b (2026-10-22): the SECOND circle — IN THE ROW'S GAPS, at the row's
+      // own pitch, the last n2 gaps before 12 o'clock (the door last). The stair
+      // never scatters 360/n2 apart and never sits radially behind an inner seat.
       int n1 = CircRing1Count();
-      int n2 = CircRing2Count();
       double r   = CircRing2Radius();
-      double deg = (CircRing2StartDeg() + ((n2 > 0) ? 360.0 * (i - n1) / n2 : 0.0)) * M_PI / 180.0;
+      double deg = (CircRing2StartDeg() + CircRing2StepDeg() * (i - n1)) * M_PI / 180.0;
       x = ox + (int)MathRound(r * MathCos(deg));
       y = oy + (int)MathRound(r * MathSin(deg));
    }

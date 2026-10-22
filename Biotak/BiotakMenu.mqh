@@ -7,6 +7,7 @@
 #define BIOTAK_MENU_MQH
 
 #include "BiotakMenu_A.mqh"
+#include "BiotakMenu_RingCensus.mqh"   // P-UI-200: reads BiotakMenu_A/Ring, called by B
 #include "BiotakMenu_B.mqh"
 #include "BiotakMenu_C.mqh"
 #include "BiotakMenu_D.mqh"

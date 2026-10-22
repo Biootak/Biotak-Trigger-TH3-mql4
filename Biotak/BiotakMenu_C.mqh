@@ -5,7 +5,6 @@
 //+------------------------------------------------------------------+
 //| P-PERF-55 — THE RING IS APPLIED WHEN IT CHANGES, NOT WHEN THE     |
 //| CHART NOTICES SOMETHING.                                          |
-//|                                                                   |
 //| `CHARTEVENT_CHART_CHANGE` is not "the window resized": MT4 fires  |
 //| it on scroll, zoom and every scale change too, so with            |
 //| auto-scroll on it lands many times a second. The branch that       |
@@ -359,6 +358,9 @@ void CreateMenu()
       CircNoteBuilt();                             // BEFORE the create: CircLayout's n is this live set (the orb press keeps the freeze on)
       for(int i = 0; i < CircPlacedCountLive(); i++)
          CircCreateItem(i);
+      #ifdef DSTRIP_DIAG
+      CircRingCensus(CircPlacedCountLive());       // P-UI-200: after the create — the seats exist now
+      #endif
    }
    if(g_ToolsOpen)
       for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
@@ -371,9 +373,8 @@ void CreateToolsMenu()
    g_ToolsOpen = true;
    g_ToolsPage = 0;                             // always open on the first page
    SubInvalidateLayout();                       // fresh geometry for this open
-   // P-UI-163c: the ring is deleted below, so a shown seat tip (and a pending arm)
-   // must not outlive the seat it describes. The pinned orb banner is not a seat
-   // tip and survives (CircTipDisarm's own rule, P-UI-126).
+   // P-UI-163c: the ring is deleted below, so a shown seat tip (and a pending arm) must
+   // not outlive the seat it describes. The pinned orb banner survives.
    CircTipDisarm();
    // SUB-MENU: hide EVERY main-ring item first (the orb stays). With nothing else
    // on screen the chosen geometry provably cannot overlap anything — any
@@ -489,12 +490,9 @@ void SubRelayoutIfNeeded()
    SubRebuild();
 }
 
-//--- P-UI-161: the RING's own shape fingerprint — the seat set. A star toggled
-//--- while the Tools menu is open lands on DeleteToolsMenu's own rebuild; but a
-//--- chart resize or an orb drag can change how many starred seats FIT, and that
-//--- flip is answered here (the release + the chart-change path), never mid-drag:
-//--- while dragging, CircPlacedCount() returns the BUILT count, so the compare
-//--- below sees "same" and the hand keeps its geometry (the SubMode() rule).
+//--- P-UI-161: the RING's shape fingerprint — the seat set. A star toggled under the Tools
+//--- menu lands on its own rebuild; a resize/orb drag can change how many seats FIT, answered
+//--- here (release + chart-change), never mid-drag: CircPlacedCount() reads the BUILT count.
 void CircRelayoutIfNeeded()
 {
    if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;

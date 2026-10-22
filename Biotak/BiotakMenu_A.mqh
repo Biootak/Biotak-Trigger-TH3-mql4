@@ -135,12 +135,9 @@
 //--- the membership STAR on every Tools cell — same canvas as the badge, so the
 //--- corner seat below is one number (star_off/star_on.bmp, baked by the generator).
 #define CIRC_STAR_SIZE   16
-//--- P-UI-195 (2026-10-21) — TWO CIRCLES: «این رینگ‌ها پیش فرض ۹ تا اصلی باشه و بقیه
-//--- دورش … در دایره دوم … ولی از دایره اول کوچیک‌تر باشه» + «شعاع بزرگ‌تر ولی بین دو
-//--- ایتم اصلی» + «بالا (۱۲ ساعت)، ساعتگرد»: the first nine SEATS at 44px/r80
-//--- (byte-identical — eight stars + the door draw where they did), every seat past
-//--- them (extra stars, then the door, still LAST) at 32px (baked circ_*_32.bmp) on
-//--- an outer circle that clears the inner discs, half an inner step clockwise.
+//--- P-UI-195 (2026-10-21) — TWO CIRCLES: nine seats at 44px/r80; every seat past them
+//--- (extra stars, then the door, still LAST) at 32px on an outer circle IN THE ROW'S
+//--- GAPS — the last n2 gaps before 12 at the inner pitch (P-UI-195b).
 #define CIRC_RING1_SEATS    9
 #define CIRC_RING2_BTN_SIZE 32
 //--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the

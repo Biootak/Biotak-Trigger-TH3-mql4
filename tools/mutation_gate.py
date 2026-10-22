@@ -2644,8 +2644,10 @@ MUTATIONS = [
     #--- ایتم اصلی … سایز کوچیک‌تر از سایز دکمه های اولی» + «بالا (۱۲ ساعت)،
     #--- ساعتگرد». P-UI-161's taper and P-UI-166's twelve-seat cap are retired
     #--- for the ring: nine inner seats at 44px/r80, the rest plus the door on a
-    #--- 32px outer circle at a bigger radius, half an inner step clockwise from
-    #--- 12 o'clock (between two inner seats). The train keeps 35/12.
+    #--- 32px outer circle at a bigger radius. P-UI-195b (2026-10-22) — «دایره
+    #--- کوچیک‌تر به ردیف باشه» + the drawing: the outer seats take the LAST n2
+    #--- GAPS of the row at the row's own pitch (210/250 for n1=9, n2=2), never a
+    #--- 360/n2 scatter (the measured 110 deg sat radially behind an inner seat).
     #--- Each inverse must fail §57 naming P-UI-195.
     {
         "id": "P-UI-195a",
@@ -2670,11 +2672,11 @@ MUTATIONS = [
     {
         "id": "P-UI-195c",
         "gate": "regression",
-        "rule": "the second circle starts half an inner step clockwise from 12 o'clock",
-        "what": "CircRing2StartDeg returns -90 — every outer seat sits radially behind an inner seat instead of BETWEEN two",
+        "rule": "the outer seats borrow the inner row's own pitch (never 360/n2)",
+        "what": "CircRing2StepDeg returns 360/n2 again — the second small lands at 30 deg, radially BEHIND an inner seat (the measured defect, P-UI-195b)",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   return -90.0 + step / 2.0;",
-        "replace": "   return -90.0;   // MUTATION: radially behind the first circle",
+        "find": "   return (n2 > n1) ? (360.0 / n2) : (360.0 / n1);",
+        "replace": "   return 360.0 / n2;   // MUTATION: scattered by 360/n2 — the second seat lands behind an inner one",
         "expect": "P-UI-195",
     },
     {
@@ -2725,6 +2727,26 @@ MUTATIONS = [
         "file": "Biotak/BiotakMenu_Ring.mqh",
         "find": "#define CIRC_SEAT_CAP 12",
         "replace": "#define CIRC_SEAT_CAP 99",
+        "expect": "P-UI-195",
+    },
+    {
+        "id": "P-UI-195i",
+        "gate": "regression",
+        "rule": "the outer row takes the LAST n2 gaps, ending just before 12 o'clock (the user's drawing: 170/210/250)",
+        "what": "the row starts at the FIRST gap again (k = 0) — the smalls leave the drawn zone before 12 and sit at -70/-30 instead of 210/250",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   int k = n1 - n2;                                 // the LAST n2 gaps of the row",
+        "replace": "   int k = 0;   // MUTATION: the row starts at the first gap",
+        "expect": "P-UI-195",
+    },
+    {
+        "id": "P-UI-195j",
+        "gate": "regression",
+        "rule": "the paint asks the start/step owners (one grid with the fit and the hit test)",
+        "what": "CircLayout computes the outer angle on its own — the paint and the row-gap law disagree again",
+        "file": "Biotak/BiotakMenu_B.mqh",
+        "find": "      double deg = (CircRing2StartDeg() + CircRing2StepDeg() * (i - n1)) * M_PI / 180.0;",
+        "replace": "      double deg = (CircRing2StartDeg() + 360.0 * (i - n1) / CircRing2Count()) * M_PI / 180.0;   // MUTATION: a second grid",
         "expect": "P-UI-195",
     },
     #--- P-SESS (2026-10-17) — THE SESSIONS CELL. CIR_SESSIONS (19) sits ABOVE the
@@ -2927,11 +2949,11 @@ MUTATIONS = [
     {
         "id": "P-UI-162a",
         "gate": "regression",
-        "rule": "the ring painter resolves its skin through CircBgRes (canvas == box on every taper side)",
-        "what": "CircCreateItem names the 52px canvas directly again — the 40px box cuts the disc (the reported defect)",
+        "rule": "the ring painter resolves its skin through CircBgRes at the seat's own side (canvas == box on every side)",
+        "what": "CircCreateItem names a fixed 44px canvas again — the 32px outer box cuts the disc (the reported defect, P-UI-195/P-UI-162)",
         "file": "Biotak/BiotakMenu_C.mqh",
-        "find": "   string bgRes = CircBgRes(on);   // P-UI-162: the canvas is the taper's own box size (s + 2*margin)",
-        "replace": "   string bgRes = on ? \"::Files\\\\Icons\\\\circ_on.bmp\" : \"::Files\\\\Icons\\\\circ_off.bmp\";   // MUTATION: the 52px canvas in a 40px box",
+        "find": "   string bgRes = CircBgRes(s, on);   // P-UI-162: the canvas is the seat's own box size (s + 2*margin)",
+        "replace": "   string bgRes = on ? \"::Files\\\\Icons\\\\circ_on.bmp\" : \"::Files\\\\Icons\\\\circ_off.bmp\";   // MUTATION: one fixed canvas for every side",
         "expect": "P-UI-162",
     },
     {

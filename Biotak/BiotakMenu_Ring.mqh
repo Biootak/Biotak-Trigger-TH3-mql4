@@ -183,9 +183,11 @@ int RingFeature(const int ringIdx)
 //| SECOND circle: every seat past the ninth — the extra stars and,    |
 //| once the inner ring is full, the Tools door (still the LAST seat   |
 //| of the whole ring, P-UI-161/164) — 32px at CircRing2Radius(),      |
-//| which clears the first circle's discs, starting half an inner step |
-//| clockwise from 12 o'clock, so each outer seat sits BETWEEN two     |
-//| inner seats.                                                       |
+//| which clears the first circle's discs, seated IN THE ROW'S GAPS    |
+//| as a row (P-UI-195b): the LAST n2 gaps of the first circle, at the |
+//| row's own pitch, ending just before 12 o'clock — so the smalls     |
+//| never scatter 360/n2 apart and never sit radially behind an inner  |
+//| seat.                                                              |
 //|                                                                  |
 //| The shape gate (CircRingFits) now proves BOTH circles fit before |
 //| the ring is drawn; where it does not, the train is the degrade   |
@@ -204,14 +206,32 @@ int CircRing1Count() { return MathMin(RingCount(), CIRC_RING1_SEATS); }
 int CircRing2Count() { return RingCount() - CircRing1Count(); }
 bool CircSeatOuter(const int i) { return (i >= CircRing1Count()); }
 
-//--- The outer circle's first seat: half a FIRST-circle step clockwise from 12
-//--- o'clock (a nine-seat inner ring answers -70 deg — the gap between the 12
-//--- o'clock seat and its clockwise neighbour).
+//--- P-UI-195b (2026-10-22) — «دایره کوچیک‌تر به ردیف باشه» + the drawing (three
+//--- 32px circles in the three gap slots before 12 o'clock). A gap k is the
+//--- bisector of inner seats k and k+1: -90 + 360*k/n1 + 180/n1. The outer seats
+//--- take the LAST n2 gaps, clockwise, so the tail (the door last) ends just
+//--- before the 12 o'clock seat and the smalls sit in ONE row at the INNER pitch.
+//--- MEASURED 2026-10-22 08:38 (biotak_diag_EURUSD_134362571361933145.txt:
+//--- seats=11 ring1=9 ring2=2 r2=124.0): the old 360/n2 spread put the second
+//--- small at 110 deg — radially BEHIND the inner seat at 110, not between two.
+//--- More outer seats than gaps (n2 > n1) falls back to the even 360/n2 spread
+//--- starting at the first gap; CircRing2Radius's chord floor keeps that legal.
+double CircRing2StepDeg()
+{
+   int n1 = CircRing1Count();
+   int n2 = CircRing2Count();
+   if(n1 <= 0 || n2 <= 0) return 0.0;
+   return (n2 > n1) ? (360.0 / n2) : (360.0 / n1);
+}
+
 double CircRing2StartDeg()
 {
    int n1 = CircRing1Count();
-   double step = (n1 > 0) ? 360.0 / n1 : 0.0;
-   return -90.0 + step / 2.0;
+   int n2 = CircRing2Count();
+   if(n1 <= 0 || n2 <= 0) return -70.0;
+   if(n2 > n1) return -90.0 + 180.0 / n1;          // more seats than gaps — the first gap
+   int k = n1 - n2;                                 // the LAST n2 gaps of the row
+   return -90.0 + 360.0 * k / n1 + 180.0 / n1;
 }
 
 //--- P-UI-195: the side a seat is DRAWN at. On the train every seat wears the
@@ -309,10 +329,11 @@ double CircFitLimitOuter()
       return s_f2R;
 
    double start = CircRing2StartDeg();
+   double step  = CircRing2StepDeg();   // P-UI-195b: the ring's own pitch — the paint's number
    double r = 1e18;
    for(int i = 0; i < n2; i++)
    {
-      double deg = (start + 360.0 * i / n2) * M_PI / 180.0;
+      double deg = (start + step * i) * M_PI / 180.0;
       double c = MathCos(deg);
       double s = MathSin(deg);
       double lim = 1e18;
