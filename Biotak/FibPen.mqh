@@ -769,27 +769,23 @@ void DrawStripDiagEmit(const string line) { Print(line); }
 //--- name-keyed sweep for the delete hub (DrawStrip_Router): the object is gone,
 //--- so no kind check — names this unit never built simply probe absent. The ONE
 //--- sweep; the sync's delete path calls it instead of keeping a second copy.
+//---
+//--- P-LOOK-3D-f (2026-10-22) — ONE PREFIX, FOUR FAMILIES, NO GAP. The sweep was
+//--- a walk of `dl = 0..11` that asked `q = 0,1,2…` and STOPPED at the first absent
+//--- name, then probed `_FSC`/`_FSW`/`_FSH` per level. Two holes in that shape: a
+//--- stack whose q=0 was already gone (or whose only child sat on level 3 while
+//--- level 0 carried none) broke the walk early, and the strays behind the gap
+//--- survived every delete — the class P-ORPHAN-ALL was written for. Every name
+//--- this unit builds starts with `<master>_FS` (`_FSD` stack rows, `_FSC` caps,
+//--- `_FSW` wash, `_FSH` the retired shadow), so ONE prefix delete answers for all
+//--- four, covers any gap, and costs one object-list pass instead of ~100 probes.
+//--- The child guard stays: a CHILD's delete must never walk its master's sweep
+//--- (measured 1000-7125 ms per event before it, P-DRAW-74b).
 bool FibPenStraysDrop(const string fibo)
 {
    if(fibo == "") return false;
-   bool dd = false;
-   for(int dl = 0; dl < FIBPEN_MAX_LEVELS; dl++)
-   {
-      for(int q = 0; ; q++)
-      {
-         string nm = FibPenName(fibo, dl, q);
-         if(ObjectFind(0, nm) < 0) break;
-         ObjectDelete(0, nm);
-         dd = true;
-      }
-      string cn = FibPenCapName(fibo, dl);
-      if(ObjectFind(0, cn) >= 0) { ObjectDelete(0, cn); dd = true; }
-      string wn = FibPenWashName(fibo, dl);
-      if(ObjectFind(0, wn) >= 0) { ObjectDelete(0, wn); dd = true; }
-      string sn = FibPenShwName(fibo, dl);   // P-LOOK-3D: the fourth family sweeps with the rest
-      if(ObjectFind(0, sn) >= 0) { ObjectDelete(0, sn); dd = true; }
-   }
-   return dd;
+   if(FibPenChildParent(fibo) != "") return false;
+   return (ObjectsDeleteAll(0, fibo + "_FS") > 0);
 }
 
 //--- the ONE sync: demotes the undrawable width, builds / refreshes / drops
@@ -819,10 +815,15 @@ bool FibPenSync(const string fibo, const bool dropAll)
    {
       // P-LOOK: every family the unit ever built dies here — a look switch strands
       // the previous look's children, and only this sweep can name them all.
-      if(!dropAll && ObjectFind(0, FibPenName(fibo, 0, 0)) < 0 &&
-         ObjectFind(0, FibPenCapName(fibo, 0)) < 0 &&
-         ObjectFind(0, FibPenWashName(fibo, 0)) < 0 &&
-         ObjectFind(0, FibPenShwName(fibo, 0)) < 0) return false;
+      //--- P-LOOK-3D-f (2026-10-22): the fence that stood here asked LEVEL 0 for
+      //--- four names and returned early when it found none. A stack lives on the
+      //--- level that NEEDED it, so a fibo whose level 3 wore a thick non-solid pen
+      //--- had no level-0 child: the sweep never ran, the strays stayed for good,
+      //--- and the early return also skipped the memo write below — the 2 s net then
+      //--- read "pen=0 vs memo=1" on every pass and re-synced the same dead pen
+      //--- forever (a mismatch it could never settle). The sweep IS the probe now:
+      //--- one prefix call answers for the whole family, and every exit writes the
+      //--- memo, so the net settles on the first pass.
       bool dd = FibPenStraysDrop(fibo);
       if(dd || dirty)
          DrawStripDiagEmit("[drawstrip] FIBPEN fibo=\"" + fibo + "\" dropall=1 look=" + IntegerToString(lk));

@@ -234,7 +234,6 @@ void DrawStripHoldSelectArm()
 void DrawStripHoldSelectPoll()
 {
    if(s_dsSelectRepairUntil == 0) return;
-   uint now = GetTickCount();
    if(!TickDeadlinePending(s_dsSelectRepairUntil)) { DrawStripHoldSelectionDisarm(); return; }
    if(!TickDeadlinePending(s_dsSelectRepairAt)) return;   // still inside the release callback/tail
    if(!s_dsOpen || s_dsObj == "" || s_dsSelectRepairName != s_dsObj)

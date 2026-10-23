@@ -768,7 +768,6 @@ void BaseKnotSetText(const string id, const string txt)
    {
       string box = BaseKnotBoxName(pfx);
       if(ObjectFind(0, box) < 0) return;
-      datetime t1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
       datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
       double top = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));

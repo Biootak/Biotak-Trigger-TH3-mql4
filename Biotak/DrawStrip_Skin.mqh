@@ -208,7 +208,6 @@ bool DrawStripBodyPaint(const int fam, const int plateTop, const int plateH,
 {
    bool dirty = false;
    int b = 0, y0 = y, yEnd = y + h;
-   int headBot = DSTRIP_SKIN_TOPT - DSTRIP_SKIN_M;
    if(gridTop > y0 && gridTop < yEnd)
    {
       dirty |= DrawStripCellPaint(fam, b++, plateTop, plateH, x, y0, w, gridTop - y0, seamFrom);

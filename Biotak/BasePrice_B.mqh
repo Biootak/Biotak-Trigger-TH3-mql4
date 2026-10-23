@@ -195,7 +195,6 @@ bool UpdateBasePrice()
     if(deltaAbsPct >= thresholdPercent)
     {
         // ACCEPT: Update base price
-        double oldBasePrice = g_basePriceCached;
         g_basePriceCached = newBasePrice;
         g_referenceM1Power = newPowerM1;
         
@@ -255,7 +254,6 @@ void RebuildHistoryFromStartOfDay()
     // CRITICAL: Find start of trading day
     // Strategy: Dynamic Detection   Market Type Default
     datetime gmtTime = TimeGMT();
-    datetime serverTime = TimeCurrent();
     datetime startOfDayGMT;
     
     // Try dynamic detection first (recommended)
@@ -366,7 +364,6 @@ void RebuildHistoryFromStartOfDay()
     {
         // Calculate block start and end times (Server Time)
         datetime blockStartServer = startOfDayServer + (blockNum * 30 * 60);
-        datetime blockEndServer = blockStartServer + (30 * 60);
         
         // Convert to GMT for storage
         datetime blockStartGMT = ConvertServerToGMT(blockStartServer);

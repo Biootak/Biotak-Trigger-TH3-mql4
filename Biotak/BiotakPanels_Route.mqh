@@ -483,7 +483,7 @@ void PnlUpdateRow(const int item,const int row)
    if(item == 13) { BkMiniRefresh(); return; }   // TV strip — one whole-toolbar
                                                  // repaint, never row-level
    int px=PnlRowBaseX(item,row);
-   int ry=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H;
+   int ry=PnlRowY(item,row,g_PnlY[item]);
    int kind=0; string label="",unit="",opts="";
    int minV=0,maxV=0; double step=1;
    PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
@@ -603,7 +603,6 @@ void PnlUpdateRow(const int item,const int row)
     if(kind==1)   // pill switch — reswap the face + chip, grow/prune rail+wash
     {
        bool on=(val>0.5);
-       int acc=PnlCardAccent(item);
        string sw=PnlName(item,row,"SW");
        if(ObjectFind(0,sw)>=0)
        {
@@ -717,8 +716,11 @@ void PnlUpdateRow(const int item,const int row)
       }
       else   // segmented pills: restyle every segment
       {
-         int gap=4;
-         int segW=(PNL_WEL-2*PNL_PAD_X-(n-1)*gap)/n;
+         //--- P-BE-05 (2026-10-22): the segment width was computed here and never
+         //--- read (the loop below only re-inks the segments the CREATE path laid
+         //--- out), and it divided by `n` — which is 0 for a row whose option list
+         //--- is empty, i.e. an integer divide-by-zero in the update path. The
+         //--- create path owns the geometry; this branch owns the ink.
          for(int i=0;i<n;i++)
          {
             string seg=PnlName(item,row,"C"+IntegerToString(i));

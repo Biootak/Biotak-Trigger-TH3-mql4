@@ -44,6 +44,7 @@ GATES = {
     "gear": ("python", "tools/check-gear-panel.py", "gear panel gate"),
     "lifecycle": ("node", "tools/object_lifecycle_check.js", "object lifecycle gate"),
     "regression": ("node", "tools/check-regressions.js", "regression gate"),
+    "parity": ("python", "tools/ui_parity_audit.py", "ui parity gate"),
     "resources": ("node", "tools/check-resources.js", "resource gate"),
     "pen": ("python", "tools/pen-sim.py", "pen scenario sim"),
 }
@@ -868,11 +869,21 @@ MUTATIONS = [
     {
         "id": "P-LOOK-3D-f",
         "gate": "regression",
-        "rule": "the delete sweep covers the fourth family",
-        "what": "the sweep is gone - a deleted fibo leaves `_FSH` strays on the chart",
+        "rule": "the delete sweep covers every family in ONE prefix call",
+        "what": "the sweep is gone - a deleted fibo leaves its `_FS*` family on the chart",
         "file": "Biotak/FibPen.mqh",
-        "find": "      string sn = FibPenShwName(fibo, dl);   // P-LOOK-3D: the fourth family sweeps with the rest\r\n      if(ObjectFind(0, sn) >= 0) { ObjectDelete(0, sn); dd = true; }\r\n",
-        "replace": "\r\n",
+        "find": "   return (ObjectsDeleteAll(0, fibo + \"_FS\") > 0);\r\n",
+        "replace": "   return false;   // MUTATION: the sweep is gone\r\n",
+        "expect": "P-LOOK-3D",
+    },
+    {
+        "id": "P-LOOK-3D-f2",
+        "gate": "regression",
+        "rule": "the drop path is not fenced on level 0",
+        "what": "the level-0 fence is back - a stray on another level survives and the net re-syncs it forever",
+        "file": "Biotak/FibPen.mqh",
+        "find": "      bool dd = FibPenStraysDrop(fibo);\r\n",
+        "replace": "      if(!dropAll && ObjectFind(0, FibPenName(fibo, 0, 0)) < 0) return false;   // MUTATION: the level-0 fence is back\r\n      bool dd = FibPenStraysDrop(fibo);\r\n",
         "expect": "P-LOOK-3D",
     },
     {
@@ -915,16 +926,10 @@ MUTATIONS = [
         "replace": "   // MUTATION: the shadow family is not a pen\r\n",
         "expect": "P-LOOK-3D",
     },
-    {
-        "id": "P-LOOK-3D-l",
-        "gate": "regression",
-        "rule": "the look-only early-out probes the fourth family",
-        "what": "the early-out skips the shadow probe - a look-4 fibo whose levels were deleted keeps its `_FSH` strays forever",
-        "file": "Biotak/FibPen.mqh",
-        "find": "         ObjectFind(0, FibPenWashName(fibo, 0)) < 0 &&\r\n         ObjectFind(0, FibPenShwName(fibo, 0)) < 0) return false;\r\n",
-        "replace": "         ObjectFind(0, FibPenWashName(fibo, 0)) < 0) return false;   // MUTATION: the shadow probe is gone\r\n",
-        "expect": "P-LOOK-3D",
-    },
+    #--- P-LOOK-3D-l RETIRED (2026-10-22): it mutated the level-0 fence's shadow
+    #--- probe. The fence itself is gone (P-LOOK-3D-f2 asserts its absence), so
+    #--- there is no spelling left to break — a mutation without an anchor is a
+    #--- rule that stopped running, and this one was retired with its site.
     {
         "id": "P-LOOK-3D-m",
         "gate": "regression",
@@ -4330,8 +4335,8 @@ MUTATIONS = [
         "rule": "the chips ride the swatch strip's line, not the caption's",
         "what": "the chip strip is drawn on the caption's line again - the caption lies on the swatches",
         "file": "Biotak/BiotakPanels_Rows.mqh",
-        "find": "   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_QSW_Y;",
-        "replace": "   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H;   // MUTATION",
+        "find": "   cy=PnlRowY(item,row,g_PnlY[item])+PNL_QSW_Y;",
+        "replace": "   cy=PnlRowY(item,row,g_PnlY[item]);   // MUTATION",
         "expect": "chips row paints its strip on the caption",
     },
     {
@@ -4663,6 +4668,50 @@ MUTATIONS = [
         "find": "                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin), tk, an);   // P-BK-120: the stop's own rung",
         "replace": "                                  g_bkBoxes[k].baseTFMin, tk, an);   // MUTATION: the base TF",
         "expect": "[FAIL] P-BK-120",
+    },
+    #--- P-BE-08 (2026-10-22) - ONE OWNER FOR THE ROW'S Y. The formula was spelled
+    #--- eleven times in four files; PnlRowY is the owner now and the gate counts.
+    {
+        "id": "P-BE-08-a",
+        "gate": "regression",
+        "rule": "a hit test asks PnlRowY for the row's y",
+        "what": "a second spelling is back - the hit rect sits on its own arithmetic again",
+        "file": "Biotak/BiotakPanels_Hit.mqh",
+        "find": "        int ry=PnlRowY(g_PnlOpen,r,py);",
+        "replace": "        int ry=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H;   // MUTATION: a second grid",
+        "expect": "P-BE-08",
+    },
+    {
+        "id": "P-BE-08-b",
+        "gate": "regression",
+        "rule": "PnlRowY owns the head band and the row pitch",
+        "what": "the owner returns the bare top edge - every row of every card lands on the header",
+        "file": "Biotak/BiotakPanels_Rows.mqh",
+        "find": "   return py + PNL_HEAD_H + PnlRowLine(item,row)*PNL_ROW_H;",
+        "replace": "   return py;   // MUTATION: the owner lost the arithmetic",
+        "expect": "P-BE-08",
+    },
+    #--- P-UI-214 / P-UI-216 (2026-10-22) - the parity gate now reads NAMES on both
+    #--- sides. Moving one side must show up as a DIFF, not as a green "ok".
+    {
+        "id": "P-UI-214-a",
+        "gate": "parity",
+        "rule": "the gear row's chip is the cards' chip",
+        "what": "the strip's chip grows 2px - every gear row's glyph leaves the card's seat",
+        "file": "Biotak/DrawStrip_Head.mqh",
+        "find": "#define DSTRIP_CARD_CHIP_VIS 22   // = PNL_CHIP_VIS, the cards' own row glyph",
+        "replace": "#define DSTRIP_CARD_CHIP_VIS 24   // MUTATION: the chip left the card's seat",
+        "expect": "seat(s) differ",
+    },
+    {
+        "id": "P-UI-216-a",
+        "gate": "parity",
+        "rule": "the head's mark canvas is the cards' disc plus its glow",
+        "what": "the canvas is retuned alone - the head's mark no longer sits on the card's own seat",
+        "file": "Biotak/DrawStrip_Head.mqh",
+        "find": "#define DSTRIP_MARK_CANVAS   (DSTRIP_CARD_MARK_VIS + 2*DSTRIP_CARD_MARK_PAD)   // 44, the baked art",
+        "replace": "#define DSTRIP_MARK_CANVAS   (DSTRIP_CARD_MARK_VIS + 2*DSTRIP_CARD_MARK_PAD + 2)   // MUTATION: 46",
+        "expect": "seat(s) differ",
     },
 ]
 

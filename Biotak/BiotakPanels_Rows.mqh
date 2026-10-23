@@ -595,6 +595,18 @@ int PnlRowBaseX(const int item,const int row)   // absolute column origin
 {
    return g_PnlX[item] + (PnlRowCol(item,row) == 1 ? PNL_COL_DX : 0);
 }
+//--- P-BE-08 (2026-10-22) — THE ROW'S OWN Y, NAMED ONCE. The paint (`PnlCreateRow`),
+//--- three hit tests (`PnlKnobHit` / `PnlTrackHit` / `PnlSwitchHit`), the dropdown
+//--- rect, the control line, the chips' strip and the row update each spelled
+//--- `py + PNL_HEAD_H + PnlRowLine(...)*PNL_ROW_H` for themselves — ELEVEN copies of
+//--- one seat, in four files. `py` is the card's TOP EDGE (a caller passes `g_PnlY[item]`
+//--- or a shifted column origin), so this is the only arithmetic any of them needs.
+//--- Retuning the head band or the row pitch now moves the paint and every hit test
+//--- together, which is what a hit rect that "covers its painted skin" means.
+int PnlRowY(const int item,const int row,const int py)
+{
+   return py + PNL_HEAD_H + PnlRowLine(item,row)*PNL_ROW_H;
+}
 int PnlCardW(const int item)   // card width for header/footer/skin math
 {
    return PnlIsWide(item) ? PNL_WIDE_WEL : PNL_WEL;
@@ -761,7 +773,7 @@ void PnlDdRect(const int item,const int row,int &x,int &y,int &w,int &h)
    w=MathMax(PNL_BTN_W,50+PnlTextW(PnlDdOptText(item,row),PNL_PT_CTL));
    int px=PnlRowBaseX(item,row), py=g_PnlY[item];
    x=px+PNL_WEL-PNL_PAD_X-w;
-   y=py+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_CTL_Y-1;
+   y=PnlRowY(item,row,py)+PNL_CTL_Y-1;
    h=26;
 }
 void PnlDdClose()
@@ -1050,7 +1062,7 @@ bool PnlCsetHit(const int mx,const int my,int &item,int &row,int &setRow)
    if(g_PnlOpen < 0) return false;
    int it = g_PnlOpen;
    if(!PnlSpecCard(it)) return false;
-   int px = g_PnlX[it], py = g_PnlY[it];
+   int py = g_PnlY[it];
    int n  = PnlRowsCount(it);
    for(int r=0;r<n;r++)
    {
@@ -1059,7 +1071,7 @@ bool PnlCsetHit(const int mx,const int my,int &item,int &row,int &setRow)
       int m = PnlRowMembers(it,r);
       int total = m*PNL_CSET_W + (m-1)*PNL_CSET_GAP;
       int x0 = bx + (PNL_WEL - total)/2;
-      int ry = py + PNL_HEAD_H + PnlRowLine(it,r)*PNL_ROW_H;
+      int ry = PnlRowY(it,r,py);
       for(int i=0;i<m;i++)
       {
          int cx = x0 + i*(PNL_CSET_W+PNL_CSET_GAP);
@@ -1099,7 +1111,7 @@ void PnlChipsGeom(const int item,const int row,int &x0,int &cy,int &cw,int &ch,
    //--- row's top line. The caption sits on the top line (ry+PNL_CAP_Y) and the
    //--- strip was drawn on the SAME line - so the caption lay on the swatches.
    //--- The COL row's own pattern is the law: caption above, strip below.
-   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H+PNL_QSW_Y;
+   cy=PnlRowY(item,row,g_PnlY[item])+PNL_QSW_Y;
 }
 //--- the value a tap on `cell` writes. The ONE owner of the two tables' tap
 //--- semantics (the press chain reads this, never its own copy).
@@ -1177,13 +1189,13 @@ bool PnlBandHit(const int mx,const int my,int &item,int &row)
    if(g_PnlOpen < 0) return false;
    int it = g_PnlOpen;
    if(!PnlSpecCard(it)) return false;
-   int px = g_PnlX[it], py = g_PnlY[it];
+   int py = g_PnlY[it];
    int n  = PnlRowsCount(it);
    for(int r=0;r<n;r++)
    {
       if(PnlRowKind(it,r) != PNL_K_SEC) continue;
       int bx = PnlRowBaseX(it,r);
-      int ry = py + PNL_HEAD_H + PnlRowLine(it,r)*PNL_ROW_H;
+      int ry = PnlRowY(it,r,py);
       // WIDE: bands span both columns — hit the whole card width
       if(mx >= bx && mx <= bx+PnlCardW(it) && my >= ry && my <= ry+PNL_ROW_H-1)
       {
@@ -1202,7 +1214,7 @@ bool PnlDualHit(const int mx,const int my,int &item,int &row,int &cell)
    if(g_PnlOpen < 0) return false;
    int it = g_PnlOpen;
    if(!PnlSpecCard(it)) return false;
-   int px = g_PnlX[it], py = g_PnlY[it];
+   int py = g_PnlY[it];
    int n  = PnlRowsCount(it);
    for(int r=0;r<n;r++)
    {
@@ -1210,7 +1222,7 @@ bool PnlDualHit(const int mx,const int my,int &item,int &row,int &cell)
       int bx = PnlRowBaseX(it,r);
       int cells = PnlDualCells(it,r);
       int x0 = bx + PNL_WEL - PNL_PAD_X - PnlDualTotalW(it,r);
-      int ry = py + PNL_HEAD_H + PnlRowLine(it,r)*PNL_ROW_H;
+      int ry = PnlRowY(it,r,py);
       for(int i=0;i<cells;i++)
       {
          int cx = x0 + PnlDualCellX(it,r,i);
@@ -1231,7 +1243,7 @@ bool PnlColorAddHit(const int mx,const int my,int &item,int &row)
    if(g_PnlOpen < 0) return false;
    int it = g_PnlOpen;
    if(!PnlSpecCard(it)) return false;
-   int px = g_PnlX[it], py = g_PnlY[it];
+   int py = g_PnlY[it];
    int n  = PnlRowsCount(it);
    for(int r=0;r<n;r++)
    {
@@ -1239,7 +1251,7 @@ bool PnlColorAddHit(const int mx,const int my,int &item,int &row)
       int bx = PnlRowBaseX(it,r);
       int ax = bx + PNL_PAD_X + PNL_QSW_PREV + PNL_QSW_GAP
                   + PNL_QSW_N*(PNL_QSW_W+PNL_QSW_GAP);
-      int ry = py + PNL_HEAD_H + PnlRowLine(it,r)*PNL_ROW_H;
+      int ry = PnlRowY(it,r,py);
       if(mx >= ax-4 && mx <= ax+PNL_QSW_ADD+4 && my >= ry+14 && my <= ry+44)
       {
          item=it; row=r;

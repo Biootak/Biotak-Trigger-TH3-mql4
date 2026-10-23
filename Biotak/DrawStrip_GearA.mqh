@@ -398,9 +398,9 @@ bool DrawStripGearLevelSwatch(const int r, const int rx, const int py, bool &dd)
    color lc = (li >= 0 ? (color)(int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, li)
                        : (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR));
    string ltip = tip + " · swatch sets this level's color";
-   dd |= DrawStripFace(DrawStripRowChipName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+   dd |= DrawStripFace(DrawStripRowChipName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS,
                        cur ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", ltip);
-   dd |= DrawStripBtn(DrawStripRowIconName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+   dd |= DrawStripBtn(DrawStripRowIconName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS,
                       lc, DrawStripInkOn(lc), BioSwatchBorder(lc, BIO_CLR_CARD), "", ltip);
    return true;
 }

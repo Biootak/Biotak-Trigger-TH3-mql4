@@ -9,7 +9,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
 {
    int kind; string label,unit,opts; int minV,maxV; double step;
    PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
-   int ry  = py + PNL_HEAD_H + PnlRowLine(item,row)*PNL_ROW_H;
+   int ry  = PnlRowY(item,row,py);
    int acc = PnlCardAccent(item);
    color a1 = PnlAccentA1(acc);
    // WIDE: full-width elements span the whole card; half-column rows only

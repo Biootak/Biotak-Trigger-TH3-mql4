@@ -878,9 +878,7 @@ void PalDrawMixer(const int contY)
    color fill[3]={C'255,99,99',C'102,187,106',C'92,145,255'};
    int trackX=PalMixTrackX();
    int trackW=PalMixTrackW();
-    //--- the four rows, centred in the band the tabs leave above the HEX row
-    const int PITCH=30;
-    int top=PalMixTop();
+    //--- the three rows, at the pitch `PalMixRowY` owns
     for(int i=0;i<3;i++)
     {
        int y=PalMixRowY(i);

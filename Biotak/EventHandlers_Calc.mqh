@@ -262,7 +262,6 @@ void OnDeinitHandler(const int reason) {
             ObjectDelete(0, inpObjectPrefix + "TH_Targets_" + tfLabels[i]);
         }
 
-        string symbolName = GetCachedSymbol();
         string chartIdStrLocal = GetCachedChartIdStr();
         // P-UI-56: a parameter change returns the start point to the Input default by
         // clearing the FLAG (the resolver then prefers the Input seed). The PRICE key
@@ -955,7 +954,6 @@ void RedrawAllObjects(bool force_redraw=false)
     // handled — one pass per 30-minute block instead of ~240.
     if(boundaryCandidate) s_lastBoundaryBlock = boundaryBlock;
 
-    string s_cachedSymbol = GetCachedSymbol();
     int s_cachedDigits = GetCachedDigits();
     double s_cachedPoint = GetCachedPoint();
     // PERF: Cache Bid/Ask once per redraw frame instead of ~10 SymbolInfoDouble syscalls

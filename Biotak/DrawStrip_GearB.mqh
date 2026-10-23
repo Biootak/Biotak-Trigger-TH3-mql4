@@ -877,13 +877,15 @@ bool DrawStripGearHeadPaint()
    //--- column at `+16+30+10`. This panel drew the mark in a 30px box at +16
    //--- (7px right and 7px low of the cards' canvas) and the glyph by hand at
    //--- +23/+20 — so the disc floated off its own glyph and the whole head sat
-   //--- 7px off the card it belongs to. LITERALS, not PNL_*: BiotakPanels is
-   //--- included AFTER this file.
-   dirty |= DrawStripFace(DrawStripGearHeadName("MK"), gx + 9, hy + 6, 44, 44,
+   //--- 7px off the card it belongs to. P-UI-216: the six numbers are DERIVED from the
+   //--- cards' own seat now (`DSTRIP_MARK_*`), so a retune moves both heads together.
+   dirty |= DrawStripFace(DrawStripGearHeadName("MK"), gx + DSTRIP_MARK_MK_X, hy + DSTRIP_MARK_MK_Y,
+                           DSTRIP_MARK_CANVAS, DSTRIP_MARK_CANVAS,
                            "::Files\\Icons\\pnl_mark_gold.bmp", tip);
-   dirty |= DrawStripFace(DrawStripGearHeadName("MG"), gx + 23, hy + 20, 15, 15,
+   dirty |= DrawStripFace(DrawStripGearHeadName("MG"), gx + DSTRIP_MARK_GL_X, hy + DSTRIP_MARK_GL_Y,
+                           DSTRIP_MARK_GLYPH, DSTRIP_MARK_GLYPH,
                            DrawStripGearMarkRes(), tip);
-   int htx = gx + 56;   // PNL_PAD_X + PNL_MARK_VIS + 10
+   int htx = gx + DSTRIP_HEAD_TX_X;   // PAD + MARK_VIS + 10, one owner
    // P-DRAW-36: the version chip and the close button sit at the PLATE's right
    // inset (s_dsGearW0 - PAD), so they read as flush with the content's own
    // right edge instead of 32px short of it.
@@ -1038,7 +1040,7 @@ bool DrawStripGearSectionsPaint(const int x, const int w)
       //--- The rule below started at `PnlTextW(txt, 7)` while a row label draws at 9,
       //--- so every caption sharing a row had its hair start ~8px early and run
       //--- under the last letters of its own word.
-      int lpt = (rowLbl ? DSTRIP_GEAR_LBL_PT : 7);
+      int lpt = (rowLbl ? DSTRIP_GEAR_LBL_PT : DSTRIP_SEC_PT);
       //--- P-DRAW-80: the label sits on the card's seat — `+16+14` from the CARD,
       //--- `+14` down, muted at pt 7 for a band (BiotakPanels 6007-6008).
       dirty |= DrawStripLblIn(sn + "T", x0 + DSTRIP_GEAR_CAP_X, y, DSTRIP_GEAR_ROW_H, txt,
@@ -1251,10 +1253,10 @@ bool DrawStripGearPaint()
       {
          string dg = PnlFit(DrawStripGearGroupDigest(s_dsGRArg[r]), 8, cw / 2);
          int dw = (dg == "") ? 0 : PnlTextW(dg, 8);
-         dirty |= DrawStripFace(rc, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+         dirty |= DrawStripFace(rc, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS,
                                 cur ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
-         dirty |= DrawStripFace(ri, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22, res, tip);
-         int gx0 = rx + DSTRIP_GEAR_PAD + 22 + 8;
+         dirty |= DrawStripFace(ri, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS, res, tip);
+         int gx0 = rx + DSTRIP_GEAR_PAD + DSTRIP_CARD_LBL_DX;
          dirty |= DrawStripLblIn(rl, gx0, py, DSTRIP_GEAR_ROW_H,
                                  PnlFit(txt, 9, cw - (gx0 - rx) - dw - DSTRIP_GEAR_DG_PAD - DSTRIP_ROW_GAP),
                                  cur ? DSTRIP_CLR_VALUE : DSTRIP_CLR_LABEL, tip, 9, true);
@@ -1290,14 +1292,14 @@ bool DrawStripGearPaint()
          //--- CHIP_VIS + 8 at `ry+PNL_LBL_Y` (BiotakPanels 6155/6158) — this panel
          //--- sat them on a tighter 12/32 grid of its own, which is the whole of
          //--- "the panel reads as a second grid beside the cards".
-         dirty |= DrawStripFace(rc, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+         dirty |= DrawStripFace(rc, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS,
                                 cur ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
-         dirty |= DrawStripFace(ri, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22, res, tip);
+         dirty |= DrawStripFace(ri, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, DSTRIP_CARD_CHIP_VIS, DSTRIP_CARD_CHIP_VIS, res, tip);
       }
-      int labelX = rx + DSTRIP_GEAR_PAD + (res == "" ? 0 : 22 + 8);
+      int labelX = rx + DSTRIP_GEAR_PAD + (res == "" ? 0 : DSTRIP_CARD_LBL_DX);
       int k = s_dsGRKind[r];
       bool isSw = (k == 1 || k == 4 || k == 6);
-      int stateW = isSw ? 40 : 20;          // PNL_SW_W 40 · the check/nav glyph 20
+      int stateW = isSw ? DSTRIP_GEAR_SW_W : 20;   // the cards' .sw 40 · the check/nav glyph 20
       //--- P-DRAW-68: the cards' own row label, weight included — `PnlPaintLabel`
       //--- writes Arial Bold at PNL_PT_LBL and this row sat in Arial regular, the
       //--- one font difference between the panel and the card it stands beside.
@@ -1318,8 +1320,9 @@ bool DrawStripGearPaint()
       //--- (BiotakPanels 6160). The old `cw-18 / 15` was a narrower pill on a
       //--- different right inset, so the switch column read narrower than the
       //--- cards' beside it.
-      dirty |= DrawStripFace(rs, rx + cw - (isSw ? 40 : 18), py + DSTRIP_CARD_CHIP_Y,
-                             isSw ? 40 : 15, 22, state, tip);
+      dirty |= DrawStripFace(rs, rx + cw - (isSw ? DSTRIP_GEAR_SW_W : 18), py + DSTRIP_CARD_CHIP_Y,
+                             isSw ? DSTRIP_GEAR_SW_W : 15,
+                             isSw ? DSTRIP_GEAR_SW_H : DSTRIP_CARD_CHIP_VIS, state, tip);
    }
    for(int e = 0; e < 5; e++)
    {

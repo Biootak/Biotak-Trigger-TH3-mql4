@@ -154,11 +154,15 @@ SEATS = [
     ("foot height",           "PNL_FOOT_H",                 "DSTRIP_GEAR_FOOT_H",     "footer band"),
     ("label row gap",         "PNL_ROW_GAP",                "DSTRIP_ROW_GAP",         "label -> control"),
     ("row label pt",          "PNL_PT_LBL",                 "DSTRIP_GEAR_LBL_PT",     "label size"),
-    ("section pt",            "PNL_PT_SEC",                 "7",                      "band caption size"),
+    ("section pt",            "PNL_PT_SEC",                 "DSTRIP_SEC_PT",          "band caption size"),
     ("section count w",       "PNL_SEC_CNT_W",              "DSTRIP_SEC_CNT_W",       "the .cnt pill"),
-    ("switch w",              "PNL_SW_W",                   "40",                     ".sw pill width"),
-    ("switch h",              "PNL_SW_H",                   "22",                     ".sw pill height"),
-    ("chip vis",              "PNL_CHIP_VIS",               "22",                     "row glyph"),
+    # P-UI-214 (2026-10-22): these two compared the card's NAME against a bare literal,
+    # so they could only ever report drift after it had happened — the same asymmetry
+    # P-UI-153 fixed for the close button. Both seats now have a strip-layer name
+    # (include 99 cannot read BiotakPanels_State), and the paint reads that name.
+    ("switch w",              "PNL_SW_W",                   "DSTRIP_GEAR_SW_W",       ".sw pill width"),
+    ("switch h",              "PNL_SW_H",                   "DSTRIP_GEAR_SW_H",       ".sw pill height"),
+    ("chip vis",              "PNL_CHIP_VIS",               "DSTRIP_CARD_CHIP_VIS",   "row glyph"),
     ("chip top in row",       "PNL_CHIP_Y",                 "DSTRIP_CARD_CHIP_Y",     "glyph seat"),
     ("label top in row",      "PNL_LBL_Y",                  "DSTRIP_CARD_LBL_Y",      "label seat"),
     # P-UI-153 (2026-10-13): the panel side was the bare literal "26", so this seat
@@ -168,12 +172,19 @@ SEATS = [
     # hit test and the carry — so the comparison is name-to-name and a rename that
     # breaks the alias fails here instead of on a chart.
     ("close button",          "PNL_XBTN_VIS",               "DSTRIP_GEAR_XW",         "header .x"),
-    ("mark visible",          "PNL_MARK_VIS",               "30",                     ".mark disc"),
-    ("mark y",                "PNL_MARK_Y",                 "13",                     ".mark seat"),
-    ("mark pad",              "PNL_MARK_PAD",               "7",                      ".mark glow"),
-    ("glyph canvas",          "PNL_GLYPH_CANVAS",           "15",                     "mark/close glyph"),
+    # P-UI-216 (2026-10-22) — THE MARK ROWS SAID "30 / 13 / 7" AND THE STRIP PAINTS 44.
+    # Three rows compared the cards' DISC (30 at +13, 7 of glow) against their own
+    # literals, while the gear head paints the CANVAS — 44x44 at `+16-7, +13-7` — so the
+    # gate reported "ok" on a seat the panel does not use at that size, and the six
+    # literals that produced 44 (`9,6,44,23,20,56`) were the ones P-DRAW-80 had to fix
+    # by hand. One row now compares what is actually painted, name to name.
+    ("mark canvas",           "PNL_MARK_VIS + 2*PNL_MARK_PAD", "DSTRIP_MARK_CANVAS",  "the .mark art's box"),
+    ("glyph canvas",          "PNL_GLYPH_CANVAS",           "DSTRIP_MARK_GLYPH",      "mark/close glyph"),
     ("foot button w floor",   "PNL_BTN_W",                  "DSTRIP_GEAR_FOOT_BW",    "footer button"),
-    ("foot button pad",       "PNL_BTN_PAD",                "8",                      "footer skin pad"),
+    # P-UI-216: "foot button pad" ("8") is RETIRED, not renamed. The strip's 8 is the air
+    # inside its own text-measured width (`MathMax(FOOT_BW, 32 + textW + 8)`); the cards'
+    # `PNL_BTN_PAD` is the glow margin baked around the SKIN. Same digit, two questions —
+    # the parity claim was a coincidence, and a row that cannot be wrong is not a check.
     # P-UI-149 (2026-10-13) — THE DUPLICATE ROW IS GONE. A "tab row height" entry sat
     # here as `("PNL_ROW_H", "DSTRIP_GEAR_ROW_H")` — the SAME pair as "row pitch" three
     # rows up — so one comparison was counted twice and every report read "6 seat(s)
@@ -185,6 +196,28 @@ SEATS = [
 ]
 
 
+def _resolve(path, e):
+    """A seat expression -> int: a bare #define, or arithmetic over #defines.
+
+    P-UI-216 (2026-10-22): the table could only hold a single name or a pure number,
+    so a seat that is a SUM of two card constants ("the mark's canvas = disc + 2*glow")
+    had to be written as its literal — the very thing these rows exist to stop. Every
+    identifier is resolved through `expr()`, which already walks the alias chain.
+    """
+    if re.match(r"^[A-Z_][A-Z0-9_]*$", e):
+        return expr(path, e)
+    env = {}
+    for ident in set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", e)):
+        v = expr(path, ident)
+        if v is None:
+            return None
+        env[ident] = v
+    try:
+        return int(eval(e, {"__builtins__": {}}, env))
+    except Exception:
+        return None
+
+
 def main():
     verbose = "--verbose" in sys.argv
     print("UI PARITY AUDIT — panel chrome vs card chrome (offline)")
@@ -192,8 +225,8 @@ def main():
 
     bad = []
     for label, card_e, panel_e, note in SEATS:
-        c = expr(CARD, card_e) if re.match(r"^[A-Z_][A-Z0-9_]*$", card_e) else eval(card_e, {"__builtins__": {}}, {})
-        p = expr(STRIP, panel_e) if re.match(r"^[A-Z_][A-Z0-9_]*$", panel_e) else eval(panel_e, {"__builtins__": {}}, {})
+        c = _resolve(CARD, card_e)
+        p = _resolve(STRIP, panel_e)
         mark = "ok  " if c == p else "DIFF"
         if c != p:
             bad.append((label, c, p, note))
@@ -208,12 +241,30 @@ def main():
     row_lbl_x_bare = PAD                             # PnlLabelX, no chip
     p = find_uses(STRIP, [r"DSTRIP_GEAR_PAD\s*\+\s*\(\s*res\s*=="])
     for ln, txt in p:
-        print(f"  [??  ] panel label x (with chip)   card={row_lbl_x}  -> see {ln}")
+        print(f"  [see ] panel label x (with chip)   card={row_lbl_x}  -> see {ln}")
         print(f"          {txt.strip()}")
+    # P-UI-214 (2026-10-22): that seat is RESOLVABLE now — the panel reads ONE name
+    # (`DSTRIP_CARD_LBL_DX` = chip + 8) instead of `22 + 8`, so the arithmetic is
+    # compared here rather than left as a "still needs a chart" line.
+    if p:
+        panel_lbl_x = expr(STRIP, "DSTRIP_GEAR_PAD") + expr(STRIP, "DSTRIP_CARD_LBL_DX")
+        mark = "ok  " if panel_lbl_x == row_lbl_x else "DIFF"
+        print(f"  [{mark}] panel label x (resolved)   card={row_lbl_x}  panel={panel_lbl_x}   (PnlLabelX)")
+        if panel_lbl_x != row_lbl_x:
+            bad.append(("panel label x (with chip)", row_lbl_x, panel_lbl_x, "PnlLabelX"))
 
-    sw_x_card = expr(CARD, "PNL_WEL") - 2 * PAD     # PNL_SW_X = PNL_WEL-2*PNL_PAD_X-... via defines
+    # P-UI-214: the switch's RIGHT EDGE is the content box's right edge on both
+    # surfaces — `PNL_SW_X = PNL_WEL - 2*PAD - PNL_SW_W` on the card and
+    # `cw - DSTRIP_GEAR_SW_W` (cw = DSTRIP_GEAR_W - 2*PAD) on the panel. Two numbers
+    # per side, both resolvable: the content width and the pill's own width.
+    cw_card = expr(CARD, "PNL_WEL") - 2 * PAD
+    cw_panel = expr(STRIP, "DSTRIP_GEAR_W") - 2 * expr(STRIP, "DSTRIP_GEAR_PAD")
     sw_w = expr(CARD, "PNL_SW_W")
-    print(f"  [??  ] panel switch right edge   card={sw_x_card}+{sw_w}  (PNL_SW_X .. +PNL_SW_W)")
+    sw_w_panel = expr(STRIP, "DSTRIP_GEAR_SW_W")
+    mark = "ok  " if (cw_card == cw_panel and sw_w == sw_w_panel) else "DIFF"
+    print(f"  [{mark}] panel switch right edge   content={cw_card}  pill={sw_w}  (PNL_SW_X .. +PNL_SW_W)")
+    if cw_card != cw_panel or sw_w != sw_w_panel:
+        bad.append(("panel switch right edge", f"{cw_card}/{sw_w}", f"{cw_panel}/{sw_w_panel}", "PNL_SW_X"))
 
     # ── the object-name namespaces, which are behaviour, not text ───────────────
     print("-" * 78)
@@ -228,7 +279,7 @@ def main():
         for label, c, p, note in bad:
             print(f"   - {label}: card {c} vs panel {p}  ({note})")
         return 1
-    print("All constant seats agree. The derived seats marked ?? still need a chart.")
+    print("All seats agree — the constants AND the two derived ones (P-UI-214 closed the last ??)")
     return 0
 
 

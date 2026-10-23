@@ -497,7 +497,6 @@ void SessLiveRepaint(const int sl)
 {
    SessSlot s;
    SessSlotGet(sl, s);
-   color base = SessColorOf(s.col);
    string nmB = SessWindowName(sl, s_sessLiveStamp[sl], "B");
    //--- the body follows its OWN kind (P-SESS-05): 2 moves for the filled
    //--- rectangle, 8 for the hollow four-edge frame — and only when the

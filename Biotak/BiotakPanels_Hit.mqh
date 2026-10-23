@@ -748,7 +748,7 @@ bool PnlKnobHit(const int mx,const int my,int &item,int &row)
 {
    item=-1; row=-1;
    if(g_PnlOpen < 0) return false;
-   int px=g_PnlX[g_PnlOpen], py=g_PnlY[g_PnlOpen];
+   int py=g_PnlY[g_PnlOpen];
    int rowsCount=PnlRowsCount(g_PnlOpen);
    for(int r=0;r<rowsCount;r++)
    {
@@ -760,8 +760,7 @@ bool PnlKnobHit(const int mx,const int my,int &item,int &row)
        // P-UI-131d: derived from the track's own centre, never a 42px-row literal —
        // the old `+21` was PNL_TRK_Y+PNL_TRK_H/2-PNL_KNOB_W/2 frozen for TRK_Y 27, so
        // moving the track moved the knob's GRAB ZONE (or not) by accident.
-       int knobY=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H
-                 +PNL_TRK_Y+PNL_TRK_H/2-PNL_KNOB_W/2;
+       int knobY=PnlRowY(g_PnlOpen,r,py)+PNL_TRK_Y+PNL_TRK_H/2-PNL_KNOB_W/2;
       // generous grab zone: knob ±half width sideways, tight vertically — and the
       // floor is the ROW's own (P-UI-131d: knobY moved with the track, so `+2` past
       // the knob claimed a pixel of the row below — the classic ghost target).
@@ -780,7 +779,7 @@ bool PnlTrackHit(const int mx,const int my,int &item,int &row)
 {
    item=-1; row=-1;
    if(g_PnlOpen < 0) return false;
-   int px=g_PnlX[g_PnlOpen], py=g_PnlY[g_PnlOpen];
+   int py=g_PnlY[g_PnlOpen];
    int rowsCount=PnlRowsCount(g_PnlOpen);
    for(int r=0;r<rowsCount;r++)
    {
@@ -788,7 +787,7 @@ bool PnlTrackHit(const int mx,const int my,int &item,int &row)
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
        if(kind!=0) continue;
        int trackX=PnlRowBaseX(g_PnlOpen,r)+PNL_TRACK_X;
-       int trackY=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H+PNL_TRK_Y;
+       int trackY=PnlRowY(g_PnlOpen,r,py)+PNL_TRK_Y;
       if(mx >= trackX && mx <= trackX+PNL_TRACK_W &&
          my >= trackY-8 && my <= trackY+PNL_TRK_H+5)
       {
@@ -805,14 +804,14 @@ bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
 {
    item=-1; row=-1;
    if(g_PnlOpen < 0) return false;
-   int px=g_PnlX[g_PnlOpen], py=g_PnlY[g_PnlOpen];
+   int py=g_PnlY[g_PnlOpen];
    int rowsCount=PnlRowsCount(g_PnlOpen);
    for(int r=0;r<rowsCount;r++)
    {
       int kind; string label,unit,opts; int minV,maxV; double step;
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
        if(kind!=1) continue;
-        int ry=py+PNL_HEAD_H+PnlRowLine(g_PnlOpen,r)*PNL_ROW_H;
+        int ry=PnlRowY(g_PnlOpen,r,py);
         int swX=PnlRowBaseX(g_PnlOpen,r)+PNL_SW_X-PNL_SW_PAD;
         int swY=ry+PNL_SW_Y-PNL_SW_PAD;
         int y0=MathMax(swY-5,ry), y1=MathMin(swY+PNL_SW_H+2*PNL_SW_PAD+5,ry+PNL_ROW_H-1);

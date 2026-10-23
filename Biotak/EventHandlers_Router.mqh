@@ -606,7 +606,6 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_startPointOverride = -1;   // panel START POINT row: Q restores the dialog seed
             g_customTHStartPrice = inpCustomTHStartPrice;
             string chartIdStr = GetCachedChartIdStr();
-            string symbolName = GetCachedSymbol();
             GlobalVariableDel("Biotak_StepMode_" + chartIdStr);
             // P-UI-67: the reset drops the override through its owner (state + key),
             // so the panel's SS/LS ORDER switch is the answer again.

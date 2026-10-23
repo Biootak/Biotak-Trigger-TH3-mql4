@@ -3217,19 +3217,61 @@ function main() {
         broken3.push('the 3D build fence is back — the sync can paint a shadow the look no longer offers');
       if (/fibo_3d3/.test(harn3d))
         broken3.push('the 3D shot state is back — a retired look asks for real pixels again');
-      if (!/FibPenShwName\(fibo, dl\)/.test(fib))
-        broken3.push('the delete sweep forgot the shadow family — a deleted fibo leaves `_FSH` strays on the chart');
+      //--- P-LOOK-3D-f (2026-10-22) — THE SWEEP IS ONE PREFIX CALL, AND IT COVERS EVERY
+      //--- FAMILY. The sweep walked `dl = 0..11` and stopped at the first absent `q`, so a
+      //--- stack with a gap (or one whose only child sat on a level other than 0) kept its
+      //--- strays; the level-0 fence above it then skipped the sweep entirely AND skipped
+      //--- the memo write, so the 2 s net re-synced the same dead pen forever. Three
+      //--- assertions now: the prefix, that every family shares it, and the fence's absence.
+      const sweepBody = (() => { const m = fib.match(/bool FibPenStraysDrop\([^)]*\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
+      if (!/ObjectsDeleteAll\(0, fibo \+ "_FS"\)/.test(sweepBody))
+        broken3.push('the delete sweep is not the one prefix call — a family behind a gap in the stack survives the delete');
+      for (const [nm, want] of [['FIBPEN_SUFFIX', '_FSD'], ['FIBPEN_CAP_SFX', '_FSC'], ['FIBPEN_WSH_SFX', '_FSW'], ['FIBPEN_SHW_SFX', '_FSH']]) {
+        const m = fib.match(new RegExp('#define\\s+' + nm + '\\s+"([^"]+)"'));
+        if (!m || m[1] !== want || !m[1].startsWith('_FS'))
+          broken3.push(`the prefix sweep no longer reaches ${want} — ${nm} left the "_FS" family`);
+      }
+      if (/if\(!dropAll && ObjectFind\(0, FibPenName\(fibo, 0, 0\)\) < 0/.test(fib))
+        broken3.push('the drop path is fenced on level 0 again — a stray on any other level survives and the net re-syncs it forever');
       if (!/fc != 'C' && fc != 'W' && fc != 'H'/.test(fib))
         broken3.push('the fam test refuses `_FSH` — a shadow stray is served, hit and learned as a drawing of its own');
       const fibHas = (() => { const m = fib.match(/bool FibPenHasPen\([^)]*\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
       if (!/FibPenShwName\(fibo, 0\)\) >= 0\) return true;/.test(fibHas))
         broken3.push('the pen\'s existence test is blind to the shadow family — a legacy 3D fibo\'s shadow is never swept');
-      if (!/FibPenWashName\(fibo, 0\)\) < 0 &&[\s\S]{0,80}?FibPenShwName\(fibo, 0\)\) < 0\) return false;/.test(fib))
-        broken3.push('the look-only early-out skips the shadow probe — a look-4 fibo whose levels were deleted keeps its `_FSH` strays forever');
       if (broken3.length)
         failures.push('P-LOOK-3D retired: ' + broken3.join('; ') + ' (Biotak/FibPen.mqh + Toolbar_A/B + DrawStrip_Pick/GearA + shot harness)');
       else
         console.log('[PASS] P-LOOK-3D retired end to end — no define, no cell, no caption, no birth; `_FSH` is swept, never painted');
+    }
+    // -- 87. P-BE-08 (2026-10-22): THE ROW'S Y HAS ONE OWNER --
+    // `py + PNL_HEAD_H + PnlRowLine(...)*PNL_ROW_H` was spelled ELEVEN times across four
+    // files: the paint, three hit tests, the dropdown rect, the control line, the chips'
+    // strip and the row update. Retuning the head band or the row pitch could move the
+    // paint and leave a hit rect on the old line — Touch rule 3, and exactly the "hit does
+    // not cover the painted skin" class P-UI-209/212 fixed one seat at a time. One owner
+    // now (`PnlRowY`), and the count is asserted: one spelling in the whole panel unit.
+    {
+      // The member set is the DIRECTORY, not a hand-kept list: a spelling that lands in
+      // a file split off later (DynDef, PalSpec, a new part) must be counted too.
+      const members = fs.readdirSync(BIOTAK)
+        .filter((n) => /^BiotakPanels(_[A-Za-z]+)?\.mqh$/.test(n))
+        .sort();
+      const bad = [];
+      let total = 0;
+      for (const f of members) {
+        const src = codeOf(linesOf(path.join(BIOTAK, f)) || []);
+        const n = (src.match(/PNL_HEAD_H\s*\+\s*PnlRowLine/g) || []).length;
+        total += n;
+        if (n > 0 && f !== 'BiotakPanels_Rows.mqh') bad.push(`${f} spells it again (${n})`);
+      }
+      const owner = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Rows.mqh')), 'int PnlRowY(');
+      if (!owner || !/py\s*\+\s*PNL_HEAD_H\s*\+\s*PnlRowLine\(item,row\)\*PNL_ROW_H/.test(owner.text))
+        bad.push('PnlRowY lost its own arithmetic — the owner no longer answers the seat');
+      if (total !== 1) bad.push(`${total} spelling(s) of the row-y formula, expected 1 (the owner)`);
+      if (bad.length)
+        failures.push('P-BE-08 the row\'s y has ONE owner: ' + bad.join('; '));
+      else
+        console.log('[PASS] P-BE-08 the row\'s y has ONE owner — the paint, three hit tests, the dropdown rect, the control line, the chips and the row update all ask PnlRowY');
     }
     if (!/DrawStripPickCount\(k, slot\)/.test(tpt))
       broken.push('a picker row is gated by a second bound — rows the popover paints must pass the popover\'s own count (P-DRAW-74b)');
@@ -8214,8 +8256,8 @@ function main() {
     const build = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Build.mqh')), 'void PnlCreateRow(');
     if (!rect || !/w\s*=\s*MathMax\(PNL_BTN_W\s*,\s*50\s*\+\s*PnlTextW\(PnlDdOptText\(item,row\),PNL_PT_CTL\)\)/.test(rect.text))
       broken.push('PnlDdRect no longer uses the paint width: max(PNL_BTN_W, 50+textW)');
-    if (!rect || !/y\s*=\s*py\+PNL_HEAD_H\+PnlRowLine\(item,row\)\*PNL_ROW_H\+PNL_CTL_Y-1/.test(rect.text))
-      broken.push('PnlDdRect no longer uses the painted y (PNL_CTL_Y-1)');
+    if (!rect || !/y\s*=\s*PnlRowY\(item,row,py\)\+PNL_CTL_Y-1/.test(rect.text))
+      broken.push('PnlDdRect no longer uses the painted y (PnlRowY + PNL_CTL_Y-1)');
     if (!rect || !/\bh\s*=\s*26\b/.test(rect.text))
       broken.push('PnlDdRect no longer uses the painted height (26)');
     if (rect && /maxLen\s*\*\s*7\s*\+\s*54|MathMax\(104/.test(rect.text))

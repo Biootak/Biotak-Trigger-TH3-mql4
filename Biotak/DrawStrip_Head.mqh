@@ -491,6 +491,40 @@
 //--- PNL_SW_W, PNL_ROW_GAP) is included AFTER this file, so 10 keeps its literal.
 #define DSTRIP_CARD_CHIP_Y 10
 #define DSTRIP_CARD_LBL_Y  PNL_LBL_Y
+//--- P-UI-214 (2026-10-22) — THE ROW GLYPH AND THE LABEL'S X, NAMED ONCE. `PNL_CHIP_VIS`
+//--- (22) and `PNL_SW_W` (40) live in `BiotakPanels_State.mqh` (include 118), BELOW
+//--- DrawStrip (include 99) — the same include-order reason `DSTRIP_GEAR_XW` keeps its
+//--- own name one screen up. The strip wrote the chip's 22 six times (two faces in
+//--- GearA, four in GearB) and the label's x three ways (`PAD + 22 + 8`, `PAD + (res=="" ?
+//--- 0 : 22+8)`, and GearA's bare `PAD`), so retuning the card's chip moved the cards and
+//--- left the panel on the old number. One name per seat: the paint, the fit and the
+//--- parity gate now read these.
+#define DSTRIP_CARD_CHIP_VIS 22   // = PNL_CHIP_VIS, the cards' own row glyph
+#define DSTRIP_CARD_LBL_DX   (DSTRIP_CARD_CHIP_VIS + 8)   // PnlLabelX: the chip plus its 8 of air
+#define DSTRIP_GEAR_SW_W     40   // = PNL_SW_W, the cards' own .sw pill width
+#define DSTRIP_GEAR_SW_H     22   // = PNL_SW_H, the cards' own .sw pill height
+//--- P-UI-216 (2026-10-22) — THE HEAD'S MARK SEAT, DERIVED ONCE. P-DRAW-80 moved this
+//--- panel's head onto the cards' own seats BY HAND and left six literals behind:
+//--- `+9,+6` (the canvas' corner), `44,44` (the canvas), `+23,+20` (the glyph) and `56`
+//--- (the text column). Every one of them was the card's number minus/plus its glow pad,
+//--- so the next retune of the mark would move the cards and leave this head 7px off
+//--- again — the exact defect P-DRAW-80 fixed. The three card numbers are
+//--- PNL_MARK_VIS 30 / PNL_MARK_Y 13 with PNL_MARK_PAD 7 of glow; they live in
+//--- BiotakPanels_State (include 118), so the strip keeps its own copies here — the
+//--- DSTRIP_GEAR_XW precedent, and the parity gate compares them name to name.
+#define DSTRIP_CARD_MARK_VIS 30   // = PNL_MARK_VIS, the cards' .mark disc
+#define DSTRIP_CARD_MARK_Y   13   // = PNL_MARK_Y, centred in the 56px header
+#define DSTRIP_CARD_MARK_PAD  7   // = PNL_MARK_PAD, the disc's glow
+#define DSTRIP_MARK_CANVAS   (DSTRIP_CARD_MARK_VIS + 2*DSTRIP_CARD_MARK_PAD)   // 44, the baked art
+#define DSTRIP_MARK_GLYPH    15   // = PNL_GLYPH_CANVAS, the mark/close glyph
+#define DSTRIP_MARK_MK_X     (DSTRIP_GEAR_PAD - DSTRIP_CARD_MARK_PAD)          //  9
+#define DSTRIP_MARK_MK_Y     (DSTRIP_CARD_MARK_Y - DSTRIP_CARD_MARK_PAD)       //  6
+#define DSTRIP_MARK_GL_X     (DSTRIP_GEAR_PAD + DSTRIP_CARD_MARK_PAD)          // 23
+#define DSTRIP_MARK_GL_Y     (DSTRIP_CARD_MARK_Y + DSTRIP_CARD_MARK_PAD)       // 20
+#define DSTRIP_HEAD_TX_X     (DSTRIP_GEAR_PAD + DSTRIP_CARD_MARK_VIS + 10)     // 56, the head's text column
+//--- P-UI-216: a band caption's point size — the cards' `PNL_PT_SEC` 7, which this file
+//--- spelled as a bare `7` in the one place it is read (the section band's `lpt`).
+#define DSTRIP_SEC_PT        7    // = PNL_PT_SEC
 //--- P-DRAW-66: the quick row's THREE GROUPS — identity | values | commands. A
 //--- separator is a 1x20 hairline centred in the row with 8 air on each side, so
 //--- the chrome never reads as one more value; the head's air is the tight step.

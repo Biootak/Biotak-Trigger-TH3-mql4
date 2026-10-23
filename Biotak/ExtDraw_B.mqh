@@ -494,10 +494,11 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     //                                                                
     // CACHE TRIGGER STATE (optimization)
     //                                                                
-    
-    bool triggerEnabled = IsTriggerLevelsEnabled();
-    bool structureEnabled = inpShowStructure;
-    int baseMultiplier = GetValidatedBaseMultiplier(); // Use central validation
+    // P-BE-06 (2026-10-22): three reads stood here and none was ever consulted —
+    // `triggerEnabled`, `structureEnabled` and `baseMultiplier` were computed on
+    // every frame (one of them a function call) while the block below says in
+    // so many words "NO FILTERING in Harmonic Mode". The PRIORITY 2/3 prose that
+    // named them is retired with them: harmonic mode owns the ink and draws all.
     
     //                                                                
     // DRAW LEVELS ABOVE MIDPOINT
@@ -528,20 +529,14 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         bool isBase = (i % 2 == 0);
         
         //                                                                
-        // PRIORITY SYSTEM FOR COLORS AND STYLES
-        //                                                                
-        // PRIORITY 1: Harmonic Pattern (always takes precedence)
-        //   - Preserves alternating rhythm
-        //   - No filtering (all levels drawn)
-        // PRIORITY 2: Structure/Trigger (if Harmonic disabled)
-        //   - Applies filtering based on baseMultiplier
-        // PRIORITY 3: Default Factor colors
+        // ONE RULE FOR THE INK (P-BE-06): harmonic mode owns it, and every level
+        // of the pattern is drawn — the alternating base/large rhythm IS the look,
+        // so a structure/trigger filter would break it (see "NO FILTERING" below).
         //                                                                
         
         color levelColor;
         ENUM_LINE_STYLE levelStyle;
         int levelWidth;
-        bool shouldDraw = true;  // Default: draw all levels
         
         int logicalStep = i + 1;  // Step count for Structure levels
         
@@ -606,7 +601,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         bool isBase = (i % 2 == 0);
         
         //                                                                
-        // PRIORITY SYSTEM FOR COLORS AND STYLES (same as above)
+        // ONE RULE FOR THE INK (P-BE-06), the same one the block above wears.
         //                                                                
         
         color levelColor;
