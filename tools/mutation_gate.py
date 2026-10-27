@@ -5167,6 +5167,62 @@ MUTATIONS = [
         "replace": "   return BaseKnotTFName(tf) + \":\" + IntegerToString((int)MathRound(boxPips / a * 100.0)) + \"%\";   // MUTATION: the machine name on the face",
         "expect": "[FAIL] P-BK-129",
     },
+    #--- P-BK-130 (2026-10-27) - A KNOT'S OWN MINUTES IS NOT A RUNG. His own 6h FTR box printed
+    #--- `ATR 6h: 324.9` while the header printed `H4: 324.9`, and every leg is that number x its
+    #--- constant (TRex 15/64 = 76.2, Trigger 5/8 = 203.1, Pricle 75/64 = 381, Classic 45/16 =
+    #--- 914) - so the entry, the stop and all four targets were H4's. Five inverses: the plan's
+    #--- own ATR, the Eng that feeds every leg, the label that must NOT move, the fence that keeps
+    #--- a series-less length on the rung below, and the fallback that keeps a cold row off zero.
+    {
+        "id": "P-BK-130-a",
+        "gate": "regression",
+        "rule": "the plan's own ATR is read at the box' own minutes",
+        "what": "the snap is back - a 6h box is priced on H4 (324.9), EngSL 76.2 for every 6h knot",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   p.ownPips = TradePlanATROfOwnTime(chartMinutes, anchor);",
+        "replace": "   p.ownPips = TradePlanStripPips(p.chartMin, anchor);   // MUTATION: the rung below",
+        "expect": "[FAIL] P-BK-130",
+    },
+    {
+        "id": "P-BK-130-b",
+        "gate": "regression",
+        "rule": "the Eng that feeds every leg reads the SAME minutes",
+        "what": "the ladder slot is back in the Eng read - ownPips is the box' own time, the legs are H4's",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   double tr = TradePlanATROfOwnTime(chartMinutes, anchor);   // the box' OWN minutes",
+        "replace": "   double tr = TradePlanStripPips(cm, anchor);   // MUTATION: the ladder slot",
+        "expect": "[FAIL] P-BK-130",
+    },
+    {
+        "id": "P-BK-130-c",
+        "gate": "regression",
+        "rule": "the plan asks its Eng at the box' own minutes too",
+        "what": "the entry's Eng is the rung below while the legs' base is the own time - two times on one ruler (P-BK-127)",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "      double eT = TradePlanEngTrue(chartMinutes, p.trigMin, anchor);",
+        "replace": "      double eT = TradePlanEngTrue(p.chartMin, p.trigMin, anchor);   // MUTATION: the slot",
+        "expect": "[FAIL] P-BK-130",
+    },
+    {
+        "id": "P-BK-130-d",
+        "gate": "regression",
+        "rule": "a length MT4 has no series for keeps the rung below",
+        "what": "the fence is gone - a 700-minute ask reads PERIOD_CURRENT, i.e. the CHART's ATR (H1), under the rung it stands on (H4)",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   if(own != PERIOD_CURRENT)",
+        "replace": "   if(true)   // MUTATION: no series fence",
+        "expect": "[FAIL] P-BK-130",
+    },
+    {
+        "id": "P-BK-130-e",
+        "gate": "regression",
+        "rule": "a cold or unknown row degrades to the rung below, never to nothing",
+        "what": "the fallback reads the ask again - a cold row returns 0 and the whole plan goes blank",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   return TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor);",
+        "replace": "   return TradePlanStripPips(chartMinutes, anchor);   // MUTATION: no fallback",
+        "expect": "[FAIL] P-BK-130",
+    },
     #--- P-BE-08 (2026-10-22) - ONE OWNER FOR THE ROW'S Y. The formula was spelled
     #--- eleven times in four files; PnlRowY is the owner now and the gate counts.
     {

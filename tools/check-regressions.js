@@ -9410,6 +9410,73 @@ function main() {
       console.log('[PASS] P-BK-129 one TF, two spellings: the note and its hover read the clock (700m -> 11h40m, 235 -> 3h55m, a rung keeps M15/H4/D1) out of BaseKnotTFHuman, while every witness and CSV field keeps BaseKnotTFName, which the tools parse');
   }
 
+  // P-BK-130 (2026-10-27) — A KNOT'S OWN MINUTES IS NOT A RUNG.
+  //
+  // His own 6h FTR box printed `ATR 6h: 324.9` and the header printed `H4: 324.9` — one number
+  // under two names — because `TradePlanCompute` snapped the ask through
+  // `TradePlanLadderMinutes(TradePlanLadderIndex(x))` before reading. Every leg is that number
+  // times its own constant (TRex 15/64 = 76.2, Trigger 5/8 = 203.1, Pricle 75/64 = 381,
+  // Classic 45/16 = 914), so ONE snapped read mispriced the entry, the stop and all four legs.
+  // Three inverses: the plan must read the asked minutes, the Eng must read the SAME minutes
+  // (one ruler), and a length MT4 has no series for must keep the rung below.
+  {
+    const broken = [];
+    const tpf = linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh'));
+    const helper = tpf ? bodyOf(tpf, 'double TradePlanATROfOwnTime(') : null;
+    if (!helper) broken.push('TradePlanATROfOwnTime is gone - every plan read snaps to the rung below again');
+    else {
+      if (!helper.text.includes('if(own != PERIOD_CURRENT)'))
+        broken.push('the own-minutes read lost its fence - a 700-minute ask would read PERIOD_CURRENT, i.e. the CHART\'s ATR, and price a 700m box on H1');
+      if (!helper.text.includes('TradePlanStripPips(chartMinutes, anchor)'))
+        broken.push('the own-minutes read no longer reads the asked minutes - the 6h leg is H4\'s number again');
+      if (!helper.text.includes('TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor)'))
+        broken.push('the fallback is not the rung below - a cold/unknown row has nowhere to degrade to (a plan of zeroes)');
+      if (!helper.text.includes('CompatTF(chartMinutes)'))
+        broken.push('the fence no longer asks CompatTF - "has a series" would be a second, hand-kept TF table');
+    }
+    const compute = tpf ? bodyOf(tpf, 'bool TradePlanCompute(') : null;
+    if (!compute) broken.push('TradePlanCompute is gone');
+    else {
+      if (!compute.text.includes('p.ownPips = TradePlanATROfOwnTime(chartMinutes, anchor);'))
+        broken.push('TradePlanCompute prices `ownPips` from something other than the box\' OWN minutes - the 6h knot is an H4 knot again');
+      if (compute.text.includes('TradePlanStripPips(p.chartMin'))
+        broken.push('the snapped slot is back in an ATR read inside TradePlanCompute - `p.chartMin` is a LABEL (strMin/trigMin), never a time to read');
+      if (!compute.text.includes('TradePlanEngTrue(chartMinutes, p.trigMin, anchor)'))
+        broken.push('the Eng is read on the ladder slot while ownPips reads the own minutes - two times on one ruler (P-BK-127)');
+      if (compute.text.includes('TradePlanEngTrue(p.chartMin,'))
+        broken.push('the Eng is still read at `p.chartMin` - the entry\'s stop would be the rung below while the legs are the box\' own time');
+    }
+    const eng = tpf ? bodyOf(tpf, 'double TradePlanEngTrue(') : null;
+    if (!eng) broken.push('TradePlanEngTrue is gone');
+    else {
+      if (!eng.text.includes('TradePlanATROfOwnTime(chartMinutes, anchor)'))
+        broken.push('TradePlanEngTrue reads a snapped time again - Eng(6h) comes back as Eng(H4) (76.2 on his box)');
+      if (eng.text.includes('TradePlanStripPips(cm,'))
+        broken.push('the ladder slot `cm` is back inside the Eng read - the label\'s time is being used as the ATR\'s time');
+      if (!eng.text.includes('trigMinOut = TradePlanTriggerMinutes(cm);'))
+        broken.push('the trigger LABEL left the ladder slot - `trigMin` is a rung name and must stay one');
+    }
+    // The pump's type measure rides the same field, so the gate names it: one row, one number.
+    const pump = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+    const pumpText = pump ? pump.join('\n') : '';
+    if (!pumpText.includes('plan.ownPips * BaseKnotPipSize()'))
+      broken.push('the type\'s measure no longer reads the plan\'s own ATR - the note\'s `6h:` row would stop equalling the row the legs came from');
+    // ... and the harness EXECUTES the fence instead of trusting the shape.
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of [
+      'the 6h row IS the 6h read',
+      'a 700m ask keeps the rung below, never the chart TF',
+      'the ladder slot stays the label (chartMin = 240)',
+    ])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fence would be a read nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-130: ' + broken.join('; ') + ' (TradePlanFormulas / EventHandlers_Objects / the harness)');
+    else
+      console.log('[PASS] P-BK-130 a knot\'s own minutes is not a rung: the plan and its Eng read the minutes the box ASKED for (a 6h knot prices on the H6 series, not on H4\'s 324.9 x 15/64 = 76.2), the ladder slot stays a label, and a length with no series (700m) keeps the rung below instead of reading the chart\'s own TF');
+  }
+
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);
     console.log('');

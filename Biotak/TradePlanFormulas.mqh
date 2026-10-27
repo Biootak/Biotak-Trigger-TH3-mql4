@@ -310,6 +310,37 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
    return atr / pip;
 }
 
+// P-BK-130 (2026-10-27) — A KNOT'S OWN MINUTES IS NOT A RUNG.
+//
+// P-BK-126 said it for the type's ladder («a knot's time is not a rung»), and it scaled the
+// off-ladder row instead of renaming one. The PLAN kept the other half of the bug: every
+// price it hands out was read through `TradePlanLadderMinutes(TradePlanLadderIndex(x))`, so a
+// 360-minute ask silently became a 240-minute read.
+// MEASURED on the user's own 6h FTR box (`nodeTF 6h`, h = 373.6 pips): the note printed
+// `ATR 6h: 324.9` while the header printed `H4: 324.9` — ONE number under two names — and all
+// four legs are that number times their own constant (TRex 15/64 = 76.2, Trigger 5/8 = 203.1,
+// Pricle 75/64 = 381, Classic 45/16 = 914). So a 6h knot was priced as an H4 knot: entry,
+// stop and every target, from one wrong read.
+//
+// THE RULE, and it is one sentence: read the ATR at the minutes the caller ASKED FOR whenever
+// MT4 carries that series, and let the rung below answer only when it does not — `CompatTF`
+// answers PERIOD_CURRENT for exactly the lengths with no series (8, 45, 700 minutes), and
+// those keep today's number, never a jump to the chart's own TF. A rung asks for a rung, so
+// every on-ladder caller is byte-identical (the ladder's round trip returns its own minutes).
+// COST: an on-ladder ask pays one switch compare and no read; an off-ladder ask pays ONE new
+// cache row per (TF, anchor) — the live path is `g_multiTFCache` by TF, the as-of path is
+// `g_atrAnchorCache` by (TF, anchor) — and a hit on every round after the first.
+double TradePlanATROfOwnTime(const int chartMinutes, const datetime anchor = 0)
+{
+   ENUM_TIMEFRAMES own = CompatTF(chartMinutes);   // PERIOD_CURRENT == no series for this length
+   if(own != PERIOD_CURRENT)
+   {
+      double v = TradePlanStripPips(chartMinutes, anchor);
+      if(MathIsValidNumber(v) && v > 0.0) return v;   // the knot's OWN minutes, read for real
+   }
+   return TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENG — ONE formula (R-ENGPARITY, user decision 2026-09-10, R-ENGONE):
 //   Eng(TF) = TR_composite(OWN TF) / TRADEPLAN_ENG_DIVISOR
@@ -327,9 +358,11 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut, const datetime anchor = 0)
 {
    int cm = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
-   trigMinOut = TradePlanTriggerMinutes(cm);
+   trigMinOut = TradePlanTriggerMinutes(cm);          // label only: the trigger ladder's own rung
 
-   double tr = TradePlanStripPips(cm, anchor);      // own-TF composite TR
+   // P-BK-130: the LABEL stays on the ladder slot (`cm`); the READ does not. A 6h ask that
+   // came back as H4's composite priced every leg below it as an H4 leg.
+   double tr = TradePlanATROfOwnTime(chartMinutes, anchor);   // the box' OWN minutes
    return (tr > 0.0) ? tr / TRADEPLAN_ENG_DIVISOR : 0.0;
 }
 
@@ -434,7 +467,10 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    p.pricicle = 0; p.classic = 0;
 
    // Own strip ATR first: the alt path below derives EVERYTHING from it.
-   p.ownPips = TradePlanStripPips(p.chartMin, anchor);
+   // P-BK-130: `p.chartMin` is the LADDER SLOT — what strMin / trigMin / the SB rule are
+   // measured from — and it is NOT the ATR's time. The read is the caller's own minutes, so a
+   // 6h box is priced on 6h and its note's `ATR 6h:` stops equalling the header's `H4:`.
+   p.ownPips = TradePlanATROfOwnTime(chartMinutes, anchor);
 
    bool altForm = (inpUseAltTradeFormulas && p.ownPips > 0.0);
    if(altForm)
@@ -474,7 +510,9 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    }
    else
    {
-      double eT = TradePlanEngTrue(p.chartMin, p.trigMin, anchor);
+      // P-BK-130: the Eng is read at the SAME minutes `ownPips` was (the box' own), or the
+      // entry's stop and the legs' base would be two times on one ruler (P-BK-127).
+      double eT = TradePlanEngTrue(chartMinutes, p.trigMin, anchor);
       // P-UI-57: finite-first (see the SL gate above) — NaN Eng must read as
       // "not ready", never as rounded garbage.
       if(!MathIsValidNumber(eT) || eT <= 0.0) return false;

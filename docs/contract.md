@@ -681,6 +681,17 @@ One function over the ceiling stays whole and never grows.
   plan. An as-of read is a CALLER's own bar (`CalculateWeightedATRAt`, P-BK-79). This is
   DELIBERATE, and it was the behaviour until 2026-10-21; putting `CalcAnchorAt()` back at
   that funnel is the defect (`P-ANCHOR-LAST`, mutations `-d`/`-e`/`-f`).
+- **A knot's own minutes is not a rung.** The plan's ladder (`TradePlanLadderIndex`) is
+  `{1,5,15,60,240,1440,10080,43200}` and it snaps an off-ladder ask to the rung below;
+  that snap is a LABEL's job (`p.chartMin`, `strMin`, `trigMin`) and never the ATR's. Every
+  price the plan hands out reads `TradePlanATROfOwnTime(chartMinutes)` — the box' own
+  minutes when `CompatTF` names a series for them, the rung below only when it does not
+  (8 / 45 / 700 minutes) or that row is still cold. MEASURED 2026-10-27 on his 6h FTR box:
+  `ATR 6h: 324.9` and the header's `H4: 324.9` were ONE number under two names, and all four
+  legs are that number times their own constant (TRex 15/64 = 76.2, Trigger 5/8 = 203.1,
+  Pricle 75/64 = 381, Classic 45/16 = 914), so the entry, the stop and every target of a 6h
+  knot were H4's. The read is one number per (TF, anchor) — never the box' height — or the
+  plan drifts while the box sits still (P-BK-79/128). Gate: `P-BK-130`, mutations `-a..-e`.
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 

@@ -277,6 +277,43 @@ int OnStart()
    BkCheckS("P-BK-129 · a rung keeps its name (D1)", BaseKnotTFHuman(1440), "D1");
    BkCheckS("P-BK-129 · the machine spelling is untouched", BaseKnotTFName(700), "700m");
 
+   //---- 8. P-BK-130: A KNOT'S OWN MINUTES IS NOT A RUNG. His own 6h FTR box printed
+   //---- `ATR 6h: 324.9` while the header printed `H4: 324.9` — ONE number under two names —
+   //---- because the plan read the ladder SLOT (240) instead of the 360 the box asked for, and
+   //---- all four legs are that number x their own constant (TRex 15/64, Trigger 5/8,
+   //---- Pricle 75/64, Classic 45/16). The fence: a length MT4 carries a series for is read at
+   //---- THAT length; a length with no series (700m) keeps the rung below, never the chart's TF.
+   Print("[BKLINES] ============ P-BK-130: a knot's own minutes is not a rung");
+   int slot360 = TradePlanLadderMinutes(TradePlanLadderIndex(360));
+   BkCheck("P-BK-130 · the ladder has no 6h slot (360 snaps to 240)", slot360 == 240, slot360, 240);
+   BkCheck("P-BK-130 · MT4 HAS a 6h series (CompatTF 360 -> H6)",
+           (int)CompatTF(360) == (int)PERIOD_H6, (int)CompatTF(360), (int)PERIOD_H6);
+   BkCheck("P-BK-130 · a 700m time has NO series (CompatTF -> CURRENT)",
+           (int)CompatTF(700) == (int)PERIOD_CURRENT, (int)CompatTF(700), (int)PERIOD_CURRENT);
+   double h4Read = TradePlanStripPips(240, 0);
+   double ownH4  = TradePlanATROfOwnTime(240, 0);
+   BkCheck("P-BK-130 · a rung is read on its own series (H4 unchanged)",
+           BkNear(ownH4, h4Read), ownH4, h4Read);
+   double ownH6 = TradePlanATROfOwnTime(360, 0);
+   BkCheck("P-BK-130 · the 6h row IS the 6h read",
+           BkNear(ownH6, TradePlanStripPips(360, 0)), ownH6, TradePlanStripPips(360, 0));
+   if(TradePlanStripPips(360, 0) > 0.0 && h4Read > 0.0)
+      BkCheck("P-BK-130 · the 6h read is NOT the H4 number", !BkNear(ownH6, h4Read), ownH6, h4Read);
+   else
+      Print("[BKLINES] SKIP  P-BK-130 · the 6h read is NOT the H4 number  (no H6 history yet)");
+   double own700 = TradePlanATROfOwnTime(700, 0);
+   BkCheck("P-BK-130 · a 700m ask keeps the rung below, never the chart TF",
+           BkNear(own700, h4Read), own700, h4Read);
+   STradePlan p6;
+   bool ok6 = TradePlanCompute(360, p6, 0);
+   BkCheck("P-BK-130 · the ladder slot stays the label (chartMin = 240)", p6.chartMin == 240, p6.chartMin, 240);
+   BkCheck("P-BK-130 · the plan's own ATR is the box' own minutes",
+           BkNear(p6.ownPips, ownH6), p6.ownPips, ownH6);
+   Print("[BKLINES] P-BK-130 plan valid=", (ok6 ? "true" : "false"),
+         " chartMin=", p6.chartMin, " ownPips=", DoubleToString(p6.ownPips, 2),
+         " eng=", DoubleToString(p6.eng, 1), " hunter=", DoubleToString(p6.hunter, 1),
+         " | H4 read=", DoubleToString(h4Read, 2), " | 6h read=", DoubleToString(TradePlanStripPips(360, 0), 2));
+
    Print("[BKLINES] DONE pass=", g_bkPass, " fail=", g_bkFail);
    return (g_bkFail == 0 ? 0 : 1);
 }

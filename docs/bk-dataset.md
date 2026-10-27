@@ -886,3 +886,62 @@ pass got cheaper, not dearer. Nothing polls the switch (P-ANCHOR-LAST-MOVE alrea
 
 **What is NOT proven.** No live frame has read the step before/after a press on the new ex4 yet; the
 proof here is the source, the gate and the mutation, plus `0 errors` on both entries.
+
+## 21. A knot's own minutes is not a rung - P-BK-130 (2026-10-27)
+
+**The report.** His 6h FTR box read `18 bars - 6h base - FTR`, `ATR 6h:324.9 | D1:999.3 | W1:2528.8`,
+`TF H1 | ATR 137.3 | Leg 272%`, legs `TRex 76.2 | Trigger 203.1 | Pricle 381 | Classic 914`. The
+question: for a knot whose own time sits BETWEEN two rungs, can the entry / targets / stop shift with
+how near or how far it stands.
+
+**First, the measured defect - and it is not a question of shape.** `324.9` is EXACTLY the header's
+`H4: 324.9`: the note printed one number under two names. The path is one line -
+`TradePlanCompute` (`Biotak/TradePlanFormulas.mqh:428`) snapped the ask through
+`TradePlanLadderMinutes(TradePlanLadderIndex(360)) = 240` BEFORE reading, so `p.ownPips` was H4's
+composite. Every leg is that number times its own constant:
+
+| leg | constant | on 324.9 |
+|---|---|---|
+| TRex (EngSL) | 15/64 (1/4.266666) | 76.2 |
+| Trigger (HuntSL) | 5/8 (8/3 / 4.266666) | 203.1 |
+| Pricle | 75/64 (5 x 15/64) | 381 |
+| Classic | 45/16 (12 x 15/64) | 914 |
+
+So a 6h knot's entry, stop and four targets were an H4 knot's, and the box' own type was compared
+against `h / 324.9 = 115%` - a 6h box longer than its own time's ability.
+
+**The fix is ONE read, not a new law.** `TradePlanATROfOwnTime` (`TradePlanFormulas.mqh:333`) asks
+`TradePlanStripPips(chartMinutes)` - the minutes the caller really asked for - and keeps the rung
+below only when `CompatTF` names no series for that length (8 / 45 / 700 minutes answer
+`PERIOD_CURRENT`) or that row is still cold. `TradePlanCompute`'s `ownPips` and its
+`TradePlanEngTrue` both read through it, so the four legs, the entry and the stop are one ruler
+(P-BK-127) on the box' own time. `p.chartMin` / `p.strMin` / `p.trigMin` stay the ladder slot -
+labels, never times - so `trigMin` still names a rung.
+
+**Why not the interpolation the question suggested.** `CompatTF(360)` already answers `PERIOD_H6`
+(`BuildConfig.mqh:294`), so the 6h composite can be READ - a real number beats a model of it. The
+two models, for the record, on his own rows: the project's sqrt law gives `324.9 x sqrt(360/240) =
+397.9`, and the log-log (power) interpolation between H4 and D1 gives `324.9 x (999.3/324.9)^0.226 =
+418.9`; the sqrt law is also what it would give at D1 (`795.8` against a real `999.3`, -20 %), which
+is why P-BK-106 already prefers a REAL upper row to the law whenever the row exists.
+
+**What is NOT proven.** No live frame after this change yet: the new `ATR 6h:` value, `EngSL` and
+the entry offset are whatever the terminal's H6 composite says, and the harness' `6h read is NOT
+the H4 number` case is skipped when H6 history is cold. The height-graded question (a box whose
+height is `a0 + k x step`) is NOT answered here: the legs stay one number per (TF, anchor), and the
+only height-driven owner remains P-BK-128's rung fit, so a live box cannot change its leg size as
+its base grows.
+
+**Cost.** An on-ladder ask pays one `switch` compare and no read (byte-identical: the ladder's round
+trip returns its own minutes). An off-ladder ask pays one new cache row per (TF, anchor) - the live
+path is `g_multiTFCache` keyed by TF, the as-of path `g_atrAnchorCache` keyed by (TF, anchor) - and
+hits on every round after the first.
+
+**How it is checked.** `tools/check-regressions.js` (`P-BK-130`) asserts the helper's fence, its
+asked-minutes read, its rung-below fallback, that `TradePlanCompute` reads `ownPips` and the Eng
+from the SAME minutes, that the trigger label stays on the ladder slot, and that the pump's type
+measure still reads `plan.ownPips * BaseKnotPipSize()`; the harness runs five arithmetic cases
+(`Biotak_BaseKnot_Lines_Test.mq4` §8) - the ladder has no 6h slot, `CompatTF` HAS one, a 700m time
+has none, and `TradePlanCompute(360)` keeps `chartMin = 240` while `ownPips` is the own-minutes
+read. Five mutations put each defect back by literal (`P-BK-130-a..e`). MEASURED 2026-10-27:
+**5 killed, 0 survived, 0 stale, tree byte-identical.**
