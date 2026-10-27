@@ -324,9 +324,10 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
 //
 // THE RULE, and it is one sentence: read the ATR at the minutes the caller ASKED FOR whenever
 // MT4 carries that series, and let the rung below answer only when it does not — `CompatTF`
-// answers PERIOD_CURRENT for exactly the lengths with no series (8, 45, 700 minutes), and
-// those keep today's number, never a jump to the chart's own TF. A rung asks for a rung, so
-// every on-ladder caller is byte-identical (the ladder's round trip returns its own minutes).
+// answers PERIOD_CURRENT for exactly the lengths with no series (8, 45, 700 minutes), and those
+// are SCALED by the project's √-law (P-BK-131 below), never jumped to the chart's own TF and
+// never left wearing the rung's number. A rung asks for a rung, so every on-ladder caller is
+// byte-identical (the ladder's round trip returns its own minutes).
 // COST: an on-ladder ask pays one switch compare and no read; an off-ladder ask pays ONE new
 // cache row per (TF, anchor) — the live path is `g_multiTFCache` by TF, the as-of path is
 // `g_atrAnchorCache` by (TF, anchor) — and a hit on every round after the first.
@@ -338,7 +339,25 @@ double TradePlanATROfOwnTime(const int chartMinutes, const datetime anchor = 0)
       double v = TradePlanStripPips(chartMinutes, anchor);
       if(MathIsValidNumber(v) && v > 0.0) return v;   // the knot's OWN minutes, read for real
    }
-   return TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor);
+   // P-BK-131 (2026-10-27) — NO SERIES IS NOT NO ANSWER: ONE CONTINUOUS RULER.
+   //
+   // The fence above leaves a length MT4 has no bar for (8 / 45 / 700 minutes — his own note read
+   // `700m`) with the rung below's NUMBER, i.e. a 700-minute knot priced as an H4 knot: the same
+   // defect P-BK-130 fixed for 6h, one row over. A knot's price must be a CONTINUOUS function of
+   // its own minutes or two knots cannot be compared at all.
+   // SO: scale the rung below by the project's own √-law — the law P-BK-126 already applies to
+   // the type's row (`BaseKnotRungScale`, BaseKnot_Nodes; `CalculateHybridATR`, ATR_A:378 before
+   // it), so the plan and the table answer the SAME number for the same time and cannot drift.
+   // MEASURED on his H4 row (324.9): 360 -> 397.9, 700 -> 554.9 (x1.7078), D1 stays 999.3 — one
+   // monotone ladder where `700m` used to read 324.9 beside a DIFFERENT `ATR 700m:` in the note.
+   // The rung itself never reaches here (it has a series), and a cold row still degrades to the
+   // rung's own number rather than to a scaled zero.
+   int below = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
+   double base = TradePlanStripPips(below, anchor);
+   if(!MathIsValidNumber(base) || base <= 0.0) return base;    // cold: the old number, never nothing
+   if(below <= 0 || chartMinutes <= below) return base;        // on the rung: nothing to scale
+   double scaled = base * MathSqrt((double)chartMinutes / (double)below);
+   return (MathIsValidNumber(scaled) && scaled > 0.0 ? scaled : base);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

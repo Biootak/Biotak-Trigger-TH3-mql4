@@ -5217,11 +5217,45 @@ MUTATIONS = [
         "id": "P-BK-130-e",
         "gate": "regression",
         "rule": "a cold or unknown row degrades to the rung below, never to nothing",
-        "what": "the fallback reads the ask again - a cold row returns 0 and the whole plan goes blank",
+        "what": "the scale's base is the CHART's own TF - an H1 chart prices every series-less knot on H1 under the rung it stands on",
         "file": "Biotak/TradePlanFormulas.mqh",
-        "find": "   return TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor);",
-        "replace": "   return TradePlanStripPips(chartMinutes, anchor);   // MUTATION: no fallback",
+        "find": "   double base = TradePlanStripPips(below, anchor);",
+        "replace": "   double base = TradePlanStripPips(Period(), anchor);   // MUTATION: the chart's TF",
         "expect": "[FAIL] P-BK-130",
+    },
+    #--- P-BK-131 (2026-10-27) - NO SERIES IS NOT NO ANSWER. P-BK-130 fixed the 6h row and left
+    #--- `700m` (his own note's spelling) wearing H4's 324.9: a knot cannot be compared with a
+    #--- neighbouring one if its price jumps. The plan scales the rung below by the project's
+    #--- sqrt law (BaseKnotRungScale's own arithmetic): H4 324.9 -> 700m 554.9 -> D1 999.3.
+    {
+        "id": "P-BK-131-a",
+        "gate": "regression",
+        "rule": "a series-less length is scaled from the rung below by the √-law",
+        "what": "the scale is dropped - a 700-minute knot is 324.9 beside the note's own `ATR 700m:`",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   double scaled = base * MathSqrt((double)chartMinutes / (double)below);",
+        "replace": "   double scaled = base;   // MUTATION: no scale",
+        "expect": "[FAIL] P-BK-131",
+    },
+    {
+        "id": "P-BK-131-b",
+        "gate": "regression",
+        "rule": "the scale grows with the time asked for, never shrinks",
+        "what": "the ratio is inverted - a 700-minute knot is priced BELOW its own rung (190.2, under H4's 324.9)",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   double scaled = base * MathSqrt((double)chartMinutes / (double)below);",
+        "replace": "   double scaled = base * MathSqrt((double)below / (double)chartMinutes);   // MUTATION: inverted",
+        "expect": "[FAIL] P-BK-131",
+    },
+    {
+        "id": "P-BK-131-c",
+        "gate": "regression",
+        "rule": "a rung is never scaled, and a time under M1 never divides upward",
+        "what": "the on-rung guard is gone - the fence that keeps a real rung off the scale is unproven",
+        "file": "Biotak/TradePlanFormulas.mqh",
+        "find": "   if(below <= 0 || chartMinutes <= below) return base;        // on the rung: nothing to scale",
+        "replace": "   if(false) return base;   // MUTATION: no on-rung guard",
+        "expect": "[FAIL] P-BK-131",
     },
     #--- P-BE-08 (2026-10-22) - ONE OWNER FOR THE ROW'S Y. The formula was spelled
     #--- eleven times in four files; PnlRowY is the owner now and the gate counts.

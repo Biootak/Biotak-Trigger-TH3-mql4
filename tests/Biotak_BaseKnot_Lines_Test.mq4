@@ -302,8 +302,21 @@ int OnStart()
    else
       Print("[BKLINES] SKIP  P-BK-130 · the 6h read is NOT the H4 number  (no H6 history yet)");
    double own700 = TradePlanATROfOwnTime(700, 0);
-   BkCheck("P-BK-130 · a 700m ask keeps the rung below, never the chart TF",
-           BkNear(own700, h4Read), own700, h4Read);
+   // P-BK-131: a length MT4 has no bar for is the rung below x sqrt(own / below) — the SAME law
+   // BaseKnotRungScale applies to the type's row — so `700m` (his own note's spelling) stops
+   // wearing H4's number and cannot read the chart's own TF either. One continuous ruler.
+   double want700 = h4Read * MathSqrt(700.0 / 240.0);
+   BkCheck("P-BK-131 · a series-less time is SCALED by the same sqrt law",
+           BkNear(own700, want700), own700, want700);
+   if(h4Read > 0.0)
+      BkCheck("P-BK-131 · a 700m knot is no longer an H4 knot (x1.7078)",
+              !BkNear(own700, h4Read), own700, h4Read);
+   else
+      Print("[BKLINES] SKIP  P-BK-131 · a 700m knot is no longer an H4 knot  (H4 row cold)");
+   Print("[BKLINES] P-BK-131 comparable ladder (pips): H4=", DoubleToString(TradePlanATROfOwnTime(240, 0), 1),
+         "  6h=", DoubleToString(TradePlanATROfOwnTime(360, 0), 1),
+         "  700m=", DoubleToString(TradePlanATROfOwnTime(700, 0), 1),
+         "  D1=", DoubleToString(TradePlanATROfOwnTime(1440, 0), 1));
    STradePlan p6;
    bool ok6 = TradePlanCompute(360, p6, 0);
    BkCheck("P-BK-130 · the ladder slot stays the label (chartMin = 240)", p6.chartMin == 240, p6.chartMin, 240);

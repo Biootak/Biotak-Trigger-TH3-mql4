@@ -911,10 +911,11 @@ So a 6h knot's entry, stop and four targets were an H4 knot's, and the box' own 
 against `h / 324.9 = 115%` - a 6h box longer than its own time's ability.
 
 **The fix is ONE read, not a new law.** `TradePlanATROfOwnTime` (`TradePlanFormulas.mqh:333`) asks
-`TradePlanStripPips(chartMinutes)` - the minutes the caller really asked for - and keeps the rung
-below only when `CompatTF` names no series for that length (8 / 45 / 700 minutes answer
-`PERIOD_CURRENT`) or that row is still cold. `TradePlanCompute`'s `ownPips` and its
-`TradePlanEngTrue` both read through it, so the four legs, the entry and the stop are one ruler
+`TradePlanStripPips(chartMinutes)` - the minutes the caller really asked for - and falls back to the
+rung below only when `CompatTF` names no series for that length (8 / 45 / 700 minutes answer
+`PERIOD_CURRENT`) or that row is still cold; P-BK-131 (§22) then SCALES that fallback by the
+project's √-law, so no length ever wears a neighbour's number. `TradePlanCompute`'s `ownPips` and
+its `TradePlanEngTrue` both read through it, so the four legs, the entry and the stop are one ruler
 (P-BK-127) on the box' own time. `p.chartMin` / `p.strMin` / `p.trigMin` stay the ladder slot -
 labels, never times - so `trigMin` still names a rung.
 
@@ -945,3 +946,45 @@ measure still reads `plan.ownPips * BaseKnotPipSize()`; the harness runs five ar
 has none, and `TradePlanCompute(360)` keeps `chartMin = 240` while `ownPips` is the own-minutes
 read. Five mutations put each defect back by literal (`P-BK-130-a..e`). MEASURED 2026-10-27:
 **5 killed, 0 survived, 0 stale, tree byte-identical.**
+
+## 22. No series is not no answer - ONE continuous ruler - P-BK-131 (2026-10-27)
+
+**The hole P-BK-130 left.** `CompatTF` names a series for the standard lengths only; 8 / 45 /
+700 minutes answer `PERIOD_CURRENT`, and P-BK-130's fence left those wearing the rung below's
+NUMBER - his own note's `700m` row would still have been H4's composite. Two knots of one chart
+then cannot be compared: one is priced on its own time, the next jumps to a neighbour's.
+
+**The rule.** The plan scales the rung below by the project's √-law -
+`base * sqrt(chartMinutes / below)` - which is the SAME arithmetic P-BK-126 already applies to the
+type's row (`BaseKnotRungScale`, `BaseKnot_Nodes.mqh`) and the same law `CalculateHybridATR`
+(`ATR_A.mqh:378`) was built on. The gate asserts both spellings, so plan and table cannot scale by
+two different laws. The rung itself never reaches the scale (it has a series), a time under M1
+never divides upward, and a cold base still degrades to the rung's own number.
+
+**The ruler, on his own H4 row (324.9 pips) - one continuous monotone function of the time asked**
+
+| knot time | how it is read | ATR (pips) | TRex (15/64) | Trigger (5/8) | Pricle (75/64) | Classic (45/16) |
+|---|---|---|---|---|---|---|
+| H4 (240) | its own series | 324.9 | 76.2 | 203.1 | 381 | 914 |
+| 6h (360) | its own series (H6) | real read | real read | real read | real read | real read |
+| 700m | H4 x sqrt(700/240) = x1.7078 | 554.9 | 130.1 | 346.8 | 650.2 | 1560.6 |
+| D1 (1440) | its own series | 999.3 | 234.2 | 624.6 | 1171 | 2810 |
+
+The 6h row is the one number this table cannot fill from the source: it is whatever the terminal's
+H6 composite says, which is exactly why P-BK-130 reads it instead of modelling it (the two models
+would print 397.9 for the √-law and 418.9 for the log-log interpolation between H4 and D1).
+
+**What this answers, and what it does not.** "Shift with how near or how far the knot stands" is
+now a property of the TIME, continuous and monotone, identical for all four knot types - so an ETR
+and an FTR of the same time are comparable, and a 6h knot is comparable with an H4 one. What it is
+still NOT is a function of the box' HEIGHT: the legs remain one number per (TF, anchor), and the
+only height-driven owners stay P-BK-128's rung fit (`55/64 x a_k <= h`) and the type's ratio
+midpoints. A height-graded leg would make one live box change its entry as its base grows.
+
+**How it is checked.** `tools/check-regressions.js` (`P-BK-131`) asserts the √-law expression, the
+on-rung guard, the cold-base degrade, and that `BaseKnotRungScale` still spells the same ratio; the
+harness (`Biotak_BaseKnot_Lines_Test.mq4` part 8) computes `TradePlanATROfOwnTime(700)` against
+`H4 x sqrt(700/240)` and refuses to let a 700m knot read the H4 number, then prints the whole
+comparable ladder. Mutations `P-BK-131-a..c` (no scale / inverted ratio / no on-rung guard).
+MEASURED 2026-10-27: **8 killed, 0 survived, 0 stale, tree byte-identical** (the five P-BK-130
+mutations ran in the same pass).

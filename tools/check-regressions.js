@@ -9429,8 +9429,10 @@ function main() {
         broken.push('the own-minutes read lost its fence - a 700-minute ask would read PERIOD_CURRENT, i.e. the CHART\'s ATR, and price a 700m box on H1');
       if (!helper.text.includes('TradePlanStripPips(chartMinutes, anchor)'))
         broken.push('the own-minutes read no longer reads the asked minutes - the 6h leg is H4\'s number again');
-      if (!helper.text.includes('TradePlanStripPips(TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes)), anchor)'))
-        broken.push('the fallback is not the rung below - a cold/unknown row has nowhere to degrade to (a plan of zeroes)');
+      if (!helper.text.includes('int below = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));'))
+        broken.push('the fallback no longer names the rung below - a series-less time has nowhere to degrade to');
+      if (!helper.text.includes('double base = TradePlanStripPips(below, anchor);'))
+        broken.push('the fallback does not read the rung below - the base of the scale would be some other time');
       if (!helper.text.includes('CompatTF(chartMinutes)'))
         broken.push('the fence no longer asks CompatTF - "has a series" would be a second, hand-kept TF table');
     }
@@ -9466,7 +9468,6 @@ function main() {
     const hText = harness ? harness.join('\n') : '';
     for (const s of [
       'the 6h row IS the 6h read',
-      'a 700m ask keeps the rung below, never the chart TF',
       'the ladder slot stays the label (chartMin = 240)',
     ])
       if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fence would be a read nobody executes');
@@ -9474,7 +9475,45 @@ function main() {
     if (broken.length)
       failures.push('P-BK-130: ' + broken.join('; ') + ' (TradePlanFormulas / EventHandlers_Objects / the harness)');
     else
-      console.log('[PASS] P-BK-130 a knot\'s own minutes is not a rung: the plan and its Eng read the minutes the box ASKED for (a 6h knot prices on the H6 series, not on H4\'s 324.9 x 15/64 = 76.2), the ladder slot stays a label, and a length with no series (700m) keeps the rung below instead of reading the chart\'s own TF');
+      console.log('[PASS] P-BK-130 a knot\'s own minutes is not a rung: the plan and its Eng read the minutes the box ASKED for (a 6h knot prices on the H6 series, not on H4\'s 324.9 x 15/64 = 76.2), the ladder slot stays a label, and a series-less length is scaled instead of reading the chart\'s own TF');
+  }
+
+  // P-BK-131 (2026-10-27) — NO SERIES IS NOT NO ANSWER: ONE CONTINUOUS RULER.
+  //
+  // P-BK-130 left the lengths MT4 has no bar for (8 / 45 / 700 minutes — his own note read `700m`)
+  // wearing the rung below's NUMBER: a 700-minute knot priced as an H4 knot, so two knots of one
+  // chart could not be compared at all. The plan now scales the rung below by the project's own
+  // √-law — the SAME arithmetic P-BK-126 applies to the type's row (`BaseKnotRungScale`) — so the
+  // plan and the table answer ONE number for ONE time. MEASURED on his H4 row (324.9): 700 ->
+  // 554.9, while D1 stays 999.3; the ruler is monotone and continuous in the time asked for.
+  {
+    const broken = [];
+    const tpf = linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh'));
+    const helper = tpf ? bodyOf(tpf, 'double TradePlanATROfOwnTime(') : null;
+    if (!helper) broken.push('TradePlanATROfOwnTime is gone');
+    else {
+      if (!helper.text.includes('MathSqrt((double)chartMinutes / (double)below)'))
+        broken.push('the scale is not the √-law - a 700-minute knot wears the H4 number again (324.9 beside the note\'s own `ATR 700m:`)');
+      if (!helper.text.includes('if(below <= 0 || chartMinutes <= below) return base;'))
+        broken.push('the on-rung guard is gone - a time below M1 would be scaled by a ratio under 1 and a rung by √1 at best');
+      if (!helper.text.includes('if(!MathIsValidNumber(base) || base <= 0.0) return base;'))
+        broken.push('a cold rung now scales from zero instead of degrading to it - the plan would print a blank where it used to print the rung\'s own number');
+    }
+    // the law has ONE spelling in the project and this is its mirror: both must be the same ratio.
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const rung = nodes ? bodyOf(nodes, 'double BaseKnotRungScale(') : null;
+    if (!rung) broken.push('BaseKnotRungScale is gone - the type\'s row lost its scale');
+    else if (!rung.text.includes('MathSqrt((double)toMin / (double)fromMin)'))
+      broken.push('BaseKnotRungScale no longer spells the √ of the minute ratio - the plan and the type would scale by two different laws');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['a series-less time is SCALED by the same sqrt law', 'a 700m knot is no longer an H4 knot'])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the comparability would be a claim nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-131: ' + broken.join('; ') + ' (TradePlanFormulas / BaseKnot_Nodes / the harness)');
+    else
+      console.log('[PASS] P-BK-131 no series is not no answer: a length MT4 has no bar for (700m / 45m / 8m) is scaled from the rung below by the project\'s √-law - the same arithmetic BaseKnotRungScale applies to the type\'s row - so the plan\'s price is ONE continuous monotone function of the knot\'s own minutes (H4 324.9 -> 700m 554.9 -> D1 999.3) and two knots can be compared');
   }
 
   if (failures.length) {
