@@ -448,20 +448,35 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //
         // V key   Toggle TH3 Tool — TH3TOOL-ON (2026-09-19): restored.
         //
-#ifndef BUILD_LITE
-        if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
-        {
-            ToggleTH3Tool();
-            ThrottledChartRedraw();
-            return;
-        }
-#endif
+        // TH3TOOL-OFF (2026-10-24): the ABCD drawing tool is PARKED, not deleted —
+        // the user's call («ابزار th3tool … کامنت بشه»، «فعلا این ابزار خوب توسعه
+        // پیدا نکرده … نمیخوام توی محصول اصلی باشه»، «فقط ABCD، لگ‌متر بماند»,
+        // «حذف نمیخوام کامنت بشه بعد شاید بخوام روش کار بکنم»).
+        //
+        // WHY THE ARM AND NOT THE DISPATCHER: `ToggleTH3Tool` here and the ring
+        // cell (`CircCatRetired`) are the ONLY two ways a draw session can start,
+        // and both are now commented — so `TH3SessionActive()` can never be true
+        // and every drawing branch inside `OnABCDMouseEvent` goes cold on its own.
+        // The dispatcher itself MUST stay: the leg meter (P-LM-17), the caption
+        // delete (P-TH3-DEL4) and the pattern selection all ride the same call.
+        //
+        // TO BRING IT BACK: uncomment this block and drop the CAT_TH3 line in
+        // `CircCatRetired` (BiotakMenu_Ring.mqh). Nothing else moved.
+        //
+        //#ifndef BUILD_LITE
+        //if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
+        //{
+        //    ToggleTH3Tool();
+        //    ThrottledChartRedraw();
+        //    return;
+        //}
+        //#endif
 
         //
         // P key   Arm the leg meter (a measurement only).
         // P-TH3-PB-OFF (2026-09-21): the old coupling that stored a dragged leg
         // on the active pattern as its pivot base is retired — the base is
-        // hand-typed in the TH3 TOOL card (`inpTH3PivotBasePips`), never drawn.
+        // hand-typed in the TH3 TOOL card (`inpTH3BaseRangePips`), never drawn.
         //
 #ifndef BUILD_LITE
         if((int)lparam == 80)   // 'P' — toggle Leg Measure session (same as ring CIR_LEG)
@@ -495,6 +510,21 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             Print("[TH3 RECORDER] Key 'M' pressed. Capturing sample & exporting AI dataset...");
             TH3_ExportCurrentSample(g_activeABCDPattern);
+            ThrottledChartRedraw();
+            return;
+        }
+#endif
+
+        //
+        // K key   Snapshot the selected BASE KNOT for the AI dataset (P-BK-124:
+        // one press, one folder — shot.png + sample.txt, filed by
+        // tools/bk-shot-sync.js). 'K' = Knot; it is the one letter the panel's
+        // own hotkeys leave free (F L G V C T E R A S W Q X D P B M are taken).
+        //
+#ifndef BUILD_LITE
+        if((int)lparam == 75)   // 'K' — capture the selected knot as a sample
+        {
+            BaseKnotCaptureSample();
             ThrottledChartRedraw();
             return;
         }
@@ -1261,7 +1291,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // active pattern, masked its ladder and dropped its caption plate, and
         // the next band re-step redraw kept them dark: the whole ABCD read as
         // deleted («بیس مبنا که میکشم ... باعث حذف abcd میشه»). The band, its
-        // "1" tag, the P6 pivot triangles and the TH3_MP_ mother overlay are
+        // "1" tag, the P6 pivot triangles and the TH3_BASE_ base overlay are
         // the pattern's own tooling — a click on any of them is a no-op here.
         else if(StringFind(sparam, "TH3_") != 0)
         {

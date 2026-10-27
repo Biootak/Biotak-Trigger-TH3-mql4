@@ -327,12 +327,12 @@ int ValidateInputs()
         Print("   Recommended: 28.125 (default)");
         return INIT_PARAMETERS_INCORRECT;
     }
-    // P-TH3-PB-MAN (2026-09-21): the hand-typed pivot base, in pips. 0 = OFF.
+    // P-TH3-BASE-01 (2026-10-24): the base range, in pips, used 1:1. 0 = OFF.
     // P-UI-57: finite gate first (NaN would pass the range test below).
-    if(!MathIsValidNumber(inpTH3PivotBasePips) ||
-       inpTH3PivotBasePips < 0.0 || inpTH3PivotBasePips > 2000.0) {
-        Print("  ERROR: TH3 Pivot Base Pips (", DoubleToString(inpTH3PivotBasePips, 1), ") out of range");
-        Print("   Valid range: 0.0 - 2000.0 (0 = OFF, the pattern TF's own ATR)");
+    if(!MathIsValidNumber(inpTH3BaseRangePips) ||
+       inpTH3BaseRangePips < 0.0 || inpTH3BaseRangePips > 2000.0) {
+        Print("  ERROR: TH3 Base Range Pips (", DoubleToString(inpTH3BaseRangePips, 1), ") out of range");
+        Print("   Valid range: 0.0 - 2000.0 (0 = OFF, the pattern TF's own TH rung)");
         return INIT_PARAMETERS_INCORRECT;
     }
     if(inpTH3Width <= 0 || inpTH3Width > 10) {

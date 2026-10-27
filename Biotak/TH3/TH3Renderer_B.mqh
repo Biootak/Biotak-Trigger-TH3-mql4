@@ -70,23 +70,25 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     double pip0 = GetCachedPipSize();   // local: the seed/lock blocks sit above pipSize's decl
     if(pip0 <= 0) pip0 = Point;
 
-    // P-TH3-STEP-16 (2026-10-05) — THE UNIFIED EQUATION. One formula, no
-    // branches: the B-marked mother (mandatory anchor) and the ABCD leg
-    // resonate geometrically (CalculateUnifiedMasterStep, TH3Pivots_B.mqh).
-    // TH3ClosedK above stays as the lock's diagnostic reference only — the
-    // decider ladder is TH3UnifiedK inside the function.
-    double motherSize = TH3ManualBaseStep(inpTH3PivotBasePips, pip0);
+    // P-TH3-BASE-01 (2026-10-24) — THE UNIFIED EQUATION, BASE AT 1:1.
+    // The trader's Base measurement enters the formula exactly as typed
+    // (CalculateUnifiedMasterStep, TH3Pivots_B.mqh): no division by 3, no
+    // `2.5 x rung` gate. TH3ClosedK above stays as the lock's diagnostic
+    // reference only — the decider ladder is TH3UnifiedK inside the function.
+    double baseSize = TH3ManualBaseStep(inpTH3BaseRangePips, pip0);   // pips -> price, 1:1
     double uniRatio = (closedOK ? closedRatio : 0.0);
     if(!closedOK && BC_Distance > 0 && CD_Distance > 0)
         uniRatio = CD_Distance / BC_Distance;
     double uniK = TH3UnifiedK(uniRatio);
     double baseUnit = 0;
     string seedHow = "";
-    double uniStep = CalculateUnifiedMasterStep(CD_Distance, uniRatio, motherSize, seedRung);
+    double uniStep = CalculateUnifiedMasterStep(CD_Distance, uniRatio, baseSize, seedRung);
     if(uniStep > 0) {
         baseUnit = uniStep;
-        seedHow = StringFormat("uni K=%.1f pat=%.1f mom=%.1f th=%.1f%s", uniK,
-                               CD_Distance / pip0, motherSize / pip0, seedRung / pip0,
+        seedHow = StringFormat("uni K=%.1f base=%.1f pat=%.1f th=%.1f%s", uniK,
+                               baseSize / pip0,
+                               TH3StepPatternComponent(CD_Distance, uniRatio) / pip0,
+                               seedRung / pip0,
                                (ownerTF != Period() ? " up" : ""));
     } else if(seedRung > 0) {
         baseUnit = seedRung;
@@ -98,37 +100,28 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     if(!atrBasis) baseUnit = (CD_Distance > 0 ? CD_Distance : AB_Distance) * (frequency / 100.0);
 
     // P-TH3-PB-MAN (2026-09-21) — PATH 1 IS HAND-TYPED, NOT DRAWN.
-    // The user types the pivot base's height in the TH3 TOOL card, in pips
-    // (`inpTH3PivotBasePips`); TH3ManualBaseStep turns it into a price and it
+    // The user types the base's height in the TH3 TOOL card, in pips
+    // (`inpTH3BaseRangePips`); TH3ManualBaseStep turns it into a price and it
     // enters TH3LockedStep as pbStep. 0 = OFF: no Path 1 at all, and the seed
-    // below (the pattern TF's own ATR) is the whole answer — which is the
-    // "default from the same timeframe's ATRs" the user asked for. The
-    // detector's own candidate (TH3NodeStepAt) no longer answers the LOCK: a
-    // hand-typed number is an instruction, a scanned one is not, and the two
-    // must never be averaged into each other. (The detector still answers the
-    // SEED above, as the synthesis' mother factor.)
-    // P-TH3-PB-RET8 (2026-09-22) — THE TYPED NUMBER IS A RETRACE: one R wears
-    // eight candidate steps (TH3RetraceBestStep, TH3Pivots.mqh). The winner is
-    // the candidate nearest the ABCD step (closedStep: pattern momentum, 60%)
-    // and the owner TF's rung (seedRung: fractal volatility, 40%) — the TF
-    // comparison rides inside those two anchors, so no new bar read is added.
-    // The ref is CLOSED step, never the synthesis: synth already blends TH and
-    // the mother, so anchoring Path 1 to it and then locking Path 1 against it
-    // is a circle that fires LOCKED by construction. ABCD-anchored Path 1 vs
-    // synthesis Path 2 lets TH3LockedStep arbitrate two INDEPENDENT answers.
-    // The caption words it as `ret <q>`.
-    double pbRaw = motherSize;  // same hand thickness the synthesis above consumes
-    double pbStep = pbRaw;
+    // below (the pattern TF's own TH rung) is the whole answer — which is the
+    // "default from the same timeframe's own ruler" the user asked for.
+    // P-TH3-BASE-01 (2026-10-24) — THE TYPED NUMBER IS THE BASE, 1:1.
+    // The 8-state retrace reading (P-TH3-PB-RET8) used to REWRITE this number
+    // into a candidate step before the lock saw it. That is the same guess
+    // the /3 was, one layer over, so it no longer touches the value: the base
+    // the hand typed is the base the formula uses, and the retrace state is
+    // still measured and reported (`ret 4/3` in the log) as a READING.
+    // The ref is CLOSED step, never the synthesis: anchoring Path 1 to the
+    // synth and then locking Path 1 against it is a circle.
+    double pbRaw = baseSize;   // same hand thickness the synthesis above consumes
+    double pbStep = pbRaw;     // 1:1 — no candidate rewrite on the base input
     string retHow = "";
     if(pbRaw > 0)
     {
         double retRef = (closedOK && closedStep > 0 ? closedStep : 0.0);
         double bS = 0, bQ = 0; int bI = -1;
         if(TH3RetraceBestStep(pbRaw, retRef, seedRung, bS, bQ, bI) && bS > 0)
-        {
-            pbStep = bS;
-            retHow = StringFormat("ret %s", TH3RetraceQName(bI));
-        }
+            retHow = StringFormat("ret %s", TH3RetraceQName(bI));   // shown, never applied
     }
 
     // P-TH3-STEP-16: the lock is now a SECOND OPINION, never the decider.
@@ -593,23 +586,23 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         }
     }
 
-    // P-TH3-D4f — MOTHER LEG MARKER (v12).
+    // P-TH3-D4f — BASE LEG MARKER (v12).
     // Two-pass approach (no running-opposite ambiguity):
     //
-    // Pass 1 — find the END bar of the mother leg:
-    //   The mother leg ends at the local extreme NEAREST to pA in the CD
+    // Pass 1 — find the END bar of the base leg:
+    //   The base leg ends at the local extreme NEAREST to pA in the CD
     //   direction, BEFORE barA, with |extreme - pA| <= 1 ATR.
     //   We take the CLOSEST (smallest distance) such bar.
     //
-    // Pass 2 — find the START bar of the mother leg:
+    // Pass 2 — find the START bar of the base leg:
     //   From the END bar, walk further back and find the HIGHEST high
-    //   (bearish) or LOWEST low (bullish) — that is the mother start.
+    //   (bearish) or LOWEST low (bullish) — that is the base leg's start.
     //   No distance gate; just the global max/min before the end bar.
     //
-        // Size check: mother leg must be >= CD * 0.80. mlMotherSize feeds the
-        // caption's 1/3M row, so the measure stays even though its ticks are gone
-        // (P-TH3-D4h).
-    double mlMotherSize = 0;
+        // Size check: the base leg must be >= CD * 0.80. mlBaseLeg feeds the
+        // caption's `baseleg` ratio, so the measure stays even though its ticks
+        // are gone (P-TH3-D4h).
+    double mlBaseLeg = 0;
     double mlRatio      = 0;
     {
         int    barA      = iBarShift(NULL, 0, tA);
@@ -652,12 +645,12 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         {
             double endExt   = dirDown ? iLow (NULL,0,bestEndBar)
                                       : iHigh(NULL,0,bestEndBar);
-            mlMotherSize = MathAbs(bestStartVal - endExt);
+            mlBaseLeg = MathAbs(bestStartVal - endExt);
         }
 
-        // P-TH3-D4h (2026-09-21, user: «تیک های مادر»): the mother-leg ticks are
+        // P-TH3-D4h (2026-09-21, user: «تیک های مادر»): the base-leg ticks are
         // RETIRED — _MPTick (start) and _MPTickB (end), lime/red width-3. The
-        // measurement above STAYS (mlMotherSize feeds the caption); only the two
+        // measurement above STAYS (mlBaseLeg feeds the caption); only the two
         // objects go, swept here so an older build's ticks die on redraw. Never
         // create them again.
         ObjectDelete(0, mainObjName + "_MPTick");
@@ -1034,39 +1027,43 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     ObjectDelete(0, mainObjName + "_HitLine");
     ObjectDelete(0, mainObjName + "_HitLabel");
 
-    // P-TH3-P6e + P-TH3-D4 — MOTHER PIVOT AT D, ON THE CHART.
-    // The matcher (TH3Pivots.mqh) answers which six-condition pivot the
+    // P-TH3-P6e + P-TH3-D4 — THE NESTED BASE AT D, ON THE CHART.
+    // The matcher (TH3Pivots_A.mqh) answers which six-condition pivot the
     // placed D hit (tD,pD); this is its ink — ACTIVE pattern only, one badge
     // per chart (the clean-chart rule). Two dotted bounds (extreme +
     // key line, pivot bar -> D, BACK=true so candles stay on top) plus
     // Head/Tail markers at the pivot bar (extreme + keyPrice) plus one
-    // compact badge at D: "[ H1 Mother Pivot | 8.7p | FRESH ]".
+    // compact badge at D: "[ H1 Base | 8.7p | FRESH ]".
     // D is the collision point, so wantHigh = dirDown: a bearish D is a
     // high, a bullish D a low. tol = half the live step, the same ruler
-    // the tip corroboration uses. Everything wears the TH3_MP_ prefix:
+    // the tip corroboration uses. Everything wears the TH3_BASE_ prefix:
     // pattern delete (TH3Tool.mqh) and the full teardown (EventHandlers.mqh)
     // sweep it bulk, and a render with no match DELETES the five objects,
     // so no stale zone survives a drag.
+    // P-TH3-BASE-01 (2026-10-24): the prefix WAS `TH3_MP_`. A rename without
+    // the sweep leaves a previous build's zone painting beside this one, so
+    // the old spelling is deleted once per attach (TH3LegacyMpPrefixSweep).
     // mpState feeds the corner info label (diagnostics): the chart always
-    // says WHY no mother zone is drawn — off / none / TF+state — so a
+    // says WHY no base zone is drawn — off / none / TF+state — so a
     // missing badge is a readable verdict, never a silent mystery.
-    string mpState = "MP:none";
+    TH3LegacyMpPrefixSweep();
+    string mpState = "BASE:none";
     bool mpActive = (g_activeABCDPattern == mainObjName);
-    string mpHi = "TH3_MP_" + mainObjName + "_Hi";
-    string mpLo = "TH3_MP_" + mainObjName + "_Lo";
-    string mpHead = "TH3_MP_" + mainObjName + "_Head";
-    string mpTail = "TH3_MP_" + mainObjName + "_Tail";
-    string mpBadge = "TH3_MP_" + mainObjName + "_Badge";
+    string mpHi = "TH3_BASE_" + mainObjName + "_Hi";
+    string mpLo = "TH3_BASE_" + mainObjName + "_Lo";
+    string mpHead = "TH3_BASE_" + mainObjName + "_Head";
+    string mpTail = "TH3_BASE_" + mainObjName + "_Tail";
+    string mpBadge = "TH3_BASE_" + mainObjName + "_Badge";
     TH3PivotSix mp;
-    // Pillars 1+4 (P-TH3-MP2): the mother must predate the pattern origin
+    // Pillars 1+4 (P-TH3-MP2): the base must predate the pattern origin
     // A (P-TH3-D4: X retired), and distance is scored in closed-step units.
     // The anchor PRICE (A) is wired for the launch test — the leg whose
     // start sits in the node is the leg the node launched. tol is the
-    // tier-1 entry only; the matcher's ladder widens it to reach a far mother.
+    // tier-1 entry only; the matcher's ladder widens it to reach a far base.
     datetime mpAnchor = tA;
     double   mpAnchorPrice = pA;
-    bool mpShow = (inpShowMotherPivotZone && mpActive && atrBasis
-                   && TH3MotherPivotAt(tD, pD, dirDown, 0.5 * baseUnit, mp,
+    bool mpShow = (inpShowNestedBaseZone && mpActive && atrBasis
+                   && TH3NestedBasePivotAt(tD, pD, dirDown, 0.5 * baseUnit, mp,
                                        mpAnchor, (closedOK ? closedStep : 0.0), true,
                                        mpAnchorPrice));
     if(mpShow) {
@@ -1129,10 +1126,10 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         }
         double mpThickPips = (mpTop - mpBot) / pipSize;
         string mpFlip = ((mp.isHigh != dirDown) ? " | FLIP" : "");
-        string mpText = StringFormat("[ %s Mother Pivot | %.1fp | %s%s ]",
+        string mpText = StringFormat("[ %s Base | %.1fp | %s%s ]",
                                      TH3TfName(mp.tf), mpThickPips,
                                      (mp.mitigated ? "MITIGATED" : "FRESH"), mpFlip);
-        mpState = StringFormat("MP:%s %s%s", TH3TfName(mp.tf),
+        mpState = StringFormat("BASE:%s %s%s", TH3TfName(mp.tf),
                                (mp.mitigated ? "MIT" : "FRESH"), mpFlip);
         double mpMid = (mpTop + mpBot) / 2.0;
         // P-UI-97: the badge's ink is resolved where it is computed and then worn,
@@ -1156,14 +1153,14 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetString(0, mpBadge, OBJPROP_TEXT, mpText);
         }
     } else {
-        if(!inpShowMotherPivotZone) mpState = "MP:off";
-        else if(!mpActive) mpState = "MP:idle";
+        if(!inpShowNestedBaseZone) mpState = "BASE:off";
+        else if(!mpActive) mpState = "BASE:idle";
         // P-TH3-D4b: a miss on the ACTIVE pattern is logged with its own
         // inputs, so the log says whether D found no pivot or was never
         // allowed to look (off/idle/no-step). Rare path (one draw), not per tick.
-        if(inpShowMotherPivotZone && mpActive && atrBasis)
+        if(inpShowNestedBaseZone && mpActive && atrBasis)
         {
-            Print("TH3: no mother at D ", TimeToString(tD), " @ ",
+            Print("TH3: no nested base at D ", TimeToString(tD), " @ ",
                   DoubleToString(pD, Digits), " dirDown=", (dirDown ? "1" : "0"),
                   " tol=", DoubleToString(0.5 * baseUnit / pipSize, 1), "p",
                   " anchor=", TimeToString(mpAnchor));
@@ -1230,12 +1227,12 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // ruler = the pattern's own span |D-A| (a base farther than the pattern
     // is long is another pattern's base). ONE dotted BACK line, origin bar
     // -> D at the origin price, plus an ORG token in the info state —
-    // no second badge (the clean-chart rule). Same TH3_MP_ prefix, same
+    // no second badge (the clean-chart rule). Same TH3_BASE_ prefix, same
     // delete discipline as the Tier-1 set above.
-    string mpOrg = "TH3_MP_" + mainObjName + "_Org";
+    string mpOrg = "TH3_BASE_" + mainObjName + "_Org";
     TH3PivotSix org;
     double orgSpan = MathAbs(pD - pA);   // P-TH3-D4: span measured to the placed D
-    bool orgShow = (inpShowMotherPivotZone && mpActive && atrBasis && orgSpan > 0
+    bool orgShow = (inpShowNestedBaseZone && mpActive && atrBasis && orgSpan > 0
                     && TH3OriginPivotAt(tD, pD, dirDown, orgSpan, mpAnchor, org));
     if(orgShow) {
         if(ObjectFind(0, mpOrg) < 0) {
@@ -1304,7 +1301,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     //   AB=CD | H1 | CD 18 bars          <- what this pattern IS
     //   AB 504p | BC 765p | CD 1200p     <- what its legs MEASURE
     //   Step 255.0p | K 3.0 | M0(0.4)    <- the LIVE number, on the accent row
-    //   (+ P-TH3-DISC discovery rows: prices, harmonic, mother, calc, lock,
+    //   (+ P-TH3-DISC discovery rows: prices, harmonic, base, rung, lock,
     //   ladder prices — nine rows until the formula locks)
     //
     // The rows are joined with "\n": the family owner wraps WITHIN a row (MT4's
@@ -1315,7 +1312,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     double stepPips = baseUnit / pipSize;
     // P-TH3-DISC (2026-10-05) — DISCOVERY ROWS, TEMPORARY. While the master
     // step formula is being found the caption carries every number the
-    // synthesis consumes: prices, ratios, mother, rung, calc stages, ladder
+    // synthesis consumes: prices, ratios, base, rung, calc stages, ladder
     // prices, mid steps, proof state. Ten short rows (each under the 63-char cliff, so
     // no row ever wraps); the plate measures off the rows as-is. Words are
     // spelled out (no cryptic codes) so an outside reader with no project
@@ -1337,17 +1334,21 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                                       uniRatio,
                                       uniK,
                                       (uniRatio > 0 ? CalculateFibonacciDeviation(uniRatio) : 0.0));
-    string rowMother = "Mother: none";
-    if(pbRaw > 0)
-        rowMother = StringFormat("Mother hand %.1fp", pbRaw / pipSize);
-    string rowCalc  = StringFormat("pattern %.1fp rung %.1fp uni %.1fp",
-                                   (CD_Distance / uniK) / pipSize,
+    string rowBase;
+    if(baseSize > 0)
+        rowBase = StringFormat("Base %.1fp | Pattern %.1fp | Step %.1fp",
+                               baseSize / pipSize,
+                               TH3StepPatternComponent(CD_Distance, uniRatio) / pipSize,
+                               stepPips);
+    else
+        rowBase = StringFormat("Base auto (TH) | Pattern %.1fp | Step %.1fp",
+                               TH3StepPatternComponent(CD_Distance, uniRatio) / pipSize,
+                               stepPips);
+    string rowCalc  = StringFormat("rung %.1fp | closed %.1fp",
                                    seedRung / pipSize,
-                                   baseUnit / pipSize);
-    string rowLock  = StringFormat("base %.1fp %s final %.1fp %s",
-                                   pbStep / pipSize,
+                                   (closedOK ? closedStep / pipSize : 0.0));
+    string rowLock  = StringFormat("lock %s | %s",
                                    (stepLocked ? "LOCKED" : "UNLOCKED"),
-                                   stepPips,
                                    (hitOK ? "proved" : "seed"));
     string rowLadder = StringFormat("Targets T1 %s T3 %s T5 %s T7 %s",
                                     DoubleToString(targetLevels[0], Digits),
@@ -1361,9 +1362,9 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     string rowLive;
     if(atrBasis) {
         rowLive = StringFormat("Step %.1fp", stepPips);
-        if(mlMotherSize > 0) {
-            mlRatio = baseUnit / mlMotherSize;
-            rowLive += StringFormat(" | momleg %.2f", mlRatio);
+        if(mlBaseLeg > 0) {
+            mlRatio = baseUnit / mlBaseLeg;
+            rowLive += StringFormat(" | baseleg %.2f", mlRatio);
         }
     } else {
         rowLive = StringFormat("Step %.1f%% | freq", frequency);
@@ -1380,7 +1381,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     int rowY    = inpABCDInfoYDistance;
     int infoLines = TH3InfoFamilyDraw(mainObjName,
                                        rowIdentity + "\n" + rowLegs + "\n" + rowPrices + "\n" +
-                                       rowHarmonic + "\n" + rowMother + "\n" + rowCalc + "\n" +
+                                       rowHarmonic + "\n" + rowBase + "\n" + rowCalc + "\n" +
                                        rowLock + "\n" + rowLadder + "\n" + rowMid + "\n" + rowLive,
                                        isActive, rowY);
     // P-TH3-INFO-13: a redraw that TOUCHED the active family re-arms its

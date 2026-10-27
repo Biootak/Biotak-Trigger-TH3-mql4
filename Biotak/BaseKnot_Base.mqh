@@ -833,6 +833,38 @@ string BaseKnotTFName(const int tfMin)
    if(tfMin == 43200) return "MN1";
    return IntegerToString(tfMin) + "m";
 }
+//+------------------------------------------------------------------+
+//| P-BK-129 (2026-10-27, user: «این 700 m به ساعت و دقیقه و غیره      |
+//| بنویس که سریع بفهمیم») — THE DISPLAY SPELLING OF A TF.            |
+//|                                                                  |
+//| `BaseKnotTFName` is the MACHINE spelling and stays it: the        |
+//| `[BK-KNOT] readTF=` / `nodeTF=` witness fields, the shot's CSV    |
+//| and every tool that parses them read that one. This is the other  |
+//| half — what a READER sees on the note and in its hover:           |
+//|                                                                  |
+//|   700  -> "11h40m"    (the user's own row: 35 bars x 20m)         |
+//|   235  -> "3h55m"     2000 -> "1d9h20m"     20 -> "20m"           |
+//|   15 / 240 / 1440 -> "M15" / "H4" / "D1" (a rung keeps its name:  |
+//|   "15m" would read as a length, not as the rung it is)            |
+//|                                                                  |
+//| The rung list is NOT copied here: it asks BaseKnotTFName and only |
+//| converts an answer that came back as "<n>m", so a rung added there|
+//| can never be spelled two ways, and a box on an off-ladder TF (a   |
+//| base's SPAN is `still x commitTF`, so 700m is a real row) reads   |
+//| as the clock it is instead of a number nobody can size.            |
+//+------------------------------------------------------------------+
+string BaseKnotTFHuman(const int tfMin)
+{
+   if(tfMin <= 0) return BaseKnotTFName(tfMin);              // "all TFs" — the absence
+   string nm = BaseKnotTFName(tfMin);
+   if(nm != IntegerToString(tfMin) + "m") return nm;         // a ladder rung already reads short
+   int d = tfMin / 1440, h = (tfMin % 1440) / 60, m = tfMin % 60;
+   string s = "";
+   if(d > 0) s += IntegerToString(d) + "d";
+   if(h > 0) s += IntegerToString(h) + "h";
+   if(m > 0) s += IntegerToString(m) + "m";
+   return s;
+}
 // ONE live tooltip language for box + edges (TV Coordinates/Visibility tabs
 // live here in MT4: drag edits coords natively, visibility is automatic).
 // Coords · TF-scope · user text · risk numbers — nothing unreachable.

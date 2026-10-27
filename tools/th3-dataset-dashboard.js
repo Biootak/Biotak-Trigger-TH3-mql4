@@ -417,11 +417,11 @@ const LABELS = {
   Sample_ID: 'شماره نمونه', Capture_Date: 'تاریخ ثبت', Capture_Clock: 'ساعت ثبت',
   Capture_Stamp: 'مهر زمانی', Symbol: 'نماد', TF: 'تایم‌فریم', Owner_TF: 'تایم‌فریم مالک',
   Pattern: 'الگو', Direction: 'جهت', D_Time: 'زمان D', D_Price: 'قیمت D',
-  Digits: 'ارقام', Pip_Size: 'اندازه پیپ', Mother_Pips: 'مادر (پیپ)',
+  Digits: 'ارقام', Pip_Size: 'اندازه پیپ', Mother_Pips: 'بیس (پیپ)',
   Rung_Pips: 'رانگ تایم‌فریم (پیپ)',
   Leg_AB: 'پای AB', Leg_BC: 'پای BC', Leg_CD: 'پای CD',
   Ratio_BC_AB: 'نسبت BC/AB', Ratio_CD_BC: 'نسبت CD/BC', K: 'ضریب K',
-  Step_Mother: 'گام مادر', Step_Pattern: 'گام الگو', Step_Pips: 'گام نهایی (پیپ)',
+  Step_Mother: 'گام بیس', Step_Pattern: 'گام الگو', Step_Pips: 'گام نهایی (پیپ)',
   Target_1: 'هدف ۱', Target_3: 'هدف ۳', Target_5: 'هدف ۵', Target_7: 'هدف ۷',
   Actual_Turn: 'واکنش واقعی بازار', Error_Pips: 'خطا (پیپ)', Rungs_Hit: 'رانگ‌های لمس‌شده',
   Folder: 'پوشه', Log_File: 'فایل لاگ', Screenshot: 'تصویر',
@@ -485,7 +485,7 @@ function card(s) {
     cell('AB / BC / CD', fmt(s.Legs[0]) + ' / ' + fmt(s.Legs[1]) + ' / ' + fmt(s.Legs[2]) + ' پیپ') +
     cell('نسبت CD/BC', fmt(s.Ratio_CD_BC, 3) + '  (K ' + fmt(s.K, 2) + ')') +
     cell('گام نهایی', '<b>' + fmt(s.Step) + '</b> پیپ') +
-    cell('مادر', fmt(s.Mother_Pips) + ' پیپ') +
+    cell('بیس', fmt(s.Mother_Pips) + ' پیپ') +
     cell('رانگ‌ها', s.Rungs_Hit || '—') +
     cell('واکنش بازار', s.Turn === null ? '—' : String(s.Turn)) +
     cell('خطا', '<span class="err" style="color:' + errColor + '">' +

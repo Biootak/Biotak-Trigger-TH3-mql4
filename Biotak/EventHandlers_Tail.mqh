@@ -59,7 +59,10 @@ void HotkeyAudit()
    keys[n] = inpTriggerLevelsKey;names[n] = "Trigger levels";   n++;
    keys[n] = inpStepModeKey;     names[n] = "Step mode";        n++;
 #ifndef BUILD_LITE
-   keys[n] = inpTH3ToolKey;      names[n] = "TH3 tool";         n++;
+   // TH3TOOL-OFF (2026-10-24): the V key no longer arms anything, so the conflict
+   // table must not advertise it either — a registered-but-dead key is the same
+   // lie as a ring button that draws nothing.
+   //keys[n] = inpTH3ToolKey;      names[n] = "TH3 tool";         n++;
    keys[n] = inpHTFKey;          names[n] = "HTF candles";      n++;
 #endif
    keys[n] = inpATRLabelsKey;    names[n] = "ATR labels";       n++;

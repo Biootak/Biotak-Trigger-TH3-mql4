@@ -191,7 +191,8 @@ void OnDeinitHandler(const int reason) {
         ObjectsDeleteAll(0, "TH3_Structure_");
 #ifndef BUILD_LITE
         ObjectsDeleteAll(0, TH3_PATTERN_PREFIX);  // Clean up AB=CD pattern objects
-        ObjectsDeleteAll(0, "TH3_MP_");            // P-TH3-P6e: mother-pivot overlay (own prefix)
+        ObjectsDeleteAll(0, "TH3_BASE_");          // P-TH3-BASE-01: the nested-base overlay (own prefix)
+        ObjectsDeleteAll(0, "TH3_MP_");            // P-TH3-BASE-01: the same overlay under its OLD prefix — a chart drawn by a previous build must not keep a second zone
         ObjectsDeleteAll(0, TH3_TEMP_PREFIX);     // Clean up any temp drawing objects
         // P-LM-01c: the leg-measure family (line + arrow + plate + its 3 lines)
         // rides its own namespace, so removing the indicator removes all six

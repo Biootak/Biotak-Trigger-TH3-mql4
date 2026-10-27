@@ -299,9 +299,12 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
    // P-LEGATR: an explicit anchor (knot as-of reads) always wins. A live read
    // with the switch ON resolves to the leg anchor; OFF or no CP found = live.
    datetime eff = anchor;
-   // P-ANCHOR-LAST: the LAST OBJECT switch is the chart-wide read, so it wins
-   // over the older P-LEGATR source; an explicit per-box anchor still wins over both.
-   if(eff <= 0 && CalcAnchorAt() <= 0 && inpUseLegATR) eff = TradePlanLegAnchor(tfMinutes);
+   // P-ANCHOR-LAST (2026-10-27, DELIBERATE): the LAST OBJECT switch has NO vote here.
+   // It used to stand in this guard, so pressing it picked the plan's ATR source and
+   // re-stepped the drawn levels — the one thing it must never move. A label lever
+   // moves labels. An explicit per-box anchor (P-BK-79) still wins over P-LEGATR; the
+   // chart-wide switch is not a source selector at all.
+   if(eff <= 0 && inpUseLegATR) eff = TradePlanLegAnchor(tfMinutes);
    double atr = (eff > 0 ? CalculateWeightedATRAt(tf, eff) : CalculateWeightedATR(tf));
    if(!MathIsValidNumber(atr) || atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;

@@ -218,7 +218,7 @@ void UpdateAllTH3Objects() {
 //+------------------------------------------------------------------+
 //| P-TH3-D4h — RESTORE ON ATTACH. Chart objects outlive the in-     |
 //| memory store: after a remove/re-add the patterns sit on the chart |
-//| drawn by the OLD build (no ray, no LP token, MP:idle) and        |
+//| drawn by the OLD build (no ray, no LP token, BASE:idle) and        |
 //| UpdateAllTH3Objects walks an EMPTY store, so nothing ever        |
 //| repaints them — every reload looks like "the fix did nothing".   |
 //| This reads each registered base's own anchors (Line_AB, Line_BC, |
@@ -226,7 +226,7 @@ void UpdateAllTH3Objects() {
 //| the draw+build, same as a fresh completion), re-registers the    |
 //| model and redraws with the CURRENT code. Active is set BEFORE    |
 //| the draws (the CompletePattern rule) so the newest pattern's     |
-//| mother overlay paints on the first pass. Returns the count.      |
+//| base overlay paints on the first pass. Returns the count.        |
 //+------------------------------------------------------------------+
 int TH3RestorePatternsFromChart()
 {

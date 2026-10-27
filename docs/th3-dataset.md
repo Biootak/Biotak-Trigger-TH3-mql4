@@ -42,12 +42,17 @@ folder and into the global index, so the two cannot drift.
 | who/when | `Sample_ID`, `Capture_Date`, `Capture_Clock`, `Capture_Stamp`, `Symbol`, `TF`, `Owner_TF`, `Pattern`, `Direction` |
 | the structure | `D_Time`, `D_Price`, `Digits`, `Pip_Size`, `Mother_Pips`, `Leg_AB`, `Leg_BC`, `Leg_CD`, `Ratio_BC_AB`, `Ratio_CD_BC`, `K` |
 
-`Rung_Pips` (the TF rung) is an **input** of the formula — it decides whether the
-mother is a macro span — so a dataset meant to tune that formula has to carry it.
+`Rung_Pips` (the TF rung) is an **input** of the formula — it is the base
+component's fallback when no base was typed — so a dataset meant to tune that
+formula has to carry it.
 It is the 34th and last column, appended so every earlier index stays where it was.
 | the formula | `Step_Mother`, `Step_Pattern`, `Step_Pips`, `Target_1`, `Target_3`, `Target_5`, `Target_7`, `Rung_Pips` |
 | the market | `Actual_Turn`, `Error_Pips`, `Rungs_Hit` |
 | the files | `Folder`, `Log_File`, `Screenshot` |
+
+P-TH3-BASE-01: `Mother_Pips` carries the typed **base range** and `Step_Mother`
+its component, both 1:1 — the names are a stored-data contract and stay, the
+meaning is what changed (there is no division by 3 anywhere in the formula).
 
 `Reviews.csv` is deliberately **not** a column of that row: a verdict is a human
 judgement that changes (`real → unclear → invented`), so it lives beside the
@@ -86,13 +91,13 @@ pretends to is worse than none). The sample counter is a chart-scoped
 
 ### Tuning K
 
-`th3-tune-k.js` ports the shipped formula (`TH3Pivots_B.mqh:405-430`) and searches
+`th3-tune-k.js` ports the shipped formula (`TH3Pivots_B.mqh:380-414`) and searches
 K over the samples you marked **real**, scoring each candidate by the recorder's
 own measure — the distance from the actual turn to the **third** rung, in pips. It
 reports the current tiers scored the same way, the best K, the best K per ratio
 band (the shape `TH3UnifiedK` should have), and it refuses to look clever: it warns
 when the winner sits on the search boundary, when rows have no `Rung_Pips` (the
-mother is then recovered from `step²·K/legCD`), and when many rows are really one
+base component is then recovered from `step²·K/legCD`), and when many rows are really one
 structure — the exact trap the first twenty samples fell into.
 
 `review` writes the verdict, appends a timestamped line to `journal.md`, and

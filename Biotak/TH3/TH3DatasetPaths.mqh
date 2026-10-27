@@ -195,14 +195,14 @@ void TH3DatasetHeader(string &cols[])
    cols[10] = "D_Price";
    cols[11] = "Digits";
    cols[12] = "Pip_Size";
-   cols[13] = "Mother_Pips";
+   cols[13] = "Mother_Pips";        // P-TH3-BASE-01: the typed BASE range, in pips (1:1)
    cols[14] = "Leg_AB";
    cols[15] = "Leg_BC";
    cols[16] = "Leg_CD";
    cols[17] = "Ratio_BC_AB";
    cols[18] = "Ratio_CD_BC";
    cols[19] = "K";
-   cols[20] = "Step_Mother";
+   cols[20] = "Step_Mother";        // P-TH3-BASE-01: the base COMPONENT (TH3StepBaseComponent), not a /3 of it
    cols[21] = "Step_Pattern";
    cols[22] = "Step_Pips";
    cols[23] = "Target_1";
@@ -216,10 +216,13 @@ void TH3DatasetHeader(string &cols[])
    cols[31] = "Log_File";
    cols[32] = "Screenshot";
    // P-TH3-DB: the TF rung (TH3PatternStepRungTF) is an INPUT of the formula —
-   // it decides whether the mother is a macro span — and the dataset that exists
-   // to tune the formula has to carry it, or a tuner can only guess. Appended
-   // last so every column index already pinned and every tool that reads by
-   // position stays exactly where it was.
+   // it is the base component's fallback when the hand entered nothing — and the
+   // dataset that exists to tune the formula has to carry it, or a tuner can
+   // only guess. Appended last so every column index already pinned and every
+   // tool that reads by position stays exactly where it was.
+   // P-TH3-BASE-01: the two Mother_* NAMES stay. They are a stored-data
+   // contract (every sample on disk carries this header, and four tools read
+   // them by name); the meaning is stated beside them, above.
    cols[33] = "Rung_Pips";
 }
 

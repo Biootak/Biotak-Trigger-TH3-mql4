@@ -108,6 +108,10 @@ def read_text(path):
 
 EXPECT_MARK = "[dsdiag] EXPECT"
 CENSUS_MARK = "[drawstrip] TABCENSUS"
+# P-BK-126f: the knot's own derivation line. It is neither an EXPECT nor a CENSUS line,
+# so it is NOT part of a panel frame — `split_frames` skips it and the reader prints the
+# newest few in their own block below the frame.
+KNOT_MARK = "[BK-KNOT]"
 
 
 def split_frames(body):
@@ -218,6 +222,17 @@ def main():
         print("-" * 78)
         subprocess.call(sub)
         print("-" * 78)
+    # --- P-BK-126f: the KNOT witness is not a panel frame — it is not an EXPECT/TABCENSUS
+    # --- line, so the frame view above can never show it (`split_frames` drops it on
+    # --- purpose: a knot line belongs to no panel open). It gets its own tail, in FILE
+    # --- order, because two of them are read as a PAIR: a drag, then its result.
+    knots = [ln for ln in body if ln.startswith(KNOT_MARK)]
+    if knots:
+        tail = knots[-4:]
+        print("  knot   : %d [BK-KNOT] line(s) in this file; the last %d, newest last"
+              % (len(knots), len(tail)))
+        for ln in tail:
+            print(ln)
     print("-" * 78)
     # `shown[-0:]` is the WHOLE list, not an empty tail — say what was asked for.
     for ln in (shown[-args.lines:] if args.lines > 0 else []):

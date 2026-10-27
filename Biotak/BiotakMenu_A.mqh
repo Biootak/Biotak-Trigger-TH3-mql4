@@ -139,7 +139,7 @@
 //--- (extra stars, then the door, still LAST) at 32px on an outer circle IN THE ROW'S
 //--- GAPS — the last n2 gaps before 12 at the inner pitch (P-UI-195b).
 #define CIRC_RING1_SEATS    9
-#define CIRC_RING2_BTN_SIZE 32
+#define CIRC_RING2_BTN_SIZE 44
 //--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the
 //--- hand really drag?» and «has the orb moved far enough to be worth saving?» — so a short
 //--- but deliberate drag moved nothing and stored nothing, and the next repaint put the orb

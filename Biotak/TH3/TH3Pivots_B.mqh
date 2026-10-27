@@ -215,75 +215,31 @@ bool TH3RealDAt(const datetime tC, const double pC, const bool legDown,
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-LOCK (2026-09-19) — PATH 1 OF THE LOCKED STEP: THE NODE.   |
-//| The mother pivot whose node D collided with carries its own      |
-//| step: |key_line - node_edge| — the node's thickness itself. The  |
-//| matcher finds the mother, this reads its node. Returns 0 when no |
-//| mother answers (absence, never a guess). Pure domain.            |
+//| P-TH3-BASE-02 (2026-10-24) — TWO DEAD /3 READERS DELETED.        |
+//|                                                                  |
+//| `TH3NodeStepAt` (the node's own thickness as a step) and         |
+//| `TH3MacroSpanStep` (|D - wick| / 3) were both left behind by      |
+//| P-TH3-STEP-16 when it retired the fragmented synthesis: a grep of |
+//| the whole tree found the definitions and the harness pins, and no |
+//| caller in the product. They were the last place a step could be   |
+//| built by dividing, so they go with the division they carried.     |
+//| Their pins went with them (`macrospan:` in Biotak_TH3_Test.mq4).  |
 //+------------------------------------------------------------------+
-double TH3NodeStepAt(const datetime tRef, const double pRef, const bool wantHigh,
-                     const double tol, TH3PivotSix &out,
-                     const datetime anchorTime = 0,
-                     const double refStep = 0.0,
-                     const bool allowFlip = false,
-                     const double launchAnchorPrice = 0.0)
-{
-    // P-TH3-STEP-12b (2026-09-21) — ONE matcher, ONE set of parameters.
-    // The synthesis used to call this with every optional at its default
-    // (no anchor, no refStep, no flip) while the mother-zone drawing on the
-    // same D called TH3MotherPivotAt with anchor=A, refStep=closedStep,
-    // allowFlip=true and the A-origin leg. Two matchers for one concept with
-    // different gates can only disagree: the chart drew a mother the formula
-    // reported as zero — the user's «مادر صفر» while a blue box sat on the
-    // chart. Every caller now hands in the same terms, so a mother the chart
-    // draws is a mother this measures, and vice versa.
-    // P-TH3-STEP-13b: a MISS clears `out` (valid=false). The matcher only
-    // writes `out` on a hit, so without this the caller's struct keeps its
-    // garbage and TH3MacroSpanStep reads a phantom wick (the caption's giant
-    // digit rows on XAUUSD M15).
-    if(!TH3MotherPivotAt(tRef, pRef, wantHigh, tol, out,
-                         anchorTime, refStep, allowFlip, launchAnchorPrice))
-    {
-        out.valid = false; out.time = 0; out.price = 0; out.keyPrice = 0;
-        return 0.0;
-    }
-    double s = MathAbs(out.price - out.keyPrice);
-    return (s > 0 ? s : 0.0);
-}
-
-//+------------------------------------------------------------------+
-//| P-TH3-STEP-13 — MACRO SPAN: WICK, NOT BODY.                       |
-//| The unified formula: Step = |collision - wick extremum| / k. The  |
-//| pivot's extreme is out.price (the wick tip); keyPrice is the body |
-//| line (cond-4). XAUUSD M15: body 4363 vs wick 4344 — 19 pips of    |
-//| lie when the body is read. |D - price|/3 = 1020/3 = 340 pips.     |
-//| Pure domain: numbers in, one number out. Pinned `macrospan:` in   |
-//| Biotak_TH3_Test.mq4.                                              |
-//+------------------------------------------------------------------+
-double TH3MacroSpanStep(const double pRef, const TH3PivotSix &mp)
-{
-    if(pRef <= 0 || !mp.valid || mp.price <= 0) return 0.0;
-    double span = MathAbs(pRef - mp.price);
-    // Garbage guard: a span between two positive prices is always below the
-    // bigger one — a phantom wick (uninitialised struct) reads astronomic.
-    if(span <= 0 || span >= pRef) return 0.0;
-    return span / 3.0;
-}
 
 //+------------------------------------------------------------------+
 //| P-TH3-PB-MAN (2026-09-21) — THE HAND-TYPED BASE, AS A PRICE.    |
-//| The pivot base is no longer DRAWN (P-TH3-PB's stage 5 is retired): |
-//| the user types its height in the TH3 TOOL card, in pips, and this |
-//| is the ONE owner that turns that number into Path 1 of            |
-//| TH3LockedStep. 0 (or a dead pip size) answers 0 — absence, never  |
-//| a guess — and the caller keeps its own seed (the pattern TF's own |
-//| ATR). Pure domain: numbers in, one number out, no objects touched.|
-//|                                                                    |
-//| P-TH3-PB-RET8 (2026-09-22) — NO DIVISION HERE ANY MORE.           |
-//| The typed number is a RETRACE, not a three-step leg: the user      |
-//| marks a correction and that correction is already near the step,   |
-//| so this answers the RAW price (pips x pip size). The 8-state       |
-//| reading lives in TH3RetraceBestStep below — this stays the source. |
+//| The base is no longer DRAWN (P-TH3-PB's stage 5 is retired): the  |
+//| user types its height in the TH3 TOOL card, in pips, and this is  |
+//| the ONE owner that turns that number into a price. 0 (or a dead   |
+//| pip size) answers 0 — absence, never a guess — and the caller     |
+//| keeps its own seed (the pattern TF's own TH rung). Pure domain:   |
+//| numbers in, one number out, no objects touched.                   |
+//|                                                                   |
+//| P-TH3-BASE-01 (2026-10-24) — THE CONVERSION IS THE WHOLE STORY.   |
+//| `pips x pip size`, nothing else: the number the trader enters is  |
+//| the base metric the formula consumes (CalculateUnifiedMasterStep, |
+//| step 1). The 8-state retrace reading in TH3RetraceBestStep below  |
+//| is still measured, and is never applied to this value.            |
 //+------------------------------------------------------------------+
 double TH3ManualBaseStep(const double basePips, const double pipSize)
 {
@@ -395,12 +351,31 @@ bool TH3RetraceBestStep(const double retracePrice, const double refStep,
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-STEP-16 (2026-10-05) — THE UNIFIED EQUATION. One formula, no  |
-//| branches: the hand-marked mother (B, mandatory anchor) and the ABCD  |
-//| leg resonate geometrically. Replaces the fragmented synthesis       |
-//| (CalculateMultiFactorStep + macro override + lock + proof override, |
-//| retired this same commit with their pins). Pure domain: numbers in, |
-//| one number out.                                                      |
+//| P-TH3-BASE-01 (2026-10-24) — THE UNIFIED EQUATION, BASE AT 1:1.  |
+//|                                                                  |
+//| The market is nested bases at different fractal tiers, and the    |
+//| trader's Base measurement is one of them. Whatever dimension the  |
+//| hand enters IS the base metric — 1:1, no division, no gate.       |
+//|                                                                  |
+//| RETIRED with this commit: `motherPivotInput >= 2.5 * thRung ?     |
+//| input/3 : input`. That branch turned 46p into a 46p step and 47p  |
+//| into 47/3 = 15.7p — a 42% cliff between two neighbouring numbers, |
+//| with nothing in the market at the boundary to justify it.         |
+//|                                                                  |
+//|   Step_base    = BaseInput        (1:1; the TH rung when the hand |
+//|                                    entered nothing — absence,     |
+//|                                    never a guess)                 |
+//|   Step_pattern = |CD| / K         (K = the leg's retrace class)   |
+//|   Step*        = sqrt(base x pattern)   geometric resonance       |
+//|                                                                  |
+//| Continuous by construction: the step moves with the SQUARE ROOT   |
+//| of the base, so 46p -> 47p is +2.17% on the base and +1.08% on    |
+//| the step — monotone, and there is no branch left to fall off.     |
+//|                                                                  |
+//| The two components are functions of their own because TH3Recorder |
+//| writes both as dataset columns: one owner of each arithmetic,     |
+//| never a second copy (the /3 had survived there once already).     |
+//| Pure domain: numbers in, one number out.                          |
 //+------------------------------------------------------------------+
 double TH3UnifiedK(const double ratio)
 {
@@ -410,22 +385,30 @@ double TH3UnifiedK(const double ratio)
    return 1.0;   // major extension: the leg itself is the unit
 }
 
-double CalculateUnifiedMasterStep(const double legCD, const double ratio,
-                                  const double motherPivotInput, const double thRung)
+// Step 1 of the formula: the base component, exactly as the trader entered it.
+double TH3StepBaseComponent(const double baseInput, const double thRung)
 {
-   // 1. Mother Pivot Component (Mandatory Anchor)
-   // If input is macro span (>= 2.5 * thRung), divide by 3; otherwise it is knot size:
-   double step_mother = (motherPivotInput >= 2.5 * thRung) ? (motherPivotInput / 3.0) : motherPivotInput;
-   if(step_mother <= 0) step_mother = thRung; // fallback guard only
+   if(baseInput > 0.0) return baseInput;   // 1:1 — the hand's own number
+   return (thRung > 0.0) ? thRung : 0.0;   // nothing entered: the fractal rung
+}
 
-   // 2. ABCD Pattern Component
+// Step 2 of the formula: the leg quantised by its own retrace class.
+double TH3StepPatternComponent(const double legCD, const double ratio)
+{
+   if(legCD <= 0.0) return 0.0;
    double k = TH3UnifiedK(ratio);
+   return (k > 0.0) ? (legCD / k) : legCD;
+}
 
-   double step_pattern = legCD / k;
+// Step 3: the two components resonate. One formula, every chart.
+double CalculateUnifiedMasterStep(const double legCD, const double ratio,
+                                  const double baseInput, const double thRung)
+{
+   double step_base    = TH3StepBaseComponent(baseInput, thRung);
+   double step_pattern = TH3StepPatternComponent(legCD, ratio);
 
-   // 3. THE UNIFIED GEOMETRIC RESONANCE (one single formula for ALL charts):
-   double finalStep = MathSqrt(step_mother * step_pattern);
-   if(finalStep <= 0.0) finalStep = (step_pattern > 0) ? step_pattern : thRung;
+   double finalStep = MathSqrt(step_base * step_pattern);
+   if(finalStep <= 0.0) finalStep = (step_pattern > 0.0) ? step_pattern : thRung;
 
    return finalStep;
 }
@@ -441,7 +424,7 @@ double CalculateUnifiedMasterStep(const double legCD, const double ratio,
 //|                                                                    |
 //| P-TH3-PB-MAN (2026-09-21): NOTHING IS DRAWN ANY MORE. Path 1 is   |
 //| the hand-typed base (`TH3ManualBaseStep` above, from               |
-//| `inpTH3PivotBasePips`); the caller passes nodeStep = 0 — the      |
+//| `inpTH3BaseRangePips`); the caller passes nodeStep = 0 — the      |
 //| detector's own candidate no longer answers here. The function      |
 //| itself is unchanged (numbers in, one number out), so the pins      |
 //| below still hold whatever the source of pbStep is.                 |
@@ -543,7 +526,7 @@ bool TH3LockedStep(double &step, string &how, bool &locked,
 //| a base <= 6 legs back hits 7.6/11.1/4.7% against a shuffle's     |
 //| 10.2/12.6/9.2% (sign 2/9, 2/10, 1/11) — below chance on all TFs. |
 //| Stated limit: bare extremes, not node zones with touches/launch  |
-//| (the mother matcher tests that richer claim and is untouched).   |
+//| (the nested-base matcher tests that richer claim and is untouched).
 //+------------------------------------------------------------------+
 int TH3LadderMilestone(const datetime tC, const double pC, const bool ladderUp,
                        const double step, double &retraceOut)

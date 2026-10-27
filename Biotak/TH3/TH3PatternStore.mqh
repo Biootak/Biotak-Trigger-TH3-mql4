@@ -105,7 +105,7 @@ bool TH3PatternBuild(const string name,
     out.bullish = (pB > pA);
     out.frequency = 0; // set by caller (auto-selected or override)
     // P-TH3-PB-OFF (2026-09-21): the drawn base is retired — a fresh model
-    // carries none, and Path 1 comes from `inpTH3PivotBasePips` instead.
+    // carries none, and Path 1 comes from `inpTH3BaseRangePips` instead.
     out.pivotBaseTop = 0;
     out.pivotBaseBottom = 0;
 

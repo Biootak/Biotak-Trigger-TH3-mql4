@@ -69,9 +69,34 @@
 //+------------------------------------------------------------------+
 static uint g_CircStarMask = CIRC_STAR_DEFAULT;
 
+//| TH3TOOL-OFF (2026-10-24) — A RETIRED CELL KEEPS ITS INDEX AND LOSES |
+//| ITS SEAT. The user's order: «ابزار th3tool … کامنت بشه … فعلا نمیخوام |
+//| توی محصول اصلی باشه» with the scope «فقط ABCD، لگ‌متر بماند» and the   |
+//| constraint «حذف نمیخوام کامنت بشه بعد شاید بخوام روش کار بکنم».       |
+//|                                                                    |
+//| So the ABCD drawing tool leaves the SHIPPED PRODUCT without a line   |
+//| of its code leaving the repo: this one predicate answers "is this    |
+//| catalog cell on sale?" and every seat/star reader below asks it.     |
+//|                                                                    |
+//| WHY THE READER AND NOT THE MASK. `CIRC_STAR_DEFAULT` is pinned       |
+//| verbatim by the regression gate and by a mutation entry, and the     |
+//| saved "STAR" key carries the user's own bits — rewriting either      |
+//| would destroy membership the user can still want the day this cell   |
+//| comes back. A retired bit is simply IGNORED here: the mask keeps     |
+//| bit 13, the ring and the Tools grid both skip it, and re-enabling    |
+//| is `return false;` -> `return (cat == CAT_TH3);` inverted, nothing   |
+//| to migrate. Indices never move, so no persisted key and no object    |
+//| name is orphaned (CAT_COUNT stays 16 — the gate's own number).       |
+//+------------------------------------------------------------------+
+bool CircCatRetired(const int cat)
+{
+   return (cat == CAT_TH3);   // [TH3-TOOLS-DISABLED] ABCD drawing tool: parked, not deleted
+}
+
 bool CircCatStarred(const int cat)
 {
    if(cat < 0 || cat >= CAT_COUNT) return false;
+   if(CircCatRetired(cat)) return false;   // TH3TOOL-OFF: a retired cell can never hold a seat
    return ((g_CircStarMask >> cat) & 1) != 0;
 }
 
@@ -80,6 +105,7 @@ bool CircCatStarred(const int cat)
 bool CircStarSet(const int cat, const bool on)
 {
    if(cat < 0 || cat >= CAT_COUNT) return false;
+   if(CircCatRetired(cat)) return false;   // TH3TOOL-OFF: no star, so the ring cannot re-seat it
    bool was = CircCatStarred(cat);
    if(on) g_CircStarMask |=  (1 << cat);
    else   g_CircStarMask &= ~(1 << cat);
@@ -114,6 +140,39 @@ int CircStarCount()
    for(int c = 0; c < CAT_COUNT; c++)
       if(CircCatStarred(c)) n++;
    return n;
+}
+
+//| TH3TOOL-OFF (2026-10-24) — THE CELL SLOT, so a retired cell leaves |
+//| no hole. The Tools grid lays its tiles on `k = i` (the catalog      |
+//| index IS the screen slot). Retiring index 13 in place would punch   |
+//| a 46px gap in the middle of the grid — the exact kind of thing the  |
+//| user reports («یه جای خالی افتاده»), so the grid counts SLOTS, not  |
+//| catalog indices: every non-retired cell keeps its order and closes  |
+//| the gap. The index is still the cell's identity everywhere else     |
+//| (object names, the star bit, the card number) — only the POSITION   |
+//| is remapped, and only here.                                        |
+//|                                                                    |
+//| -1 = "this catalog entry has no slot" (retired): the callers park  |
+//| it, which is exactly what SubItemOnPage already does for a cell on |
+//| a page that is not shown.                                          |
+//+------------------------------------------------------------------+
+int CircCellCount()
+{
+   int n = 0;
+   for(int c = 0; c < CAT_COUNT; c++)
+      if(!CircCatRetired(c)) n++;
+   return n;
+}
+
+// The catalog index -> its grid slot (0-based, dense), or -1 when retired.
+int CircCatCell(const int cat)
+{
+   if(cat < 0 || cat >= CAT_COUNT) return -1;
+   if(CircCatRetired(cat))         return -1;
+   int cell = 0;
+   for(int c = 0; c < cat; c++)
+      if(!CircCatRetired(c)) cell++;
+   return cell;
 }
 
 // The seat-th STARRED catalog item (ascending), or -1 when out of range.

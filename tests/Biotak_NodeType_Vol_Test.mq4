@@ -121,6 +121,8 @@ void NvCheck(const string label, const bool ok)
 //--- THE SHIPPED RULE, STATED INDEPENDENTLY. The ladder's minutes and the √-law come from the
 //--- ONE owner's own table (a mirror cannot own them), but the band arithmetic, the order the
 //--- comparisons are applied in and the ≤ / > at each edge are what this run exists to check.
+//--- P-BK-128: each edge is the RATIO midpoint of the two abilities it separates, √(a·b) —
+//--- (a+b)/2 is "nearest" only for an additive ladder, and these rungs grow x1.73 / x2.00.
 int NvType(const int nodeTF, const double hPips, const double atrPips)
 {
    if(hPips <= 0.0 || atrPips <= 0.0) return BK_NODE_NONE;
@@ -130,17 +132,18 @@ int NvType(const int nodeTF, const double hPips, const double atrPips)
    double trig = atrPips;
    double pat  = atrPips * MathSqrt((double)up1 / (double)nodeTF);
    double str  = pat      * MathSqrt((double)up2 / (double)up1);
-   if(hPips <= (trig + pat) * 0.5) return BK_NODE_FTR;
-   if(hPips <= (pat  + str)  * 0.5) return BK_NODE_ETR;
-   if(hPips <= str)                 return BK_NODE_CTR;
+   if(hPips <= MathSqrt(trig * pat)) return BK_NODE_FTR;
+   if(hPips <= MathSqrt(pat  * str)) return BK_NODE_ETR;
+   if(hPips <= str)                  return BK_NODE_CTR;
    return BK_NODE_OTR;
 }
-// the three band edges of one node rung, in RATIOS of the ATR (magnitude-free)
+// the three band edges of one node rung, in RATIOS of the ATR (magnitude-free):
+//   FTR/ETR = √(1 x s1), ETR/CTR = √(s1 x s1·s2), CTR/OTR = s1·s2  (s1, s2 the two √-law steps)
 double NvRatioFtrEtr(const int nodeTF)
 {
    int up1 = BaseKnotNextTFMin(nodeTF);
    if(up1 <= 0) return 0.0;
-   return 0.5 * (1.0 + MathSqrt((double)up1 / (double)nodeTF));
+   return MathSqrt(MathSqrt((double)up1 / (double)nodeTF));   // √(1 · s1)
 }
 double NvRatioEtrCtr(const int nodeTF)
 {
@@ -149,16 +152,16 @@ double NvRatioEtrCtr(const int nodeTF)
    if(up1 <= 0 || up2 <= 0) return 0.0;
    double s1 = MathSqrt((double)up1 / (double)nodeTF);
    double s2 = MathSqrt((double)up2 / (double)up1);
-   return 0.5 * (s1 + s1 * s2);
+   return s1 * MathSqrt(s2);                                  // √(s1 · s1·s2)
 }
-double NvRatioCtrOtr(const int nodeTF)   // CTR's own ceiling
+double NvRatioCtrOtr(const int nodeTF)   // CTR's own ceiling: the structure ability itself
 {
    int up1 = BaseKnotNextTFMin(nodeTF);
    int up2 = (up1 > 0 ? BaseKnotNextTFMin(up1) : 0);
    if(up1 <= 0 || up2 <= 0) return 0.0;
    double s1 = MathSqrt((double)up1 / (double)nodeTF);
    double s2 = MathSqrt((double)up2 / (double)up1);
-   return s1 * s1 * s2;
+   return s1 * s2;   // P-BK-128: was s1*s1*s2, which probed a ceiling the rule never used
 }
 string NvName(const int kind)
 {
@@ -201,13 +204,13 @@ int OnStart()
    Print("[NODEVOLTEST]   node H1 (60) at ONE price, anchor ", TimeToString(an), ":");
    Print("[NODEVOLTEST]     calm    ATR ", DoubleToString(calmPips, 1), " pips -> bands ",
          DoubleToString(BaseKnotToPips(calmPat), 1), " / ", DoubleToString(BaseKnotToPips(calmStr), 1),
-         "  FTR<", DoubleToString(BaseKnotToPips((calmAtr + calmPat) * 0.5), 1),
-         " ETR<", DoubleToString(BaseKnotToPips((calmPat + calmStr) * 0.5), 1),
+         "  FTR<", DoubleToString(BaseKnotToPips(MathSqrt(calmAtr * calmPat)), 1),
+         " ETR<", DoubleToString(BaseKnotToPips(MathSqrt(calmPat * calmStr)), 1),
          " CTR<", DoubleToString(BaseKnotToPips(calmStr), 1));
    Print("[NODEVOLTEST]     violent ATR ", DoubleToString(violentPips, 1), " pips -> bands ",
          DoubleToString(BaseKnotToPips(vPat), 1), " / ", DoubleToString(BaseKnotToPips(vStr), 1),
-         "  FTR<", DoubleToString(BaseKnotToPips((vAtr + vPat) * 0.5), 1),
-         " ETR<", DoubleToString(BaseKnotToPips((vPat + vStr) * 0.5), 1),
+         "  FTR<", DoubleToString(BaseKnotToPips(MathSqrt(vAtr * vPat)), 1),
+         " ETR<", DoubleToString(BaseKnotToPips(MathSqrt(vPat * vStr)), 1),
          " CTR<", DoubleToString(BaseKnotToPips(vStr), 1));
    NvCheck("both markets answer their own band (the row is warm)", calmWarm && vWarm);
    NvCheck("the violent market's bands are the calm ones x 25 — ATR carries the volatility, TH did not",

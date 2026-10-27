@@ -257,8 +257,10 @@ int OnStart()
         Check("ret8: R<=0 refuses", !TH3RetraceBestStep(0.0, 90.0 * pip, 90.0 * pip, bS, bQ, bI));
     }
 
-    // P-TH3-STEP-16 (2026-10-05) — UNIFIED EQUATION PINS.
-    // sqrt(mother * pattern), numbers only (pip = 0.0001).
+    // P-TH3-BASE-01 (2026-10-24) — UNIFIED EQUATION PINS: THE BASE AT 1:1.
+    // sqrt(base * pattern), numbers only (pip = 0.0001). The pins that stood
+    // here encoded the `base >= 2.5*rung ? base/3 : base` branch; they are
+    // replaced by the law that branch was removed for.
     {
         const double pip = 0.0001;
         // 1. The K ladder, one owner: 0.85/1.20/1.80 tiers, major = 1.0.
@@ -269,31 +271,52 @@ int OnStart()
         CheckDouble("uni: K 1.50 -> 3.5", TH3UnifiedK(1.50), 3.5);
         CheckDouble("uni: K 1.80 -> 3.5", TH3UnifiedK(1.80), 3.5);
         CheckDouble("uni: K 2.50 -> 1.0", TH3UnifiedK(2.50), 1.0);
-        // 2. Macro mother (36 >= 2.5x10): 36/3=12, pattern 100/3: sqrt(400)=20.
-        CheckDouble("uni: macro mother sqrt(12*33.3)=20",
-                    CalculateUnifiedMasterStep(100.0 * pip, 1.0, 36.0 * pip, 10.0 * pip), 20.0 * pip);
-        // 3. Knot mother (20 < 2.5x10): sqrt(20*33.3).
-        Check("uni: knot mother geometric",
-              MathAbs(CalculateUnifiedMasterStep(100.0 * pip, 1.0, 20.0 * pip, 10.0 * pip)
-                      - MathSqrt(20.0 * 100.0 / 3.0) * pip) < 1e-9);
-        // 4. EURUSD,H1 measured (CD 51, mother 50.4, K 1.0): sqrt(50.4*51).
-        Check("uni: CD rides the mother rung",
+        // 2. THE BASE ENTERS 1:1. The old branch answered 36/3 = 12 here
+        //    (36 >= 2.5 x 10), so the step read sqrt(400) = 20p; it is now
+        //    sqrt(36 * 33.33) = 34.64p — the number the hand typed, honoured.
+        CheckDouble("uni: base enters 1:1, no /3",
+                    CalculateUnifiedMasterStep(100.0 * pip, 1.0, 36.0 * pip, 10.0 * pip),
+                    MathSqrt(36.0 * 100.0 / 3.0) * pip);
+        // 3. THE CLIFF IS GONE. On a 18.8p rung the old gate fired at
+        //    2.5 x 18.8 = 47p: 46p stayed 46 and 47p became 15.67 — a 42%
+        //    DROP between two neighbouring numbers. The step must now RISE.
+        double s46 = CalculateUnifiedMasterStep(100.0 * pip, 1.0, 46.0 * pip, 18.8 * pip);
+        double s47 = CalculateUnifiedMasterStep(100.0 * pip, 1.0, 47.0 * pip, 18.8 * pip);
+        Check("uni: 47p is not a cliff (the step rises)", s47 > s46);
+        // 2.17% more base is 1.08% more step — the sqrt's own half power, and
+        // monotone. (The old tree answered 0.583 here: a 42% drop.)
+        Check("uni: 46p -> 47p moves the step under 2%",
+              MathAbs(s47 - s46) / s46 < 0.02);
+        Check("uni: the step follows sqrt(base)",
+              MathAbs((s47 / s46) - MathSqrt(47.0 / 46.0)) < 1e-9);
+        // 4. EURUSD,H1 measured (CD 51, base 50.4, K 1.0): sqrt(50.4*51).
+        Check("uni: CD rides the base rung",
               MathAbs(CalculateUnifiedMasterStep(51.0 * pip, 3.37, 50.4 * pip, 37.4 * pip)
                       - MathSqrt(50.4 * 51.0) * pip) < 1e-9);
-        // 5. No mother: the rung stands in: sqrt(10*33.3).
-        Check("uni: absent mother falls back to rung",
+        // 5. No base: the rung stands in: sqrt(10*33.3).
+        Check("uni: absent base falls back to rung",
               MathAbs(CalculateUnifiedMasterStep(100.0 * pip, 1.0, 0.0, 10.0 * pip)
                       - MathSqrt(10.0 * 100.0 / 3.0) * pip) < 1e-9);
-        // 6. Major extension (ratio 2.0 -> K 1.0): the leg itself: sqrt(10*56).
-        Check("uni: major extension leg is the unit",
+        // 6. Major extension (ratio 2.0 -> K 1.0): the leg itself, base 1:1.
+        //    The old branch read 30/3 = 10 here; the base is now 30.
+        Check("uni: major extension keeps the base 1:1",
               MathAbs(CalculateUnifiedMasterStep(56.0 * pip, 2.0, 30.0 * pip, 10.0 * pip)
-                      - MathSqrt(10.0 * 56.0) * pip) < 1e-9);
+                      - MathSqrt(30.0 * 56.0) * pip) < 1e-9);
         // 7. Nothing at all answers 0 (the caller keeps its own fallback).
         Check("uni: empty inputs answer 0",
               CalculateUnifiedMasterStep(0.0, 0.0, 0.0, 0.0) == 0.0);
         // 8. Guard: no rung to stand in -> the pattern stands alone.
         CheckDouble("uni: dead rung falls back to pattern",
                     CalculateUnifiedMasterStep(100.0 * pip, 1.0, 0.0, 0.0), 100.0 * pip / 3.0);
+        // 9. THE COMPONENTS ARE OWNERS. The recorder writes both as dataset
+        //    columns, so they are pinned on their own — the /3 had survived
+        //    once already as a private copy in TH3Recorder.mqh.
+        CheckDouble("uni: base component is 1:1 AT the old gate",
+                    TH3StepBaseComponent(46.0 * pip, 18.8 * pip), 46.0 * pip);
+        CheckDouble("uni: base component falls back to the rung",
+                    TH3StepBaseComponent(0.0, 18.8 * pip), 18.8 * pip);
+        CheckDouble("uni: pattern component is leg/K",
+                    TH3StepPatternComponent(100.0 * pip, 1.0), 100.0 * pip / 3.0);
     }
 
     // P-TH3-STEP-16 §3 — THE SEVEN-RUNG LADDER, IN THE SPEC'S OWN ORDER.
@@ -368,9 +391,10 @@ int OnStart()
               hdr[22] == "Step_Pips" && hdr[27] == "Actual_Turn" && hdr[28] == "Error_Pips");
         Check("db: the row points at the folder its own files live in",
               hdr[30] == "Folder" && hdr[31] == "Log_File" && hdr[32] == "Screenshot");
-        // the TF rung gates the macro-span rule, so the row must carry it: a
+        // the TF rung is an input of the formula (the base component's own
+        // fallback when nothing was typed), so the row must carry it: a
         // dataset that omits an input cannot tune the formula that uses it
-        Check("db: the row carries the TF rung the formula divides by",
+        Check("db: the row carries the TF rung the formula falls back to",
               hdr[33] == "Rung_Pips");
         // one stray comma would shift every later column of the row
         Check("db: a comma cannot enter a CSV field",
@@ -382,21 +406,11 @@ int OnStart()
               TH3RecorderPath(TH3_DATASET_SHOTS, "Sample_001.png", false) == "Sample_001.png");
     }
 
-    // P-TH3-STEP-13 — MACRO SPAN: WICK, NOT BODY.
-    // Step = |D - piv.price| / 3. XAUUSD M15: D 4446, wick 4344 -> 1020/3 = 340.
-    // Body 4363 would lie by 19 pips (83/3 = 27.7 of error on the span).
+    // P-TH3-BASE-02 (2026-10-24) — THE MACRO-SPAN PINS ARE GONE.
+    // TH3MacroSpanStep (|D - wick| / 3) had no caller in the product: the
+    // function and its four pins were the last place a step could be built by
+    // dividing. What is still worth pinning from that block is the closed K.
     {
-        TH3PivotSix mp;
-        ZeroMemory(mp);
-        mp.valid = true; mp.price = 4344.0; mp.keyPrice = 4363.0;
-        CheckDouble("macrospan: wick 4446-4344 -> 340/3",
-                    TH3MacroSpanStep(4446.0, mp), 102.0 / 3.0);
-        Check("macrospan: body is NOT the ruler",
-              MathAbs(TH3MacroSpanStep(4446.0, mp) - MathAbs(4446.0 - 4344.0) / 3.0) < 1e-9);
-        TH3PivotSix badMp;
-        ZeroMemory(badMp);
-        Check("macrospan: invalid pivot answers 0", TH3MacroSpanStep(4446.0, badMp) == 0.0);
-        Check("macrospan: dead ref answers 0", TH3MacroSpanStep(0.0, mp) == 0.0);
         // Extended leg K: 560/1.666 = 336.1 ≈ 340 macro span — the unity.
         CheckDouble("closed K macro 560/1.666", 560.0 / TH3ClosedK(2.5), 560.0 / 1.666);
     }
@@ -708,13 +722,13 @@ int OnStart()
         Print("[TH3TEST] SKIP: live skeleton needs more history on this chart");
     }
 
-    // ---- 9. Mother pivot (P-TH3-P6e): node, mitigation, matcher ----
+    // ---- 9. Nested base (P-TH3-P6e): node, mitigation, matcher ----
     // Needs a DECLARED six-condition pivot; a chart with none SKIPs (never FAILs).
     TH3PivotSix scanPiv[];
     ArrayResize(scanPiv, TH3_P6_MAX_PIVOTS);
     int nScan = TH3SixPivotsScanTF(Period(), scanPiv, TH3_P6_MAX_PIVOTS);
     if(nScan <= 0) {
-        Print("[TH3TEST] SKIP: mother pivot needs a declared six-condition pivot on this chart");
+        Print("[TH3TEST] SKIP: nested base needs a declared six-condition pivot on this chart");
     } else {
         // every declared pivot carries a one-sided node off its extreme:
         // H -> keyPrice below, L -> keyPrice above, never zero-thick.
@@ -726,8 +740,8 @@ int OnStart()
             if(!scanPiv[pi].isHigh && !(scanPiv[pi].keyPrice > scanPiv[pi].price)) nodeOK = false;
             if(scanPiv[pi].mitigated) nMit++; else nFresh++;
         }
-        Check("mother: every pivot has a one-sided keyPrice", nodeOK);
-        Print("[TH3TEST] mother nodes: fresh=", nFresh, " mitigated=", nMit);
+        Check("base: every pivot has a one-sided keyPrice", nodeOK);
+        Print("[TH3TEST] base nodes: fresh=", nFresh, " mitigated=", nMit);
 
         // the newest DRAWABLE pivot (base pivots are reported, not drawn,
         // and the matcher correctly ignores them) must answer for itself:
@@ -738,41 +752,41 @@ int OnStart()
         double thick = MathAbs(newest.price - newest.keyPrice);
         datetime tRef = newest.time + Period() * 60;
         TH3PivotSix found;
-        bool hit = TH3MotherPivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, found);
-        Check("mother: newest drawable pivot matches itself", hit || newest.base);
+        bool hit = TH3NestedBasePivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, found);
+        Check("base: newest drawable pivot matches itself", hit || newest.base);
         if(hit) {
-            Check("mother: match within tol", MathAbs(found.price - newest.price) <= 0.5 * thick);
-            Check("mother: kind preserved", found.isHigh == newest.isHigh);
-            Check("mother: strictly before ref", found.time < tRef);
+            Check("base: match within tol", MathAbs(found.price - newest.price) <= 0.5 * thick);
+            Check("base: kind preserved", found.isHigh == newest.isHigh);
+            Check("base: strictly before ref", found.time < tRef);
         }
 
         // absurd reference (half the price) must read as "no answer":
         // the widest ladder tier is 3 steps; half the price of gold is far
         // beyond it (P-TH3-MP2: the ladder widened the gate, not infinity).
         double pip = GetCachedPipSize();
-        Check("mother: far price refuses",
-              !TH3MotherPivotAt(tRef, newest.price * 0.5, newest.isHigh, 0.5 * pip, found));
-        Check("mother: negative tol refuses",
-              !TH3MotherPivotAt(tRef, newest.price, newest.isHigh, -1.0, found));
+        Check("base: far price refuses",
+              !TH3NestedBasePivotAt(tRef, newest.price * 0.5, newest.isHigh, 0.5 * pip, found));
+        Check("base: negative tol refuses",
+              !TH3NestedBasePivotAt(tRef, newest.price, newest.isHigh, -1.0, found));
 
         // Pillar 1, deterministic on any chart: a future anchor changes
         // nothing (every pivot predates it), the epoch anchor kills all.
         TH3PivotSix f1, f2;
-        bool b0 = TH3MotherPivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f1);
-        bool bF = TH3MotherPivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f2,
+        bool b0 = TH3NestedBasePivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f1);
+        bool bF = TH3NestedBasePivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f2,
                                    D'2050.01.01');
-        Check("mother: future anchor == no anchor",
+        Check("base: future anchor == no anchor",
               b0 == bF && (!b0 || f1.price == f2.price));
-        Check("mother: epoch anchor refuses",
-              !TH3MotherPivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f2, 1));
+        Check("base: epoch anchor refuses",
+              !TH3NestedBasePivotAt(tRef, newest.price, newest.isHigh, 0.5 * thick, f2, 1));
 
         // Pillar 3 wiring: an opposite-kind answer must carry its flip proof
         // (re-verified here with the same inputs the matcher used).
         TH3PivotSix fl;
-        if(TH3MotherPivotAt(tRef, newest.price, !newest.isHigh, 5.0 * thick, fl,
+        if(TH3NestedBasePivotAt(tRef, newest.price, !newest.isHigh, 5.0 * thick, fl,
                             0, 0.0, true)) {
             int tSt = TH3FractalStepTF(Period(), 1);
-            Check("mother: flipped kind carries proof",
+            Check("base: flipped kind carries proof",
                   (fl.isHigh != newest.isHigh)
                   && TH3FlipProven(fl.tf, fl.price, fl.isHigh, tRef,
                                    TH3PatternStepRungTF(tSt)));
@@ -791,14 +805,14 @@ int OnStart()
             TH3PivotSix b = scanPiv[niBase];
             double bThick = MathAbs(b.price - b.keyPrice);
             TH3PivotSix fb;
-            bool bHit = TH3MotherPivotAt(b.time + Period() * 60, b.price,
+            bool bHit = TH3NestedBasePivotAt(b.time + Period() * 60, b.price,
                                          b.isHigh, 0.5 * bThick, fb);
-            Check("mother: base pivot competes", bHit);
+            Check("base: base pivot competes", bHit);
         } else {
             Print("[TH3TEST] SKIP: no base pivot on this chart");
         }
         // Pillar 3 negative, deterministic: nothing closed before 1970.
-        Check("mother: flip before history refuses",
+        Check("base: flip before history refuses",
               !TH3FlipProven(Period(), newest.price, newest.isHigh, 1,
                              TH3PatternStepRungTF(Period())));
 
@@ -838,43 +852,43 @@ int OnStart()
     CheckDouble("score: half-rung penalty",
           CalculateDynamicPivotScore(sA, 100.5, tfS, tfM, 1.0), 25.0);
 
-    // ---- 9c. Motherness score (P-TH3-MP2): touches/thickness/launch ----
+    // ---- 9c. Base score (P-TH3-MP2): touches/thickness/launch ----
     // Pure arithmetic on synthetic structs — deterministic on any chart.
     TH3PivotSix m1, m2;
     m1.valid = true; m1.base = true; m1.mitigated = false; m1.isHigh = true;
     m1.price = 100.0; m1.keyPrice = 99.0; m1.tf = Period(); m1.time = 1;
     m2 = m1;
     // touches: 3 touches beat 0 at everything else equal
-    double sc0 = TH3MotherScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false);
-    double sc3 = TH3MotherScore(m1, 100.0, tfS, tfM, 0.0, 3, 1.0, false, false);
+    double sc0 = TH3NestedBaseScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false);
+    double sc3 = TH3NestedBaseScore(m1, 100.0, tfS, tfM, 0.0, 3, 1.0, false, false);
     Check("mscore: touches raise score", sc3 > sc0);
     CheckDouble("mscore: touch weight", sc3 - sc0, 75.0);   // 3 x 25
     // thickness: a 1.5-step node beats a 0.1-step node
     m2.keyPrice = 98.5;
-    double scThick = TH3MotherScore(m2, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false);
+    double scThick = TH3NestedBaseScore(m2, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false);
     Check("mscore: thick node beats thin", scThick > sc0);
     CheckDouble("mscore: thickness capped at 2 steps",
-          TH3MotherScore(m2, 100.0, tfS, tfM, 0.0, 0, 0.5, false, false), scThick);
+          TH3NestedBaseScore(m2, 100.0, tfS, tfM, 0.0, 0, 0.5, false, false), scThick);
     // launch and age bonuses
     CheckDouble("mscore: launch bonus",
-          TH3MotherScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, true, false)
+          TH3NestedBaseScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, true, false)
           - sc0, 40.0);
     CheckDouble("mscore: age bonus",
-          TH3MotherScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, true)
+          TH3NestedBaseScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, true)
           - sc0, 15.0);
     // mitigated costs, never disqualifies
     m2 = m1; m2.mitigated = true;
     Check("mscore: mitigated costs but competes",
-          TH3MotherScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false)
-          > TH3MotherScore(m2, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false));
-    // distance: a far candidate loses at equal motherness
+          TH3NestedBaseScore(m1, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false)
+          > TH3NestedBaseScore(m2, 100.0, tfS, tfM, 0.0, 0, 1.0, false, false));
+    // distance: a far candidate loses at equal base score
     Check("mscore: distance penalty",
-          TH3MotherScore(m1, 100.0, tfS, tfM, 1.0, 0, 1.0, false, false)
-          > TH3MotherScore(m1, 101.0, tfS, tfM, 1.0, 0, 1.0, false, false));
+          TH3NestedBaseScore(m1, 100.0, tfS, tfM, 1.0, 0, 1.0, false, false)
+          > TH3NestedBaseScore(m1, 101.0, tfS, tfM, 1.0, 0, 1.0, false, false));
     // launch test: start in-node true, outside false
-    Check("mlaunch: start inside node", TH3MotherLaunch(99.0, 100.0, 99.5, 105.0));
-    Check("mlaunch: pass-through counts", TH3MotherLaunch(99.0, 100.0, 105.0, 95.0));
-    Check("mlaunch: outside refuses", !TH3MotherLaunch(99.0, 100.0, 101.0, 105.0));
+    Check("mlaunch: start inside node", TH3NestedBaseLaunch(99.0, 100.0, 99.5, 105.0));
+    Check("mlaunch: pass-through counts", TH3NestedBaseLaunch(99.0, 100.0, 105.0, 95.0));
+    Check("mlaunch: outside refuses", !TH3NestedBaseLaunch(99.0, 100.0, 101.0, 105.0));
     Print("[TH3TEST] mscore sc0=", DoubleToString(sc0, 1),
           " sc3=", DoubleToString(sc3, 1), " scThick=", DoubleToString(scThick, 1));
 

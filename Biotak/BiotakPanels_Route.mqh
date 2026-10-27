@@ -1126,59 +1126,19 @@ void BkHoldClear() { s_BkHoldId = ""; s_BkHoldMs = 0; s_BkDownNow = false; }
 // the poll backup below cannot re-latch the same press (no refire flicker).
 void BkHoldFire()
 {
-   string id = s_BkHoldId;
+   // P-BKSTRIP-RETIRED (2026-10-23) — THE HOLD-OPEN MINI STRIP IS GONE.
+   //
+   // Reported: «چرا دوتا نوار استریپ هستش قدیم پاک نشده» — two bars for one
+   // box. A CLICK on a drawing opened the new strip (P-DRAW-08: one surface,
+   // every control - style, width, colour, text, lock, delete, more) and a
+   // HOLD opened this older mini strip beside it, so the same box wore both.
+   // This function was its ONLY opener, so the surface retires here; the family
+   // an older build left on a chart is swept by BkHoldPoll's first pass.
+   //
+   // The press bookkeeping stays: BkHoldLatch/BkHoldPoll still arm and clear it
+   // (the drag latch shares that state) and the release still opens nothing -
+   // which is what these two lines have always done.
    s_BkHoldId = ""; s_BkHoldMs = 0;   // disarmed — release opens nothing
-   if(id == "" || BaseKnotSessionActive() || g_PalOpen) return;
-   if(BaseKnotFind(id) < 0) return;   // box deleted mid-hold
-   if(!BaseKnotVisibleNow(id)) return;   // TF-hidden box owns no toolbar (no flash-open)
-   g_BkMiniBox = id;   // LOCK/DELETE rows act on this box (validated on every use)
-   // TV-like: anchor the strip next to the held box (above its top-right
-   // corner, flipping below when there is no room). It re-anchors on EVERY
-   // open — no header, not drag-parkable (R-BKSTRIP).
-   string pfx = BaseKnotPrefix(id);
-   if(pfx != "")
-   {
-      string box = BaseKnotBoxName(pfx);
-      if(ObjectFind(0, box) >= 0)
-      {
-         datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
-         double tp = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
-                             ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
-         int x2 = 0, y2 = 0;
-         if(ChartTimePriceToXY(0, 0, t2, tp, x2, y2))
-         {
-            int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
-            int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
-            int mh = PNL_TB_H;   // TV strip height, not the old 7-row card (R-BKSTRIP)
-            int nx = x2 + 14;
-            int ny = y2 - mh - 14;
-            if(ny < 4)
-            {
-               // P-BK-27: NO ROOM ABOVE → BELOW THE BOX'S BOTTOM EDGE, not below
-               // its top edge. Flipping under the TOP edge drops the whole strip
-               // INSIDE the rectangle, and then the press on any of its controls
-               // lands on the box as well — the terminal grabs the SELECTABLE
-               // handle, so picking a width or a style drags the box with the
-               // hand. The toolbar never overlaps the handle it belongs to.
-               double bp = MathMin(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
-                                   ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
-               int bx = 0, by = 0;
-               if(ChartTimePriceToXY(0, 0, t2, bp, bx, by) && by > y2) ny = by + 14;
-               else ny = y2 + 14;   // unprojectable (off-window) — the old flip
-            }
-            if(nx < 4) nx = 4; if(nx > cw - PNL_TB_W - 4) nx = cw - PNL_TB_W - 4;
-            if(ny < 4) ny = 4; if(ny > ch - mh - PNL_BOTTOM_SAFE) ny = ch - mh - PNL_BOTTOM_SAFE;
-            if(nx < 4) nx = 4; if(ny < 4) ny = 4;   // tiny-chart fallback
-            g_PnlX[13] = nx; g_PnlY[13] = ny;
-         }
-      }
-   }
-   PnlOpen(13);   // mini quick-style (••• inside opens the full card 12)
-   // The button-up that ends THIS hold is part of the open gesture (it lands
-   // on the box = outside the strip) — arm the one-shot release guard so the
-   // TV-style outside-click dismissal below never eats its own opening click.
-   s_BkFireReleasePending = true;
-   ChartRedraw();
 }
 void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pressStart)
 {
@@ -1196,6 +1156,20 @@ void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pr
 //--- OBJECT_CLICK, which clear the latch), re-verified by hit-test.
 void BkHoldPoll()
 {
+   // P-BKSTRIP-RETIRED (2026-10-23): ONE SWEEP PER LOAD, THEN NEVER AGAIN. The
+   // hold-open mini strip is gone (see BkHoldFire), but a chart that ran an
+   // older build still wears its objects: `Pnl13_` is that surface's whole
+   // family and nothing writes it any more, so the first timer tick deletes it
+   // and the chart keeps only the new strip. One prefix sweep, not 20 deletes -
+   // the same call the menu's own teardown uses.
+   static bool s_bkMiniPurged = false;
+   if(!s_bkMiniPurged)
+   {
+      s_bkMiniPurged = true;
+      ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl13_");
+      g_BkMiniBox = "";
+      if(g_PnlOpen == 13) g_PnlOpen = -1;
+   }
    // Backup latch for the zero-move press ONLY (nothing latched + fresh
    // down-transition). Never touches a live latch — no timer reset, ever.
    if(s_BkHoldMs == 0 && !s_BkDownNow && !BaseKnotSessionActive() && !g_PalOpen &&

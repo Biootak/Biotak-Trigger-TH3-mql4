@@ -163,13 +163,13 @@ static int g_thLabelsMarginBottom = 40;                          // [13] inpTHLa
 static bool g_enableTH3Tool = true;                              // [14] inpEnableTH3Tool
 static ENUM_TH3_DRAWING_MODE g_th3DrawingMode = TH3_MODE_ABCD;  // [14] inpTH3DrawingMode
 static double g_th3BaseStepPercent = 28.125;                     // [14] inpTH3BaseStepPercent
-static double g_th3PivotBasePips = 0.0;                            // [14] inpTH3PivotBasePips (P-TH3-PB-MAN: 0 = OFF, the pattern TF's own ATR)
+static double g_th3BaseRangePips = 0.0;                            // [14] inpTH3BaseRangePips (P-TH3-BASE-01: 1:1, 0 = OFF -> the pattern TF's own TH rung)
 static int g_th3Width = 1;                                       // [14] inpTH3Width
 static ENUM_LINE_STYLE g_th3Style = STYLE_SOLID;                 // [14] inpTH3Style
 static color g_th3Color = clrDarkBlue;                           // [14] inpTH3Color
 static color g_th3PipTextColor = clrDarkBlue;                    // [14] inpTH3PipTextColor
 static bool g_showTH3Labels = true;                              // [14] inpShowTH3Labels
-static bool g_showMotherPivotZone = false;                       // [14] inpShowMotherPivotZone (P-TH3-DISC: detector zone OFF)
+static bool g_showNestedBaseZone = false;                       // [14] inpShowNestedBaseZone (P-TH3-DISC: detector zone OFF)
 static int g_customPriceLevelWidth = 1;                          // [02] inpCustomPriceLevelWidth
 static color g_customPriceLevelColor = clrDodgerBlue;            // [02] inpCustomPriceLevelColor
 static int g_customPriceTransparency = 0;                        // palette TR (default solid)
@@ -332,7 +332,7 @@ enum FactorySetting
    FF_BK_VALIGN,         // inpBKVAlign
     FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
      FF_TH_PERCENT,        // RETIRED (P-TH-01 removed 2026-10-08: knob gone, scale is 1.0) — slot kept: FF_ addresses never renumber
-    FF_TH3_PIVOT_BASE,    // inpTH3PivotBasePips (P-TH3-PB-MAN — appended for the same reason)
+    FF_TH3_PIVOT_BASE,    // inpTH3BaseRangePips (P-TH3-BASE-01 — the address is the slot, never renamed)
     FF_LABEL_SIZE,        // inpFontSize (P-UI-131 — appended: FF_ addresses never renumber)
     FF_LABEL_ROW_GAP,     // inpLabelRowGap (P-UI-131)
     FF_LABEL_FONT,        // inpFontName, as the list index (P-UI-131)
@@ -421,7 +421,7 @@ void RuntimeSettingsInit()
     g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
     g_factoryDefaults[FF_TH3_DRAW_MODE]       = inpTH3DrawingMode;
     g_factoryDefaults[FF_TH3_BASE_STEP]       = inpTH3BaseStepPercent;
-    g_factoryDefaults[FF_TH3_PIVOT_BASE]      = inpTH3PivotBasePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+    g_factoryDefaults[FF_TH3_PIVOT_BASE]      = inpTH3BaseRangePips;   // P-TH3-BASE-01 (1:1, 0 = OFF -> TH rung)
     g_factoryDefaults[FF_TH3_WIDTH]           = inpTH3Width;
     g_factoryDefaults[FF_TH3_STYLE]           = inpTH3Style;
     g_factoryDefaults[FF_TH3_SHOW_LABELS]     = inpShowTH3Labels;
@@ -605,13 +605,13 @@ void RuntimeSettingsInit()
     g_enableTH3Tool = inpEnableTH3Tool;
     g_th3DrawingMode = inpTH3DrawingMode;
     g_th3BaseStepPercent = inpTH3BaseStepPercent;
-    g_th3PivotBasePips = inpTH3PivotBasePips;   // P-TH3-PB-MAN (seeded HERE, above the #defines, like every mirror)
+    g_th3BaseRangePips = inpTH3BaseRangePips;   // P-TH3-BASE-01 (seeded HERE, above the #defines, like every mirror)
     g_th3Width = inpTH3Width;
     g_th3Style = inpTH3Style;
     g_th3Color = inpTH3Color;
     g_th3PipTextColor = inpTH3PipTextColor;
     g_showTH3Labels = inpShowTH3Labels;
-    g_showMotherPivotZone = inpShowMotherPivotZone;   // P-TH3-P6e (no FF_/OV_: display-only, like the TH3 inks)
+    g_showNestedBaseZone = inpShowNestedBaseZone;   // P-TH3-P6e (no FF_/OV_: display-only, like the TH3 inks)
 #endif
 }
 
@@ -725,13 +725,13 @@ string LabelFontName()
 #define inpEnableTH3Tool g_enableTH3Tool
 #define inpTH3DrawingMode g_th3DrawingMode
 #define inpTH3BaseStepPercent g_th3BaseStepPercent
-#define inpTH3PivotBasePips g_th3PivotBasePips   // P-TH3-PB-MAN
+#define inpTH3BaseRangePips g_th3BaseRangePips   // P-TH3-BASE-01
 #define inpTH3Width g_th3Width
 #define inpTH3Style g_th3Style
 #define inpTH3Color g_th3Color
 #define inpTH3PipTextColor g_th3PipTextColor
 #define inpShowTH3Labels g_showTH3Labels
-#define inpShowMotherPivotZone g_showMotherPivotZone   // P-TH3-P6e
+#define inpShowNestedBaseZone g_showNestedBaseZone   // P-TH3-P6e
 #define inpCustomPriceLevelWidth g_customPriceLevelWidth
 #define inpCustomPriceLevelColor g_customPriceLevelColor
 #define inpEnableMagnet g_enableMagnet
@@ -1140,7 +1140,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "C3",  g_th3Color);
    RSSetNext(p + "P3",  g_th3PipTextColor);
     RSSetNext(p + "L3",  g_showTH3Labels ? 1 : 0);
-    RSSetNext(p + "PBP", g_th3PivotBasePips);   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+    RSSetNext(p + "PBP", g_th3BaseRangePips);   // P-TH3-BASE-01: "PBP" is the STORED address — the input was renamed, the key never is (a stored number must survive the rename)
    RSSetNext(p + "CW",  g_customPriceLevelWidth);
    RSSetNext(p + "CC",  g_customPriceLevelColor);
    RSSetNext(p + "CPT", g_customPriceTransparency);
@@ -1365,7 +1365,7 @@ void RuntimeSettingsLoadOverrides()
     if(GlobalVariableCheck(p + "L3"))  g_showTH3Labels = (GlobalVariableGet(p + "L3") > 0.5);
     // P-TH3-PB-MAN: 0 = OFF (the pattern TF's own ATR); the panel slider and the
     // dialog input share this bound, so a stored value is always reproducible.
-    if(GlobalVariableCheck(p + "PBP")) g_th3PivotBasePips = ClampSettingDbl(GlobalVariableGet(p + "PBP"), 0.0, 2000.0);
+    if(GlobalVariableCheck(p + "PBP")) g_th3BaseRangePips = ClampSettingDbl(GlobalVariableGet(p + "PBP"), 0.0, 2000.0);
    if(GlobalVariableCheck(p + "CW"))  g_customPriceLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "CW"), 1, 5);
    if(GlobalVariableCheck(p + "CC"))  g_customPriceLevelColor = (color)(int)GlobalVariableGet(p + "CC");
    if(GlobalVariableCheck(p + "CPT")) g_customPriceTransparency = ClampSettingInt((int)GlobalVariableGet(p + "CPT"), 0, 100);

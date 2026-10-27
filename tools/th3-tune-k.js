@@ -11,13 +11,13 @@
 // tuner that scores a DIFFERENT formula than the one on the chart would be a
 // number about nothing:
 //
-//   step_mother = (mother >= 2.5*rung) ? mother/3 : mother      // macro-span rule
+//   step_base = base (1:1, or the rung when nothing was entered)  // P-TH3-BASE-01
 //   step_pattern = legCD / K
-//   step = sqrt(step_mother * step_pattern)                     // the resonance
+//   step = sqrt(step_base * step_pattern)                        // the resonance
 //
-// Only K moves in the search, which is the point: step_mother does not depend on
+// Only K moves in the search, which is the point: step_base does not depend on
 // K, so holding it fixed isolates the one thing being tuned. Where the row has
-// no Rung_Pips (the samples recorded before the column existed) step_mother is
+// no Rung_Pips (the samples recorded before the column existed) step_base is
 // RECOVERED from the recorded step and the recorded K — the same identity the
 // formula states — and the tool says so in its output rather than guessing
 // silently.
@@ -72,10 +72,10 @@ function unifiedK(ratio) {
   return 1.0;                     // major extension: the leg itself is the unit
 }
 
-function stepMotherOf(motherPrice, rung) {
-  if (!(motherPrice > 0)) return null;
-  if (rung && rung > 0 && motherPrice >= 2.5 * rung) return motherPrice / 3.0;
-  return motherPrice;
+function stepBaseOf(basePrice, rung) {
+  if (basePrice > 0) return basePrice;          // 1:1 — the typed base IS the base
+  if (rung && rung > 0) return rung;            // nothing entered: the rung stands
+  return null;
 }
 
 /** Turn one CSV row into a scoreable sample, or a reason it cannot be scored. */
@@ -99,13 +99,13 @@ function prepare(row, reviews) {
   let smPips = null;
   let recovered = false;
   if (motherPips > 0 && rungPips !== null && rungPips > 0) {
-    smPips = stepMotherOf(motherPips * pip, rungPips * pip) / pip;
+    smPips = stepBaseOf(motherPips * pip, rungPips * pip) / pip;
   } else if (stepPips && recK && legCdPips > 0) {
     // step = sqrt(sm * legCD/K)  =>  sm = step^2 * K / legCD
     smPips = (stepPips * stepPips * recK) / legCdPips;
     recovered = true;
   } else {
-    why.push('cannot recover step_mother');
+    why.push('cannot recover step_base');
   }
 
   return {
@@ -190,7 +190,7 @@ function main() {
   const recovered = usable.filter((s) => s.recovered).length;
   if (recovered) {
     console.log(`  ${recovered}/${usable.length} row(s) have no Rung_Pips: ` +
-      'step_mother was recovered from the recorded step (step^2*K/legCD)');
+      'step_base was recovered from the recorded step (step^2*K/legCD)');
   }
 
   //--- the table as it stands, scored the same way

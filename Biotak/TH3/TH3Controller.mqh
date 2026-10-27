@@ -114,7 +114,7 @@ void TH3SessionCancel()
 // here: the session walked into TH3_SESSION_BASE after the 4th click, the
 // press armed one node edge, the drag drew a rubber band and the release
 // committed it as Path 1 of TH3LockedStep. The base is hand-typed now
-// (`inpTH3PivotBasePips` -> TH3ManualBaseStep), so TH3CompletePattern ends
+// (`inpTH3BaseRangePips` -> TH3ManualBaseStep), so TH3CompletePattern ends
 // the session instead. History in git log; restore by re-adding the three
 // functions, the TH3_SESSION_BASE enumerator and the gesture fields.
 

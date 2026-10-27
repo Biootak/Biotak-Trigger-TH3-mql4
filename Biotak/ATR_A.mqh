@@ -560,11 +560,15 @@ double GetATRForTimeframe(const int targetMinutes) {
         return 0.0;
     }
 
-    // P-ANCHOR-LAST: the overview and every caller of this owner read the
-    // anchored composite, not the 30-second live cache (the anchor cache is the
-    // only cache keyed by the bar, so a stale live row can never answer here).
-    if(CalcAnchorAt() > 0)
-        return CalculateWeightedATR(CompatTF(targetMinutes));
+    // P-ANCHOR-LAST (2026-10-27): THE ANCHORED READ'S ONE HOME. Everything the LAST
+    // OBJECT switch is ALLOWED to move asks here — the ATR labels (`Labels_A` 769 and
+    // 894) and the BaseKnot witness (`BaseKnot_Witness` 123). A label prints a
+    // different number; the chart keeps its levels, because the geometry funnel
+    // `CalculateWeightedATR` is live on purpose. The as-of value rides the anchor
+    // cache (the only cache keyed by the bar, so a stale live row can never answer).
+    datetime fa = CalcAnchorAt();
+    if(fa > 0)
+        return CalculateWeightedATRAt(CompatTF(targetMinutes), fa);
 
     // AUDIT FIX: Validate current time (use cached frame time)
     datetime currentTime = CacheGetFrameTime();
@@ -1267,16 +1271,28 @@ double CalculateWeightedATRAt(const ENUM_TIMEFRAMES tf, const datetime anchor)
 }
 
 //+------------------------------------------------------------------+
-//| P-ANCHOR-LAST — the live read becomes an AS-OF read while a       |
-//| LegMeasure/BaseKnot owns the calculation anchor (ATR card's LAST  |
-//| OBJECT switch). The check is two compares; OFF calls the old body |
-//| byte-identically, and the anchored branch rides the existing      |
-//| 48-row (TF,bar) cache. Internal detectors that must stay live     |
-//| call `CalculateWeightedATRLive` explicitly.                       |
+//| P-ANCHOR-LAST — THE FENCE: THIS FUNNEL IS LIVE, ALWAYS.           |
+//|                                                                  |
+//| DELIBERATE, NOT A BUG (user, 2026-10-27). The LAST OBJECT switch  |
+//| is a LABEL lever: it moves the NUMBER a label prints, and it may  |
+//| never move a DRAWN thing. That is how it behaved before this      |
+//| fence was moved HERE on 2026-10-21, and that is the behaviour     |
+//| this tree keeps.                                                  |
+//|                                                                  |
+//| Every geometry reader arrives through this function: the TH step  |
+//| (`CalculateATRBasedStep`), the fractal range                      |
+//| (`CalculateATRFractalValues`), the adaptive shift                 |
+//| (`AdaptiveScaling`) and the plan's ruler (`TradePlanStripPips`).  |
+//| ONE `CalcAnchorAt()` at this seam therefore made a press on the   |
+//| switch re-step every level on the chart.                          |
+//|                                                                  |
+//| The anchored read has exactly ONE home, `GetATRForTimeframe`      |
+//| (the ATR labels + the BaseKnot witness), and a caller that needs  |
+//| an AS-OF read passes its own bar through `CalculateWeightedATRAt` |
+//| (P-BK-79 / P-BK-107 / P-LEGATR). Putting the anchor back HERE is  |
+//| the inverse this rule is gated on (P-ANCHOR-LAST-d).              |
 //+------------------------------------------------------------------+
 double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
-    datetime fa = CalcAnchorAt();
-    if(fa > 0) return CalculateWeightedATRAt(tf, fa);
     return CalculateWeightedATRLive(tf);
 }
 

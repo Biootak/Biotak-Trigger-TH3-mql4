@@ -1116,7 +1116,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             else BaseKnotDelete(bid);
             ChartRedraw();
          }
-         else if(bid != "")
+         else if(bid != "" && !BaseKnotNoteStemIs(bid))   // P-BK-121: the note family owns its own deletes — never swept
          {
             // Trailing delete of an already-removed box (or a half-built
             // orphan): mop up by prefix, no redraw — the BOX branch redraws.

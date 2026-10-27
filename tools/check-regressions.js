@@ -3792,7 +3792,7 @@ function main() {
     const hover = bodyOf(nodesLines, 'string BaseKnotNodeLine(');
     if (!hover) broken.push('BaseKnotNodeLine is gone from Biotak/BaseKnot_Nodes.mqh');
     else {
-      if (!/step \(TH " \+ BaseKnotTFName\(nd\.nodeTF\) \+ ", at the box' own bar\) = " \+/.test(hover.text))
+      if (!/step \(TH " \+ BaseKnotTFHuman\(nd\.nodeTF\) \+ ", at the box' own bar\) = " \+/.test(hover.text))
         broken.push("the hover no longer names the node's OWN TF beside its step (P-BK-105): a size without the bar it was read on is a number nobody can check");
       if (!/else if\(s_bkStepTH > 0\)/.test(hover.text))
         broken.push('the sizing preview lost its LIVE row (P-BK-105): a box being drawn has no story yet, and its step is the pump\'s live chart-TF row by design');
@@ -3820,7 +3820,11 @@ function main() {
     } else {
       if (!/BaseKnotBarCount\(\s*t1,\s*t2,\s*top,\s*bot,\s*sp,\s*tfMin\s*\)/.test(sync.text))
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBarCount (P-BK-80) - the base span, and with it the class and the type, moves with the open chart again');
-      if (!/BaseKnotBaseTFMin\(\s*still,\s*bs1,\s*bs2,\s*top,\s*bot,\s*tfMin\s*\)/.test(sync.text))
+      // P-BK-126b (2026-10-27): the class is now read in the unit its `still` count was taken in
+      // — `baseReadTF`, which BaseKnotSync defines as `ownerTFMin` or the commit TF and never the
+      // open chart — so the assertion admits the box' own read TF. P-BK-126b's own block pins
+      // that definition, so `Period()` cannot enter here and still pass.
+      if (!/BaseKnotBaseTFMin\(\s*still,\s*bs1,\s*bs2,\s*top,\s*bot,\s*(?:tfMin|baseReadTF)\s*\)/.test(sync.text))
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotBaseTFMin (P-BK-80) - the class memo can answer from another chart\'s last closed bar');
       if (!/BaseKnotWriteInfo\([\s\S]*?atCorner,\s*tfMin\s*(?:,|\))/.test(sync.text))
         broken.push('BaseKnotSync no longer hands its commit TF to BaseKnotWriteInfo (P-BK-80) - the note and its hover can re-read the class on the chart');
@@ -7918,13 +7922,23 @@ function main() {
       broken.push('CalcAnchor.mqh is gone - the switch has no owner');
     if (!anchor || !anchor.join('\n').includes('g_calcAnchorOn = false;'))
       broken.push('the switch ships ON again - a fresh chart starts anchored instead of live (P-ANCHOR-LAST-MOVE: default is OFF)');
-    if (!atr || !atr.join('\n').includes('datetime fa = CalcAnchorAt();') ||
-        !atr.join('\n').includes('CalculateWeightedATRAt(tf, fa)'))
-      broken.push('CalculateWeightedATR no longer routes to the anchor - the switch is inert');
-    if (!atr || !atr.join('\n').includes('CalculateWeightedATRLive(tf)'))
-      broken.push('the live fallback is gone - OFF or a deleted owner would freeze the ATR');
-    if (!atr || !atr.join('\n').includes('if(CalcAnchorAt() > 0)'))
-      broken.push('GetATRForTimeframe lost its early anchor branch - the live cache can win');
+    //--- P-ANCHOR-LAST (2026-10-27): THE FENCE MOVED, AND IT MOVED ON PURPOSE. The
+    //--- anchor's ONE home is `GetATRForTimeframe` (the labels and the witness).
+    //--- `CalculateWeightedATR` is the GEOMETRY funnel — the TH step, the fractal range,
+    //--- the adaptive shift and the plan's ruler all arrive through it — so it must not
+    //--- see the anchor at all: one `CalcAnchorAt()` at that seam is what made a press
+    //--- on the LAST OBJECT switch re-step every level on the chart. The user's report
+    //--- (that switch used to change only the numbers, and that was correct) is the
+    //--- rule, not the bug, so this half asserts the ABSENCE.
+    const atrFunnel = bodyOf(atr, 'double CalculateWeightedATR(');
+    if (!atrFunnel || !/return CalculateWeightedATRLive\(tf\);/.test(atrFunnel.text))
+      broken.push('CalculateWeightedATR is not the plain live read - the geometry stopped asking the forming bar');
+    if (atrFunnel && (/CalcAnchorAt\s*\(/.test(atrFunnel.text) || /CalculateWeightedATRAt\s*\(/.test(atrFunnel.text)))
+      broken.push('CalculateWeightedATR reads the LAST OBJECT anchor again - a press on that switch re-steps every drawn level (the labels own the anchored read)');
+    const atrLabels = bodyOf(atr, 'double GetATRForTimeframe(');
+    if (!atrLabels || !/datetime fa = CalcAnchorAt\(\);/.test(atrLabels.text) ||
+        !/CalculateWeightedATRAt\(CompatTF\(targetMinutes\), fa\)/.test(atrLabels.text))
+      broken.push('GetATRForTimeframe lost its anchored read - the LAST OBJECT switch would move nothing at all');
     if (!legDraw || !legDraw.text.includes('CalcAnchorRemember') || !legDel || !legDel.text.includes('CalcAnchorForget'))
       broken.push('a LegMeasure no longer arms/clears the anchor - the newest drawn leg is not the owner');
     if (!bkCommit || !bkCommit.text.includes('CalcAnchorRemember') || !bkDel || !bkDel.text.includes('CalcAnchorForget'))
@@ -7947,10 +7961,16 @@ function main() {
     if (!linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh')) ||
         !linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh')).join('\n').includes('CalculateWeightedATRLive(tf)'))
       broken.push('the PRE-CP detector was anchored - compression would be measured on the owner bar, not live');
+    //--- P-ANCHOR-LAST (2026-10-27): the plan's ATR IS GEOMETRY (EngSL/HuntSL/SL/TP/
+    //--- ticks), so the chart-wide label switch is not one of its sources. The old
+    //--- guard read the anchor and that was the second door the switch walked through
+    //--- into the drawing — the first being the geometry funnel above.
+    if (codeOf(linesOf(path.join(BIOTAK, 'TradePlanFormulas.mqh')) || []).includes('CalcAnchorAt('))
+      broken.push('TradePlanFormulas reads the LAST OBJECT anchor - the plan\'s SL/TP move with a switch that only promises label numbers');
     if (broken.length) {
       failures.push('P-ANCHOR-LAST: ' + broken.join('; ') + ' (ATR_A / CalcAnchor / TH3Tool_C / BaseKnot_Drag / panels)');
     } else {
-      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the strip\'s anchor seat writes it (P-ANCHOR-LAST-MOVE), the card no longer paints it and the GV ships OFF, CalculateWeightedATR and GetATRForTimeframe read it, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
+      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the strip\'s anchor seat writes it (P-ANCHOR-LAST-MOVE), the card no longer paints it and the GV ships OFF, the anchored read lives ONLY in GetATRForTimeframe (labels + witness) while the geometry funnel CalculateWeightedATR and the plan\'s TradePlanStripPips stay live on purpose, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
     }
   }
 
@@ -8383,7 +8403,9 @@ function main() {
     if (obj && /tp1\[i\]\s*=\s*\(plan\.tp1/.test(obj.join('\n')))
       broken.push('a pushed leg reads plan.tp1 - the box would draw a target its own stop cannot reach');
     // the box: every read on the STOP's time, and the base TF gone from all four sites
-    if (!plan || !plan.join('\n').includes('double lv = BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor);'))
+    // (P-BK-122 wraps the call in a `tk <= TP COUNT` guard, so the test names the READ —
+    // its TF argument — and never the statement's shape around it).
+    if (!plan || !/BaseKnotTPLevel\(entry, dir, mTF, tk, nd\.anchor\)/.test(plan.join('\n')))
       broken.push('the ticks are no longer read on the stop\'s TF');
     if (!plan || !plan.join('\n').includes('double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);'))
       broken.push('the tick tooltip counts its pips on another TF than the level it sits on');
@@ -8394,7 +8416,8 @@ function main() {
     if (plan && /BaseKnotTPPlanTip\(baseTF,/.test(plan.join('\n')))
       broken.push('the hover went back to the BASE TF');
     // the drag path must follow the same rung, or the levels jump at release
-    if (!plan || !plan.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin),'))
+    // (P-BK-125 added the hop argument; the rule asks the READ, not the argument list)
+    if (!plan || !plan.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, BaseKnotBoxHop(k))'))
       broken.push('the lean mover drops the stop\'s TF - every tick jumps when the drag is released');
     // the ink column reads the TF it is handed, never a hard-coded base
     const ink = note ? bodyOf(note, 'void BaseKnotPipInk(') : null;
@@ -8404,6 +8427,987 @@ function main() {
       failures.push('P-BK-120: ' + broken.join('; ') + ' (TradePlanFormulas / EventHandlers_Objects / BaseKnot_Plan / BaseKnot_Note)');
     else
       console.log('[PASS] P-BK-120 the box\' targets are the plan\'s ratios on the box\' own stop: one owner of the ratios, the pump pushes ratio x EngSL, every tick and its hover and its ink read the STOP\'s TF, and the lean mover follows the same rung');
+  }
+
+  // P-TH3-DEL4 (2026-10-24) — THE READOUT THE HAND DELETED STAYS DELETED.
+  // The report: «اینو حذف میزنم حذف نمیشه به درستی». The AB=CD caption was born
+  // OBJPROP_SELECTABLE=false (so the terminal could never name it and no Delete
+  // key or right-click reached it), the delete handler threw its OBJECT_DELETE
+  // away by design (P-TH3-DEL3's early return, written so a caption drop cannot
+  // wipe a healthy ABCD), and Draw/Verify/heal rebuilt the family on the next
+  // pass anyway. Three properties keep the fix in place:
+  //   * the plate is the readout's ONE selectable member — born selectable AND
+  //     healed on a chart an older build drew;
+  //   * a hand's delete is told from our own drops by STATE (the rows are still
+  //     lit), never by a clock, and ends in TH3InfoFamilyDismiss — the readout
+  //     leaves, the pattern never does;
+  //   * every path that could paint the family asks the latch.
+  {
+    const broken = [];
+    const ra = linesOf(path.join(BIOTAK, 'TH3', 'TH3Renderer_A.mqh'));
+    const tc = linesOf(path.join(BIOTAK, 'TH3Tool_C.mqh'));
+    const raText = ra ? ra.join('\n') : '';
+    const tcText = tc ? tc.join('\n') : '';
+    const plateAt = ra ? bodyOf(ra, 'void TH3ROPlateAt(') : null;
+    if (!plateAt || !plateAt.text.includes('ObjectSetInteger(0, plate, OBJPROP_SELECTABLE,  true);'))
+      broken.push('the plate is born unselectable again - the terminal cannot name the readout, so no Delete ever reaches it');
+    if (!plateAt || !/ObjectGetInteger\(0, plate, OBJPROP_SELECTABLE\)/.test(plateAt.text))
+      broken.push('an old chart\'s plate is never healed selectable - the fix would only reach charts drawn after this build');
+    const onDel = ra ? bodyOf(ra, 'void TH3InfoOnMemberDelete(') : null;
+    if (!onDel || !onDel.text.includes('ObjectFind(0, objName) >= 0') || !onDel.text.includes('TH3InfoRowsLit(base)'))
+      broken.push('the hand\'s delete is guessed by a clock again - a rebuild\'s own event would dismiss a healthy caption');
+    const dismiss = ra ? bodyOf(ra, 'void TH3InfoFamilyDismiss(') : null;
+    if (!dismiss || !dismiss.text.includes('TH3InfoOffAdd(base)') || !dismiss.text.includes('TH3InfoFamilyDelete(base)'))
+      broken.push('the dismissal no longer latches AND deletes - the readout returns on the next pass');
+    if ((raText.match(/if\(TH3InfoOff\(/g) || []).length < 5)
+      broken.push('a path that paints the family stopped asking the latch - the dismissed readout comes back');
+    if (!tcText.includes('TH3InfoOnMemberDelete(sparam, baseName)'))
+      broken.push('the delete handler no longer reaches the dismissal - the event is thrown away as it was');
+    if (!tcText.includes('LegMeasurePlateHide(idx); ThrottledChartRedraw();'))
+      broken.push('the leg meter\'s box lost its own delete - the same report, one surface over');
+    if (broken.length)
+      failures.push('P-TH3-DEL4: ' + broken.join('; ') + ' (TH3Renderer_A / TH3Tool_C)');
+    else
+      console.log('[PASS] P-TH3-DEL4 a readout the hand deleted stays deleted: the plate is the one selectable member (born and healed), the hand is told from our own drops by state, the dismissal latches and deletes, and every painting path asks the latch');
+  }
+
+  // P-TH3-PARK-01 (2026-10-24) — THE ABCD DRAWING TOOL IS PARKED, AND ONLY IT.
+  // The user's order: «ابزار th3tool هم در متاتریدر 4 و 5 کامنت بشه فعلا این
+  // ابزار» / «فعلا این ابزار خوب توسعه پیدا نکرده بعد توسعه اش میدم پس فعلا
+  // نمیخوام توی محصول اصلی باشه» / «فقط ABCD، لگ‌متر بماند» / «حذف نمیخوام
+  // کامنت بشه بعد شاید بخوام روش کار بکنم».
+  //
+  // So this gate holds BOTH halves of the order — what must be off, and what
+  // must stay on — because the two live in the same units:
+  //   * OFF: no catalog seat (CircCatRetired answers for CAT_TH3, and the star
+  //     readers ask it, so no saved mask can re-seat it), no grid slot
+  //     (CircCatCell -1 parks the tile AND the hit-test), no V arm
+  //     (ToggleTH3Tool has no live call), no ring press (CircArmTH3Draw has
+  //     no live call). Every one of these is a COMMENTED line, not a deletion.
+  //   * ON: the dispatcher (OnABCDMouseEvent) and the leg meter's own calls stay
+  //     LIVE — the caption delete (P-TH3-DEL4) and P-LM-17 ride them, and a
+  //     future editor who "finishes the job" by commenting the dispatcher would
+  //     silently kill the measurement tool the user asked to keep.
+  {
+    const broken = [];
+    const ring = linesOf(path.join(BIOTAK, 'BiotakMenu_Ring.mqh'));
+    const mb = linesOf(path.join(BIOTAK, 'BiotakMenu_B.mqh'));
+    const router = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
+    const menuD = linesOf(path.join(BIOTAK, 'BiotakMenu_D.mqh'));
+    // a line that is live (not a // comment) and matches
+    const live = (arr, re) => (arr || []).filter((l) => !/^\s*\/\//.test(l) && re.test(l));
+
+    const retired = ring ? bodyOf(ring, 'bool CircCatRetired(') : null;
+    if (!retired || !retired.text.includes('return (cat == CAT_TH3);'))
+      broken.push('CircCatRetired no longer names CAT_TH3 - the parked tool is back in the catalog');
+    const starred = ring ? bodyOf(ring, 'bool CircCatStarred(') : null;
+    if (!starred || !starred.text.includes('if(CircCatRetired(cat)) return false;'))
+      broken.push('CircCatStarred stopped asking the retirement - a saved mask bit re-seats the parked cell');
+    const starSet = ring ? bodyOf(ring, 'bool CircStarSet(') : null;
+    if (!starSet || !starSet.text.includes('if(CircCatRetired(cat)) return false;'))
+      broken.push('CircStarSet can star a retired cell again - the ring can re-seat the parked tool');
+    const cellOf = ring ? bodyOf(ring, 'int CircCatCell(') : null;
+    if (!cellOf || !cellOf.text.includes('return -1;') || !cellOf.text.includes('if(!CircCatRetired(c)) cell++;'))
+      broken.push('CircCatCell stopped skipping retired cells - the Tools grid punches a hole or draws the parked tile');
+    const cellCount = ring ? bodyOf(ring, 'int CircCellCount(') : null;
+    if (!cellCount || !cellCount.text.includes('if(!CircCatRetired(c)) n++;'))
+      broken.push('CircCellCount counts the retired cell again - a page/row the grid never fills');
+    const onPage = mb ? bodyOf(mb, 'bool SubItemOnPage(') : null;
+    if (!onPage || !onPage.text.includes('CircCatCell(i)'))
+      broken.push('SubItemOnPage stopped asking the slot - the parked cell answers a click again');
+    const place = mb ? bodyOf(mb, 'void SubPlaceItem(') : null;
+    if (!place || !place.text.includes('(cell % SubPageSize()) : cell'))
+      broken.push('SubPlaceItem lays the tile on the catalog index again - the parked cell leaves a 46px hole');
+    if (live(router, /ToggleTH3Tool\(\)/).length)
+      broken.push('the V key arms the parked tool again - ToggleTH3Tool() is live in the router');
+    if (live(menuD, /CircArmTH3Draw\(\)/).length)
+      broken.push('the ring press arms the parked tool again - CircArmTH3Draw() is live in the menu');
+    // --- the other half: what the user asked to KEEP must still be live ---
+    if (!live(router, /OnABCDMouseEvent\(id, lparam, dparam, sparam\)/).length)
+      broken.push('the ABCD dispatcher is commented - the leg meter (P-LM-17) and the caption delete (P-TH3-DEL4) ride it and would go dark');
+    if (!live(router, /LegMeasureToggle\(\)/).length)
+      broken.push('the leg meter\'s P key is gone - the user kept it («فقط ABCD، لگ‌متر بماند»)');
+    if (broken.length)
+      failures.push('P-TH3-PARK-01: ' + broken.join('; ') + ' (BiotakMenu_Ring / BiotakMenu_B / EventHandlers_Router / BiotakMenu_D)');
+    else
+      console.log('[PASS] P-TH3-PARK-01 the ABCD drawing tool is parked and only it: no catalog seat, no grid slot, no V arm, no ring press - all COMMENTED, and the dispatcher + leg meter the user kept stay live');
+  }
+
+  // P-BK-121/122/123 (2026-10-24) — A BASE KNOT LINE IS DELETED ONLY BY ITS OWNER.
+  // The user's report, on a chart full of knots: «باگ ui داریم یا نه براش حلش بکن که
+  // الکی حذف و رسم بشه» — things are deleted and drawn for no reason. Three owners
+  // were measured in the terminal's own journal (MQL4/Logs/20261024.log):
+  //   * P-BK-121: `[drawstrip] DELFLUSH obj="THLevels_BK_NOTE_*"` fires on every drag
+  //     release and every 3 s toast expiry. The corner rows are named off the CHART-WIDE
+  //     prefix, so the delete handler's orphan sweep split a row's tail into bid="NOTE"
+  //     and swept `prefix("NOTE")` — the whole readout, plate included, because its own
+  //     writer deleted the one row a shorter note leaves behind.
+  //   * P-BK-122: a target tick drawn by an earlier round was never deleted (the walk
+  //     stopped at the TP COUNT and `continue`d on an absent leg), so a plan that went
+  //     cold left its old line on the chart at its old price.
+  //   * P-BK-123: `owner=none … owner=M1 … owner=none … owner=M15` inside 1.5 s, with
+  //     `stop=64.8p` (the box' height) printed between two `stop=14.6p` (the plan) —
+  //     one unmeasurable round un-published the owner TF, re-typed the knot through the
+  //     fallback rung, and redrew ENTRY/SL/TP/ink off the box' height until the next
+  //     round put it all back.
+  // A rule is only gated if its inverse fails THIS gate, so every assertion below is
+  // paired with a mutation that breaks exactly it.
+  {
+    const broken = [];
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
+    const code = (arr) => (arr || []).filter((l) => !/^\s*\/\//.test(l)).join('\n');
+
+    // 121 — the note family is not a box' child, and the sweep asks before it sweeps.
+    const stem = note ? bodyOf(note, 'bool BaseKnotNoteStemIs(') : null;
+    if (!stem || !stem.text.includes('StringFind(BK_NOTE_CORNER, bid) == 0'))
+      broken.push('BaseKnotNoteStemIs stopped naming the note stems - a row tail parses as bid="NOTE" and the sweep can wipe the whole readout again');
+    if (!/else if\(bid != "" && !BaseKnotNoteStemIs\(bid\)\)/.test(code(drag)))
+      broken.push('the orphan sweep no longer asks the note predicate - one row delete wipes the family (journal: DELFLUSH obj="THLevels_BK_NOTE_*")');
+
+    // 122 — a leg that stopped being drawn is DELETED, in BOTH writers (the lean mover's
+    // third loop only MOVES a tick the press found, so it is not a writer and is not pinned).
+    const planCode = code(plan);
+    const writer = (tfArg) => new RegExp(
+      'for\\(int tk = 1; tk <= BK_TP_PLAN_MAX; tk\\+\\+\\)\\s*\\{\\s*' +
+      'double lv = \\(tk <= BaseKnotTPCount\\(\\) \\? BaseKnotTPLevel\\(entry, dir, ' + tfArg +
+      ', tk, (0|nd\\.anchor)\\) : 0\\.0\\);').test(planCode);
+    if (!writer('mTF'))
+      broken.push('the committed tick walk stops at the TP COUNT again - a tick drawn by an earlier round is never reached, so a lowered count leaves its line on the chart');
+    if (!writer('0'))
+      broken.push('the sizing preview\'s tick walk stops at the TP COUNT again - a leg that went cold keeps its preview line');
+    const del = (planCode.match(/if\(lv <= 0\.0\) \{ ObjectDelete\(0, (BaseKnotTPTickName\(pfx, tk\)|tag \+ "TP" \+ IntegerToString\(tk\))\); continue; \}/g) || []).length;
+    if (del < 2)
+      broken.push('a target-tick loop skips an absent leg instead of deleting it - the old line stays on the chart at its old price');
+
+    // 123 — a miss is not a new answer, and the retry it needs stays.
+    const ownCode = code(own);
+    if (/ownerTFMin = 0;/.test(ownCode))
+      broken.push('the owner pump zeroes the published owner again - one unmeasurable round re-types the knot and redraws its family off the box height');
+    if (!/s_bkOwnKeyId = "";/.test(ownCode))
+      broken.push('a missed measurement no longer re-arms the key - keeping the fact would have made the miss permanent');
+
+    if (broken.length)
+      failures.push('P-BK-121/122/123: ' + broken.join('; ') + ' (BaseKnot_Note / BaseKnot_Drag / BaseKnot_Plan / BaseKnot_Owner)');
+    else
+      console.log('[PASS] P-BK-121/122/123 a knot line is deleted only by its owner: the note family is never swept, a leg that stopped being drawn is deleted, and a missed owner measurement keeps the published fact and retries');
+  }
+
+  // P-BK-79 (2026-10-27) — «زمان گره»: THE KNOT'S TIME IS THE BOX' OWN STORY END, NEVER "NOW".
+  //
+  // The user's own report, quoted in BaseKnot_Nodes.mqh: «مثلا atr یک دقیقه زمان گره بوده
+  // مثلا 20 … با گذشت زمان ممکن 40 بشه یا 10 بشه که اینطوری نمیشه نوع گره دقیق مشخص کرد».
+  // The ATR of the knot's own rung was 20 when the knot formed and drifts to 40 or 10 as the
+  // chart fills, so a type read at "now" is not a type at all. The method that answered it —
+  // and the one the user asked to keep, in the gate: a row is (TF, ANCHOR), the anchor is the
+  // box' own story end (`storyT`), and every read on the chart is HANDED that same bar.
+  //
+  // It needed its own block because the v2 stop (P-BK-125) is a NEW reader of that table: it
+  // computes u from three ATRs, so it could have asked the live row and made the stop drift
+  // while the box sat still — a defect no screenshot would show. Pinned at every site, not
+  // only where the rule was written: the anchor's owner, the table's key, the pump's ask, the
+  // committed read, the drag, the capture, and the two readers that must never say "now".
+  {
+    const broken = [];
+    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const anchorAt = base ? bodyOf(base, 'datetime BaseKnotAnchorAt(') : null;
+    const push = ab ? bodyOf(ab, 'void BaseKnotAbilityPush(') : null;
+    const row = ab ? bodyOf(ab, 'bool BaseKnotAbilityRow(') : null;
+    const get = ab ? bodyOf(ab, 'bool BaseKnotAbilityGet(') : null;
+    const read = ab ? bodyOf(ab, 'void BaseKnotAbilityRead(') : null;
+    const kindOf = nodes ? bodyOf(nodes, 'int BaseKnotNodeKindOfLength(') : null;
+    const nodeRead = nodes ? bodyOf(nodes, 'void BaseKnotNodeRead(') : null;
+
+    // 1 — THE ANCHOR'S ONE OWNER: the box' story end, then its right edge. Nothing else.
+    if (!anchorAt)
+      broken.push('BaseKnotAnchorAt is gone - the chart has no single answer for "which bar is this box read at"');
+    else {
+      if (!anchorAt.text.includes('g_bkBoxes[k].storyT > 0) return g_bkBoxes[k].storyT;'))
+        broken.push('the knot\'s time is no longer its own story end');
+      if (!anchorAt.text.includes('OBJPROP_TIME, 1'))
+        broken.push('the knot\'s time no longer degrades to the box\' right edge');
+      if (/TimeCurrent\(\)|TimeLocal\(\)|TimeGMT\(\)/.test(anchorAt.text))
+        broken.push('THE KNOT\'S TIME MOVED: BaseKnotAnchorAt answers "now" - the exact drift P-BK-79 removed');
+    }
+
+    // 2 — THE TABLE'S KEY IS THE PAIR. A TF-keyed table is the defect P-BK-79 replaced: two
+    //     boxes on one TF whose stories ended on two bars must type against two ATRs.
+    if (!push || !push.text.includes('s_bkAbAnchor[s_bkAbN] = an;'))
+      broken.push('the ability row no longer stores its anchor - the table is TF-keyed again');
+    if (!row || !/s_bkAbTF\[i\] != tfMin \|\| s_bkAbAnchor\[i\] != an/.test(row.text))
+      broken.push('the ability row matches on the TF alone - two boxes on one TF share one ATR again');
+    if (!get || !get.text.includes('BaseKnotAbilityRow(tfMin, anchor, trig)') ||
+        !get.text.includes('BaseKnotAbilityRow(up1, anchor, pat)') ||
+        !get.text.includes('BaseKnotAbilityRow(up2, anchor, str)'))
+      broken.push('a band is read at another bar than the row it was pushed with');
+
+    // 3 — NO READER DERIVES THE BAR ITSELF. `BaseKnotNodeRead` must take it.
+    if (!nodeRead || !nodeRead.text.includes('nd.anchor = (anchor > 0 ? anchor : 0);'))
+      broken.push('BaseKnotNodeRead derives its own anchor again - the pump keyed a row nobody asks for');
+    for (const [name, body] of [['BaseKnotNodeKindOfLength', kindOf], ['BaseKnotAbilityRead', read]]) {
+      if (!body)
+        broken.push(name + ' is gone - a reader left the table');
+      else if (/TimeCurrent\(\)|TimeLocal\(\)|TimeGMT\(\)/.test(body.text))
+        broken.push(name + ' answers "now" - a closed knot would change type as the chart fills');
+    }
+
+    // 4 — EVERY SITE IS HANDED THE SAME BAR. One live anchor is enough to move a closed knot.
+    if (!plan || !plan.join('\n').includes('BaseKnotNodeRead((sp.tLast > 0 ? sp.tLast : t2), top, bot, baseTF,'))
+      broken.push('the committed read no longer starts at the story\'s own last bar');
+    if (!plan || !plan.join('\n').includes('g_bkBoxes[k].storyT = sp.tLast;'))
+      broken.push('the story end is no longer published - every later read keys a row that was never pushed');
+    if (!drag || !drag.join('\n').includes('BaseKnotNodeRead((g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : t2), top, bot,'))
+      broken.push('the drag reads the box at another bar than the release will - the type flips mid-gesture');
+    if (!nodes || !nodes.join('\n').includes('datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);'))
+      broken.push('the pump asks its ATR rows at another bar than the box is read at');
+    if (!shot || !shot.join('\n').includes('datetime an = (g_bkBoxes[k].storyT > 0 ? g_bkBoxes[k].storyT : 0);'))
+      broken.push('the capture reads the ladder at another bar - the picture and the row would describe two markets');
+
+    if (broken.length)
+      failures.push('P-BK-79: ' + broken.join('; ') + ' (BaseKnot_Base / BaseKnot_Ability / BaseKnot_Nodes / BaseKnot_Plan / BaseKnot_Drag / BaseKnot_Shot)');
+    else
+      console.log('[PASS] P-BK-79 the knot\'s time is its own story end and nothing else: the row is keyed (TF, anchor), no reader derives the bar, and the pump, the committed read, the drag and the capture all hand in the SAME one - never now');
+  }
+
+  // P-BK-125 (2026-10-27) — THE STOP'S RUNG IS THE NEAREST RUNG, READ AT THE KNOT'S OWN TIME.
+  //
+  // Two sentences from the user, one decision each:
+  //   * «۱ الان» — apply the formula now, so every sample captured from today is scored by
+  //     ONE rule (Formula_Version v2). The dataset's own twins are why: BK-0003 (u = 1.884)
+  //     wore a 32.0-pip stop and BK-0004 — the SAME box 4 s later, 6 % taller, u = 2.003 —
+  //     wore 72.9, because BaseKnotMeasureHops answered by NAME and jumped a whole rung at
+  //     the band's edge. P-BK-76's principle («the one it is NEAREST to») applied to the leg.
+  //   * «قبلا از چه روش برای تایم گره استفاده میکردم از همون باشه توی گیت» — the knot's TIME
+  //     is not up for negotiation: the ATR row is (TF, ANCHOR), and the anchor is the box'
+  //     own story end, never "now" (P-BK-79; the user's own report: «atr یک دقیقه زمان گره
+  //     بوده مثلا 20 … با گذشت زمان ممکن 40 بشه یا 10 بشه»). The new read had every chance to
+  //     ask the live row, so the rule is pinned here, with the method it must keep.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const hop = ab ? bodyOf(ab, 'int BaseKnotLadderHopAt(') : null;
+    const boxHop = ab ? bodyOf(ab, 'int BaseKnotBoxHop(') : null;
+    const hops = measure ? bodyOf(measure, 'int BaseKnotMeasureHops(') : null;
+    const tfMin = measure ? bodyOf(measure, 'int BaseKnotMeasureTFMin(') : null;
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    const levels = measure ? bodyOf(measure, 'void BaseKnotCalcLevels(') : null;
+
+    // 1 — the read itself: one ladder, one rounding, clamped.
+    if (!hop)
+      broken.push('BaseKnotLadderHopAt is gone - the stop is back on the type name\'s fixed hop');
+    else {
+      if (!hop.text.includes('BaseKnotAbilityGet(nodeTFMin, anchor, a0, a1, a2)'))
+        broken.push('the ladder read no longer asks the (TF, anchor) row - a second way to place a box is back');
+      if (!hop.text.includes('MathFloor(u + 0.5)') && !hop.text.includes('BK_AB_FIT_NUM / BK_AB_FIT_DEN'))
+        broken.push('the rung answers neither round(u) nor the fitted package - it is not a comparison of the box against the ladder at all');
+      if (!hop.text.includes('BK_AB_FIT_NUM / BK_AB_FIT_DEN'))
+        broken.push('the rung is no longer the deepest leg package the box can HOLD (P-BK-128) - the linear round(u) is back, so a 1 % nudge moves both legs');
+      if (hop.text.includes('MathFloor(u'))
+        broken.push('a linear u is back in the ladder read - the arithmetic midpoint returns as the leg boundary (P-BK-128: 258.5 pips of legs inside a 217-pip box)');
+      if (!/if\(h >= fit \* a1\) hop = 1;/.test(hop.text) || !/if\(h >= fit \* a2\) hop = 2;/.test(hop.text))
+        broken.push('the hop is not built from the upper rungs\' own packages - a rung is picked by something other than what fits');
+      if (!hop.text.includes('int hop = 0;'))
+        broken.push('the hop does not start at the node\'s own rung - the smallest package a box can always hold is gone');
+      if (!hop.text.includes('BaseKnotAbilityRow(up3, anchor, a3)'))
+        broken.push('an OTR box is placed without its FOURTH rung - the step is not constant, so that is a guess');
+      if (/TimeCurrent\(\)|TimeLocal\(\)|anchor\s*=\s*0/.test(hop.text))
+        broken.push('THE KNOT\'S TIME MOVED: the ladder read asks the live row - the stop would drift while the box sits still');
+    }
+    // 2 — the box' answer: story end or nothing (never "now").
+    if (!boxHop)
+      broken.push('BaseKnotBoxHop is gone - the geometry and the pump\'s ask list have no one answer to share');
+    else {
+      if (!/if\(g_bkBoxes\[k\]\.storyT <= 0\) return -1;/.test(boxHop.text))
+        broken.push('a box with no story now answers a hop - that is the live row by another name');
+      if (!boxHop.text.includes('g_bkBoxes[k].storyT)'))
+        broken.push('the box hop is not read at storyT - P-BK-79\'s anchor is the whole point');
+    }
+    // 3 — the measure prefers the pushed hop and keeps the name for the callers that cannot know.
+    if (!hops || !hops.text.includes('if(hop >= 0) return (hop > 3 ? 3 : hop);'))
+      broken.push('BaseKnotMeasureHops ignores the ladder again - the name decides every stop');
+    if (!hops || !hops.text.includes('if(kind == BK_NODE_OTR) return 3;'))
+      broken.push('the name\'s own answer is gone - the live preview and a cold ladder have nothing to fall back on');
+    if (!tfMin || !tfMin.text.includes('BaseKnotMeasureHops(kind, hop)'))
+      broken.push('BaseKnotMeasureTFMin drops the hop - the rung and the TF would be two answers');
+    if (!pair || !pair.text.includes('BaseKnotMeasureTFMin(kind, tfMin, hop)'))
+      broken.push('the leg pair sizes the stop off a TF nobody handed it');
+    if (!levels || !levels.text.includes('BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP, anchor, hop)'))
+      broken.push('the geometry drops the hop between its own two layers');
+    // 4 — every production site that knows a box must hand the SAME hop in, or the pump computes
+    //     one rung and the box draws another (a silent misprice, not a visible error).
+    if (!plan || !plan.join('\n').includes('BaseKnotLadderHopAt(nd.baseTF, nd.height, nd.anchor)'))
+      broken.push('the committed Sync no longer hands its hop to the geometry - the stop and its own TF part');
+    if (!plan || !plan.join('\n').includes('BaseKnotBoxHop(k))'))
+      broken.push('the drag path stopped asking the box\' hop - the levels jump at release');
+    if (!nodes || !nodes.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf, BaseKnotBoxHop(i))'))
+      broken.push('the pump\'s ask list is not the stop\'s rung any more - the geometry would draw a TF nobody pushed');
+    if (!nodes || !nodes.join('\n').includes('asked[4]'))
+      broken.push('the fourth rung is no longer asked for an OTR box - the ladder read would oscillate between hop 2 and 3');
+    // 5 — THE KNOT'S TIME is P-BK-79's own rule and it has its own block above; here only the
+    //     one thing the new read must not break: it must be HANDED an anchor at all.
+    if (!ab || !ab.join('\n').includes('int BaseKnotLadderHopAt(const int nodeTFMin, const double h, const datetime anchor)'))
+      broken.push('the ladder read no longer takes an anchor - it can only be reading "now"');
+
+    // 6 — the 20-sample checkpoint: every capture carries what v1 WOULD have charged, or the
+    //     version comparison needs a second capture session (the ATR rows of a closed box are
+    //     not reproducible a week later).
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    if (!shot || !shot.join('\n').includes('FileWrite(fh, "Stop_V1_Pips: "'))
+      broken.push('the capture no longer records the v1 stop - the 20-sample checkpoint has nothing to compare');
+    if (!shot || !shot.join('\n').includes(', an, -1);'))
+      broken.push('the v1 column is not the NAME\'s hop (hop = -1) - it would just echo v2 and prove nothing');
+
+    if (broken.length)
+      failures.push('P-BK-125: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Plan / BaseKnot_Base)');
+    else
+      console.log('[PASS] P-BK-125 the stop rides the rung the box can HOLD (P-BK-128: 55/64 of that rung\'s ATR must fit inside the height, read at the box\' own story end), the name is only the fallback, the pump asks the rung the geometry draws, and the knot\'s time is still its story end - never now');
+  }
+
+  // P-BK-124b (2026-10-27) — THE PRESS HAS TO ANSWER ON THE CHART.
+  //
+  // P-BK-124 filed the SAMPLE and left the SCREEN unmeasured. The user's report was
+  // «کلید k زدم ولی چیزی روی صفحه نمیاد که سیو شده یا نه — مثل th3tools», and every number
+  // agreed with him: five `K` presses wrote five COMPLETE folders, while the receipt was ONE
+  // second of 13 px ink that named neither the knot's type nor its time. So the one thing the
+  // press is for — «ثبت شد؟ کدام گره؟ چه ساعتی؟» — was in the FOLDER and nowhere on the chart.
+  //
+  // Five things are now pinned, each one a way to take the answer away again:
+  //   1. the receipt's HOLD is a readable number (a one-second receipt is a receipt nobody sees);
+  //   2. it says WHAT landed — SAVED, the type, the node's TF, the height, the capture's clock;
+  //   3. it wears the product's readable face, not the chart's default at 13 px;
+  //   4. `SAVED` is claimed only when BOTH files landed (a refused screenshot used to read
+  //      as a good sample — the one lie a dataset cannot recover from);
+  //   5. it is witnessed on the FLUSHED channel, read back off the object it created, and it is
+  //      aged out by the TIMER as well as the tick — a chart that stops ticking must not keep a
+  //      receipt on the screen for ever (P-TH3-REC-04's own debt).
+  {
+    const broken = [];
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const mainEntry = linesOf(path.join(ROOT, 'Biotak Trigger TH3.mq4'));
+
+    if (!shot) broken.push('BaseKnot_Shot.mqh is gone - the `K` press has no owner');
+    else {
+      const all = shot.join('\n');
+      // 1 — the hold: the number the user ordered (2026-10-27, second round: «یک ثانیه بس هستش
+      //     برای این»). One second is legible NOW because the face is 18 px bold and the line
+      //     carries the type, the TF, the height and the clock; the inverse that must fail is a
+      //     hold nobody can catch (0) or the four-second soak the order retired.
+      const hold = /#define\s+BK_SHOT_HOLD_SEC\s+(\d+)/.exec(all);
+      if (!hold) broken.push('BK_SHOT_HOLD_SEC is gone - the receipt is back on a literal hold');
+      else if (Number(hold[1]) !== 1)
+        broken.push(`the receipt's hold is ${hold[1]}s - the user's order (2026-10-27) is one second, and a hold of zero is a receipt nobody can catch`);
+      // 2 — what it says
+      const cap = bodyOf(shot, 'bool BaseKnotCaptureSample(');
+      if (!cap) broken.push('BaseKnotCaptureSample is gone - the `K` press has no writer');
+      else {
+        if (!cap.text.includes('"SAVED  "'))
+          broken.push('the receipt no longer says SAVED - the press has no visible answer again');
+        if (!cap.text.includes('"SAVED  " + BaseKnotNodeShort(g_bkBoxes[k].nodeKind)'))
+          broken.push('the receipt no longer names the knot\'s TYPE - the question it exists to answer');
+        if (!cap.text.includes('BaseKnotTFName(nodeTF)'))
+          broken.push('the receipt no longer names the node\'s TF');
+        if (!cap.text.includes('StringFormat("%02d:%02d:%02d"'))
+          broken.push('the receipt no longer carries the capture\'s clock');
+        if (!/if\(okShot && okTxt\)/.test(cap.text))
+          broken.push('SAVED is claimed without both files - a refused screenshot reads as a good sample');
+      }
+      // 3 — the face
+      const flash = bodyOf(shot, 'void BaseKnotShotFlash(');
+      if (!flash) broken.push('BaseKnotShotFlash is gone - the receipt has no painter');
+      else {
+        if (!flash.text.includes('OBJPROP_FONTSIZE, BK_SHOT_FACE_PX'))
+          broken.push('the receipt\'s face is no longer BK_SHOT_FACE_PX - the 13 px ink is back');
+        if (!flash.text.includes('ObjectSetString(0, BK_SHOT_FLASH, OBJPROP_FONT, BioChromeFont(true))'))
+          broken.push('the receipt wears the chart\'s default face again - the product\'s own face is the readable one');
+        // 5 — the witness, read back off the object that was just created
+        if (!flash.text.includes('[BK-SHOT] flash obj='))
+          broken.push('the receipt is not witnessed on the flushed channel - a pixel claim with no read-back');
+        if (!flash.text.includes('ObjectGetString(0, BK_SHOT_FLASH, OBJPROP_TEXT)'))
+          broken.push('the witness does not read the label back - it would describe an intent, not the chart');
+      }
+      const tick = bodyOf(shot, 'void BaseKnotShotFlashTick(');
+      if (!tick) broken.push('BaseKnotShotFlashTick is gone - nothing ever clears the receipt');
+      else if (!tick.text.includes('TimeLocal() < s_bkShotFlashDue'))
+        broken.push('the receipt ages on the SERVER clock - a closed market never advances TimeCurrent, so it would never clear');
+      // 5b — the owed delete on the timer
+      if (!mainEntry) broken.push('the Main entry is gone');
+      else {
+        const timer = bodyOf(mainEntry, 'void OnTimer()');
+        if (!timer || !timer.text.includes('BaseKnotShotFlashTick()'))
+          broken.push('OnTimer no longer ages the receipt - a chart that stops ticking keeps it for ever');
+      }
+    }
+
+    if (broken.length)
+      failures.push('P-BK-124b: ' + broken.join('; ') + ' (BaseKnot_Shot / Biotak Trigger TH3)');
+    else
+      console.log('[PASS] P-BK-124b the `K` press answers on the CHART: SAVED + the knot\'s type + its node TF, its height and the record\'s own clock, worn at 18 px for the one second the user ordered, claimed only when both files landed, read back off the object it created, and aged out by the tick AND the timer');
+  }
+
+  // P-BK-126b (2026-10-27) — THE KNOT'S TIME IS THE THREE CANDLES; THE ATR RULER IS THE FALLBACK.
+  //
+  // The user's report, verbatim: «این گره الان توی تایم ۱۵ دقیقه دیده میشه ۳ کندل درجا زدن ... پس
+  // چرا زده برای ۵ دقیقه». Two rulers were live and the wrong one had precedence. P-BK-114 put
+  // `ownerTFMin` (the ATR band, `h / ATR` in 240%..360%) FIRST in BaseKnotSync, so
+  // `BaseKnotBaseTFMin` — the walk that asks how many of this rung's own candles stood still —
+  // was never reached for a box that had an owner, which is every box. MEASURED on the reported
+  // box (`Story_Anchor 2026.10.27 08:30`, `Box_Pips 119.9`, XAUUSD M1, `tools/bk-knot-scan.py`):
+  //   * the ATR ruler: 119.9 / 34.6 (M5 ATR) = 3.47 -> owner = M5 on the FIRST try;
+  //     119.9 / 66.6 (M15 ATR) = 1.80, so M15 was never considered at all;
+  //   * the three-candle rule: 3 x M30 spans 119.2 pips = 99.4 % of the box, and 32m already
+  //     breaks it (123.4) — the box IS three half-hour candles.
+  // The class is the node's TIME (P-BK-77/126); the ATR band is a SIZE. So the count decides, the
+  // owner answers only when it cannot, the run is THREE IN A ROW, and the pump's rows follow
+  // the class — otherwise an off-ladder class (31m) scales its trigger from M5, six rungs of air.
+  // P-BK-126d kept every half of that and moved the measure: the count is no longer fitted to a
+  // grid, it is divided once (`spanMin / 3`) — see the block below.
+  {
+    const broken = [];
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+
+    // 1 — THE WALK DECIDES, and it is handed the count that was really taken.
+    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
+    if (!sync) broken.push('BaseKnotSync is gone - the class has no writer');
+    else {
+      const walkAt = sync.text.indexOf(
+        'int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF);'
+      );
+      const fallAt = sync.text.indexOf(
+        'if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;'
+      );
+      if (walkAt < 0)
+        broken.push('the class no longer comes from the base\'s own candle count - the ATR ruler is the knot\'s time again (the M5-on-a-30m-box defect)');
+      if (fallAt < 0)
+        broken.push('the owner fallback is gone - a box whose M1 story cannot be read names no time at all (P-BK-36)');
+      if (walkAt >= 0 && fallAt >= 0 && fallAt < walkAt)
+        broken.push('the owner is read BEFORE the walk - the first answer wins and the three candles are never consulted');
+      if (!sync.text.includes('int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount('))
+        broken.push('the count is no longer taken on a declared read TF - `still` and the class would describe two grids');
+    }
+
+    // 2 — THREE IN A ROW, not three anywhere in the story.
+    const still = nodes ? bodyOf(nodes, 'int BaseKnotStillCount(') : null;
+    if (!still) broken.push('BaseKnotStillCount is gone - the class has no walk');
+    else if (!still.text.includes('else if(cur >= 0) held = 0;'))
+      broken.push('a candle that poked out no longer breaks the run - the same band answers 35..45m instead of the 30..33m three candles in a row');
+
+    // 3 — THE PUMP'S ROWS FOLLOW THE CLASS; the owner only fills in before the first Sync.
+    const pump = own ? bodyOf(own, 'void BaseKnotOwnerATRPump(') : null;
+    if (!pump) broken.push('BaseKnotOwnerATRPump is gone - the type has no ATR rows');
+    else {
+      const oAt = pump.text.indexOf('tf = g_bkBoxes[k].ownerTFMin;');
+      const cAt = pump.text.indexOf('if(k >= 0 && g_bkBoxes[k].baseTFMin > 0) tf = g_bkBoxes[k].baseTFMin;');
+      if (oAt < 0 || cAt < 0)
+        broken.push('the pump no longer names both the owner and the class - one of the two is unreachable');
+      else if (cAt < oAt)
+        broken.push('the class is overwritten by the ATR owner - an off-ladder class (31m) scales its trigger from the owner\'s rung instead of the nearest rung below it');
+    }
+
+    // 4 — an off-ladder class still has a curve (P-BK-126): the walk can name 8, 9, 31m.
+    const get = ab ? bodyOf(ab, 'bool BaseKnotAbilityGet(') : null;
+    if (!get || !get.text.includes('trig = atr * BaseKnotRungScale(below, tfMin);'))
+      broken.push('an off-ladder class has no trigger any more - a 31m knot would read BK_NODE_NONE and draw nothing');
+
+    if (broken.length)
+      failures.push('P-BK-126b: ' + broken.join('; ') + ' (BaseKnot_Plan / BaseKnot_Nodes / BaseKnot_Owner / BaseKnot_Ability)');
+    else
+      console.log('[PASS] P-BK-126b the knot\'s time is the base\'s own candle count, never the ATR band: the count decides and the owner answers only when it cannot, the pump\'s rows follow the class, and an off-ladder class still reads one curve');
+  }
+
+  // P-BK-126c (2026-10-27) — THE STAND-STILL COUNT IS READ ON THE CLOCK's GRID, NEVER THE BOX'.
+  //
+  // The user: «تایم گره باید یکی باشه … با جابه‌جا کردن باکس عوض میشه». P-BK-126 cut the count's
+  // buckets BACK from `s2` (`(s2 - t[i]) / step`), so the grid was phase-locked to the box' right
+  // edge: the same band answered a DIFFERENT candle size for every date the edge sat on.
+  // MEASURED (XAUUSD M1, band 3999.52..4012.14, tMax 31, `tools/bk-knot-scan.py`'s own series):
+  // closes 08:30/08:33/08:40/08:45/09:00/09:55/10:30/12:00/13:50/15:15/15:43 -> 31/31/26/27/31/
+  // 30/30/30/29/31/31 minutes, where clock-aligned buckets read 31/31/30/30/30/30/30/30/30/30/30.
+  // That count WAS the class for one build (v3/v4), which is why the two `K` samples of ONE box
+  // 10 s apart read `27m · ETR · SELL` beside `13m · CTR · BUY`. P-BK-126d took the class off any
+  // grid; this count is the hover's sentence now and it still must not follow the drawing.
+  {
+    const broken = [];
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+
+    // 1 — the bucket key is the clock. ONE line, and it is the whole rule.
+    const still = nodes ? bodyOf(nodes, 'int BaseKnotStillCount(') : null;
+    if (!still) broken.push('BaseKnotStillCount is gone - the hover\'s count has no walk');
+    else {
+      if (!still.text.includes('int k = (int)(t[i] / step);'))
+        broken.push('the bucket is no longer cut on the clock - the count follows the box\' edge again (26..31m measured on one band)');
+      if (still.text.includes('(s2 - t[i])'))
+        broken.push('the bucket is cut back from `s2` again - the grid is phase-locked to the drawing');
+      if (!still.text.includes('if(t[i] > s2) continue;'))
+        broken.push('`s2` no longer closes the window - the walk reads candles newer than the box\' break');
+    }
+
+    if (broken.length)
+      failures.push('P-BK-126c: ' + broken.join('; ') + ' (BaseKnot_Nodes)');
+    else
+      console.log('[PASS] P-BK-126c the stand-still count is read on the CLOCK\'s grid: a bucket is `t[i] / step` (the box\' right edge only closes the window), so a displayed count cannot follow the drawing');
+  }
+
+  // P-BK-126d (2026-10-27) — THE COUNT IS THE MEASURE, AND THERE IS NO GRID.
+  //
+  // The user, after two builds that each cut a grid over the same count: «به ساعت نباید ربط داشته
+  // باشه دیگه سه کندل ملاک هستش ... کندل ورود به باکس و کندل خروج از باکس میشه و بین کندل ورود و
+  // خروج سه کندل باشه» — then «همون کار که تعداد کندل مشخص میکنه درست هستش دیگه از همون استفاده
+  // بکن که ببین کجا سه کندل داریم». So the class is the base's own entry..exit count over three:
+  // ONE number per band, with no bucket boundary to phase and no ladder rung to round it to.
+  // MEASURED: `15_22269312` twice 4 s apart on ONE geometry (17:05:52 / 17:05:56, v4) read 20m
+  // both; the 17:06:02 press read 11m with the box MOVED (120.4 -> 113.1 pips) — the band is the
+  // user's own input and the only thing allowed to move it.
+  {
+    const broken = [];
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+
+    // 1 — the class is the count over three, and NOTHING else is consulted.
+    const read = nodes ? bodyOf(nodes, 'int BaseKnotBaseTFRead(') : null;
+    if (!read) broken.push('BaseKnotBaseTFRead is gone - the class has no owner');
+    else {
+      if (!read.text.includes('int nodeTF = spanMin / 3;'))
+        broken.push('the class is no longer the base\'s own span over three - "three candles between the entry and the exit" is the user\'s own rule');
+      if (read.text.includes('BaseKnotStillCount') || read.text.includes('BaseKnotM1Window'))
+        broken.push('a bucket grid is back in the class read - that grid, not the box, is what moved `Node_TF` between 26m and 31m on one band');
+      if (read.text.includes('3 * rungs[i] <= spanMin') || read.text.includes('if(rungs[i] <= spanMin)'))
+        broken.push('the class rounds to a ladder rung again - a 40-minute base must read 13m, not M15');
+      if (!read.text.includes('if(nodeTF > BK_KNOT_TF_MAX) nodeTF = BK_KNOT_TF_MAX;'))
+        broken.push('the class is unclamped - a week-long story names a time no read can measure');
+    }
+
+    // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
+    // beside a v6 row's, whose run the left edge names.
+    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v7"'))
+      broken.push('the formula is no longer v7 - a v6 row\'s Type/U/Stop were cut at the ARITHMETIC midpoint and on round(u), and are not comparable with the ratio/capacity ones');
+
+    if (broken.length)
+      failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
+    else
+      console.log('[PASS] P-BK-126d the knot\'s time is the base\'s own entry..exit count over three: no clock, no bucket grid, no ladder rounding - one number per band');
+  }
+
+  // P-BK-126e (2026-10-27) — THE WALK ANCHORS AT THE BOX' LEFT EDGE (THE ENTRY), SO THE RIGHT
+  // EDGE CANNOT MOVE THE ANSWER.
+  //
+  // The report: «درست نشده نگاه کن من جابجا میکنم عوض میشه در صورتی که همون گره هستش پس باید در
+  // هر حالتی حتی تایم عوض شد هم همون درست رو نشون بده». The class was already one number per band
+  // (P-BK-126d), so the number that still moved was the INPUT — `BaseKnotBarCount`'s run.
+  // P-BK-31/37/39/43 started that search at the box' RIGHT edge and walked older, so ONE band
+  // holding TWO runs answered whichever run the drag brought nearest the edge.
+  // MEASURED (XAUUSD M5, band 3999.52..4012.14, left edge 08:45, NINETY-NINE right edges from
+  // 08:50 to 17:00, `tools/bk-knot-scan.py`'s own series):
+  //   * anchored right: 12 bars · 20m at 45 positions, 8 bars · 13m at 46, 5 bars · 8m at 7,
+  //     22 bars · 36m at 1 — four answers for one knot;
+  //   * anchored left: 12 bars · 20m at ALL 99.
+  // That pair is the user's own screenshot (`12 bars · 20m base · ETR · SELL` beside `8 bars ·
+  // 13m base · CTR · BUY`), and the moved count took the TYPE and the SIDE with it. The left
+  // edge only chooses WHICH run: all six left edges inside 08:55..09:50 (08:50..09:50) read the
+  // whole run (12 · 20m), because the forward extension then the older walk read it end to end.
+  {
+    const broken = [];
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+
+    // 1 — the anchor is the OLDER shift, and it is the box' LEFT edge.
+    const count = measure ? bodyOf(measure, 'int BaseKnotBarCount(') : null;
+    if (!count) broken.push('BaseKnotBarCount is gone from Biotak/BaseKnot_Measure.mqh - the base has no walk');
+    else {
+      if (!count.text.includes('int s = (sh1 > sh2 ? sh1 : sh2);'))
+        broken.push('the walk is anchored on the box\' right edge again - one band holding two runs answers whichever run the drag brought nearest that edge (12/20m beside 8/13m measured on one band)');
+      if (!count.text.includes('while(s >= 1 && edge - s < BK_BASE_SKIP)'))
+        broken.push('the search no longer steps FORWARD from the left edge - the entry candle is what the user draws the box on');
+      if (!count.text.includes('{ s--; continue; }'))
+        broken.push('the dead-zone skip walks OLDER again - the walk leaves the box and can latch onto a run before it');
+      if (!count.text.includes('s = head - 1;'))
+        broken.push('a stray body sends the search back to the node walk\'s end rather than forward past it - the next run is never reached');
+      if (count.text.includes('if(s == 0) s = 1;'))
+        broken.push('the right-edge fence is back - a right edge dragged past the live candle anchors the walk again (P-BK-34)');
+    }
+
+    // 2 — the drag preview cache must ask the LEFT edge, and its window must be the left edge's.
+    const live = nodes ? bodyOf(nodes, 'int BaseKnotLiveBarCount(') : null;
+    if (!live) broken.push('BaseKnotLiveBarCount is gone - the drag preview has no cache');
+    else {
+      if (!live.text.includes('iBarShift(_Symbol, 0, t1, false)'))
+        broken.push('the preview cache is keyed on the RIGHT edge - a right-edge drag invalidates it and a left-edge drag reuses a run it no longer describes');
+      if (live.text.includes('iBarShift(_Symbol, 0, t2, false)'))
+        broken.push('the preview cache still reads `t2` - the right edge is a pointer only since P-BK-126e');
+      if (!live.text.includes('s_bkLiveLo = lo;'))
+        broken.push('the preview window lost its lower bound');
+    }
+
+    if (broken.length)
+      failures.push('P-BK-126e: ' + broken.join('; ') + ' (BaseKnot_Measure / BaseKnot_Nodes)');
+    else
+      console.log('[PASS] P-BK-126e the base walk anchors at the box\' LEFT edge (the entry) and steps forward: 99 right edges over one band read ONE answer, and the right edge participates in nothing');
+  }
+
+  // P-BK-126f (2026-10-27) — THE KNOT'S DERIVATION LEAVES A LINE, AND THE LINE IS THE PROOF.
+  //
+  // The user, after two drag rounds: «روش که مطمعن باشه رو پیدا کن» — a sure method, not another
+  // explanation. Every comparison so far had to be made from a SCREENSHOT, and a screenshot argues
+  // about which candle and which edge (`12 bars · 20m` beside `8 bars · 13m`, the same box). So the
+  // numbers Sync already computed are printed as ONE flushed line (`[BK-KNOT]`), and two drags are
+  // compared by reading their own digits: `nodeTF` is `still * readTF / 3` capped at `cap`, the line
+  // carries all four, and `boxT` (the drawn rectangle) is reported BESIDE the run (`entry/last/exit`)
+  // so a moved box with an unchanged `still`/`readTF`/`nodeTF` is visible instead of arguable.
+  {
+    const broken = [];
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+
+    const wit = shot ? bodyOf(shot, 'void BaseKnotKnotWitness(') : null;
+    if (!wit) broken.push('BaseKnotKnotWitness is gone from Biotak/BaseKnot_Shot.mqh - a drag has no witness again and every report about a moved knot goes back to arguing over a screenshot');
+    else {
+      // 1 — the channel is the FLUSHED file, never `Print` (P-DRAW-126: the journal sat still for
+      //     seven minutes while clicks went into MT4's RAM buffer).
+      if (!wit.text.includes('DrawStripDiagEmit("[BK-KNOT] formula=" + BK_FORMULA_VERSION'))
+        broken.push('the witness no longer writes through DrawStripDiagEmit with the formula version on the line - a `Print` witness sits unread in the terminal\'s RAM buffer (P-DRAW-126) and an unversioned line cannot be scored');
+      if (wit.text.includes('Print('))
+        broken.push('the witness has its own `Print` - the flushed channel is the one channel (AGENTS THE DEBUG LOOP, law 3)');
+
+      // 2 — it PRINTS the numbers; it must never compute them. A witness with its own read is a
+      //     second ruler beside the one the box was drawn with (the exact class this project keeps
+      //     re-learning: two writers, two answers).
+      if (wit.text.includes('BaseKnotBarCount(') || wit.text.includes('BaseKnotBaseTFRead(') || wit.text.includes('BaseKnotBaseTFMin('))
+        broken.push('the witness computes its own count/class - a witness must print the numbers Sync already published, or it becomes a second ruler over the same box');
+
+      // 3 — every number the rule is checkable FROM is on the line.
+      for (const [field, label] of [
+        ['" still=" + IntegerToString(still) +', 'still'],
+        ['" readTF=" + BaseKnotTFName(readUsed) +', 'readTF'],
+        ['" nodeTF=" + BaseKnotTFName(nodeTF) +', 'nodeTF'],
+        ['" cap=" + IntegerToString(BK_KNOT_TF_MAX) +', 'cap'],
+        ['" entry=" + BaseKnotWitnessT(tStart) +', 'entry'],
+        ['" exit=" + BaseKnotWitnessT(tExit));', 'exit'],
+        ['" boxT=" + BaseKnotWitnessT(boxT1) + ".." + BaseKnotWitnessT(boxT2) +', 'boxT'],
+      ])
+        if (!wit.text.includes(field)) broken.push(`the witness dropped \`${label}=\` - the line no longer carries what the answer is checked against`);
+
+      // 4 — emit on CHANGE only: a still chart must cost a few compares and no string.
+      if (!wit.text.includes('if(wm[slot].used && wm[slot].id == id && wm[slot].chartTF == chartTF &&'))
+        broken.push('the change guard is gone - a witness that fires every frame builds a string and writes a byte per pass for an unchanged box');
+      if (!wit.text.includes('wm[slot].top == top && wm[slot].bot == bot) return;'))
+        broken.push('the guard no longer compares the BAND - a drag that only moves the band would print nothing');
+      // 4b — the memo is PER BOX: `BaseKnotSync` is called in a loop over every box on attach, and
+      //      one shared memo reads that loop as "changed, changed" and prints for an untouched chart.
+      if (!wit.text.includes('static BKWitnessMemo wm[BK_WITNESS_SLOTS];'))
+        broken.push('the witness memo is one shared set of scalars again - the attach loop over every box is then read as a change on every pass');
+      // 5 — and the chart TF is in the guard, so a TF switch PRINTS the second line the user is
+      //     told to compare (`chart=` must be the only field that differs).
+      if (!wit.text.includes('int chartTF = Period();')) broken.push('the witness no longer names the chart TF - a TF switch must print a line whose `chart=` differs and nothing else');
+    }
+
+    // 6 — and it is called where the numbers exist: BaseKnotSync, with the published answer.
+    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
+    if (!sync) broken.push('BaseKnotSync is gone - the witness has no caller');
+    else if (!sync.text.includes('BaseKnotKnotWitness(id, nd.kind, hop, t1, t2, top, bot, bars, still, baseReadTF, baseTF, sp.tStart, sp.tLast, sp.tExit);'))
+      broken.push('BaseKnotSync no longer calls the witness with the box, the run, the published class AND the type/rung it drew (P-BK-128) - the line would describe a knot nobody drew');
+
+    if (broken.length)
+      failures.push('P-BK-126f: ' + broken.join('; ') + ' (BaseKnot_Shot / BaseKnot_Plan)');
+    else
+      console.log('[PASS] P-BK-126f every changed knot reading leaves ONE flushed [BK-KNOT] line: still · readTF · nodeTF (= still*readTF/3, cap) · cap · entry · last · exit · boxT · chart · formula - so two drags are compared by their own numbers, not by a screenshot');
+  }
+
+  // P-BK-127 (2026-10-27) — ONE RULER: THE ENTRY IS THE CARD'S TRIGGER CELL.
+  //
+  // The user, on an XAUUSD M15 knot typed ETR: «این گره چون etr هستش باید ورود 84.5 باشه نقطه
+  // ورود · ولی ورود واقعی تقریبا 80 هستش · ولی ورود ما الان 41 پیپ تقریبا درستش بکن که تقریبا
+  // تاچ بشه · و ctr , otr همه به نسبت ها درست بشه اوکی الان همه یکی هستش».
+  //
+  // MEASURED on that box (…\BK_Dataset\Samples\15_25039828_20261027-175226\sample.txt):
+  // box 125.1 pips · Ladder ATRs M15 66.6 / H1 135.2 / H4 300.8 · U 0.853 (hop 1) ·
+  // dotted entry 41.6 = HuntSL(M15) · stop 31.7 = EngSL(H1) · and the box' own card printed
+  // `TRex 31.7 | Trigger 84.5 | Pricicle 158 | Classic 380` - FOUR LEGS OF ONE RULER (H1),
+  // where Trigger = HuntSL(H1) = 0.625 x 135.2 = 84.5. The card and the entry line named two
+  // different rungs, and the type's own hop (P-BK-125) only ever reached the STOP.
+  //
+  // THE RULE: BaseKnotEntryTFMin answers BaseKnotMeasureTFMin - ONE hop, two legs - so
+  // FTR reads EngSL(rung) and ETR/CTR/OTR read HuntSL(rung) on the SAME rung the stop is drawn
+  // on, and a type that lands on a taller box (CTR, OTR) scales with its own rung.
+  {
+    const broken = [];
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const ent = measure ? bodyOf(measure, 'int BaseKnotEntryTFMin(') : null;
+    const entSig = measure ? measure.find((l) => l.includes('int BaseKnotEntryTFMin(')) || '' : '';
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    const levels = measure ? bodyOf(measure, 'void BaseKnotCalcLevels(') : null;
+    const mTF = measure ? bodyOf(measure, 'int BaseKnotMeasureTFMin(') : null;
+
+    // 1 — ONE OWNER: the entry's rung IS the stop's rung (the same function, the same hop).
+    if (!ent) broken.push('BaseKnotEntryTFMin is gone - the entry has no owner');
+    else {
+      if (!ent.text.includes('return BaseKnotMeasureTFMin(kind, tf, hop);'))
+        broken.push('the entry no longer asks the stop\'s own rung - the card\'s Trigger cell and the entry line are two numbers again');
+      if (!/const int hop = -1/.test(entSig))
+        broken.push('the entry\'s owner dropped the hop - the ladder\'s nearest rung (P-BK-125) never reaches the entry');
+      if (/return \(tfMin > 0 \? tfMin : Period\(\)\);/.test(ent.text))
+        broken.push('the entry answers a bare tfMin again - that is the 41.6 the user reported');
+    }
+    if (!mTF || !mTF.text.includes('BaseKnotMeasureHops(kind, hop)'))
+      broken.push('the rung the entry borrows is not the ladder\'s answer any more');
+    // 2 — the geometry hands it the hop it already gives the stop, so the drawn legs are ONE pair.
+    if (!pair || !pair.text.includes('BaseKnotEntryTFMin(kind, tfMin, hop)'))
+      broken.push('BaseKnotLegPair sizes the entry off a TF nobody handed it - the entry and the stop part');
+    if (!pair || !pair.text.includes('BaseKnotMeasureTFMin(kind, tfMin, hop)'))
+      broken.push('BaseKnotLegPair dropped the stop\'s hop');
+    if (!levels || !levels.text.includes('BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP, anchor, hop)'))
+      broken.push('the geometry drops the hop between its own two layers');
+    // 3 — every site that KNOWS the box hands the SAME hop to both owners (a text that named a
+    //     different rung than the line it describes is exactly what the report carried).
+    const nodesHop = nodes ? nodes.join('\n').match(/BaseKnotLadderHopAt\(nd\.baseTF, nd\.height, nd\.anchor\)/g) : null;
+    if (!nodes || !nodes.join('\n').includes('BaseKnotEntryTFMin(nd.kind, nd.baseTF, hop)'))
+      broken.push('the knot\'s hover still reads the entry on the node\'s own time - the number it prints is not the number drawn');
+    if (!nodes || !nodes.join('\n').includes('BaseKnotMeasureTFMin(nd.kind, nd.baseTF, hop)'))
+      broken.push('the knot\'s hover hands the stop a hop the entry does not get');
+    if (!nodesHop || nodesHop.length !== 1)
+      broken.push('the hover reads the ladder twice - two asks can answer two rungs for one box');
+    if (!plan || !plan.join('\n').includes('BaseKnotEntryTFMin(nd.kind, baseTF, hop)'))
+      broken.push('the committed Sync still names the entry on the node\'s own time');
+    if (!plan || !plan.join('\n').includes('BaseKnotMeasureTFMin(nd.kind, baseTF, hop)'))
+      broken.push('the committed Sync names the stop on a rung the entry does not share');
+    if (!plan || !plan.join('\n').includes('hop);   // P-BK-125: the same hop the stop\'s TF above was named with'))
+      broken.push('the geometry call no longer receives the hop the two TFs above were named with');
+    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, nd.anchor)'))
+      broken.push('the card\'s four legs left the stop\'s rung - the Trigger cell would stop being the entry');
+    // 4 — and no site may call the entry owner WITHOUT a hop once it knows a box: a bare call is
+    //     the name's fixed hop, i.e. the silent 2-rung split this rule removed.
+    for (const [file, text] of [['BaseKnot_Measure.mqh', measure], ['BaseKnot_Nodes.mqh', nodes], ['BaseKnot_Plan.mqh', plan]]) {
+      if (!text) continue;
+      const bare = codeOf(text).match(/BaseKnotEntryTFMin\([^)]*\)/g) || [];
+      for (const call of bare)
+        if (!call.includes('hop') && !call.startsWith('int BaseKnotEntryTFMin('))
+          broken.push(`${file}: \`${call}\` asks the entry owner without the box' hop`);
+    }
+    // 5 — the harness carries the law: one ruler, and the entry's leg off the RUNG's row.
+    const lines = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    if (!lines || !lines.join('\n').includes('one ruler (entry TF == stop TF)'))
+      broken.push('the harness no longer asserts one ruler - a split could ship on a green build');
+    if (!lines || !lines.join('\n').includes('BkRowHunt(mtf)'))
+      broken.push('the harness expects the base TF\'s HuntSL - it would pass the 41.6 defect');
+
+    if (broken.length)
+      failures.push('P-BK-127: ' + broken.join('; ') + ' (BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Plan / the harness)');
+    else
+      console.log('[PASS] P-BK-127 one ruler for the knot\'s two legs: BaseKnotEntryTFMin answers BaseKnotMeasureTFMin on the ladder\'s nearest rung, so the card\'s Trigger cell IS the entry line (ETR -> HuntSL one rung up, CTR/OTR two and three, FTR EngSL on its own), and every site that knows a box hands both legs the same hop');
+  }
+
+  // P-BK-128 (2026-10-27) — ONE BOX, ONE ANSWER: THE TYPE IS A RATIO COMPARISON, THE RUNG IS A
+  // CAPACITY ONE.
+  //
+  // The report: «این یک بار etr نشون میده یک بار ftr» on ONE box, and «باید مقایسه بکنه که نباید
+  // مرز اینقدر تنگ باشه باید مقایسه باشه که بهر کی نزدیک تر بود همون برنده هستش». MEASURED on his
+  // own two frames: 217.3 pips then 219.5, against ATR 135.2 / 300.8 / 970.4 (node 235m, H4, D1).
+  // The arithmetic FTR/ETR edge sat at (135.2+300.8)/2 = 218.0 — 0.3 % from the box — and the
+  // leg's rung flipped with it: Trigger 84.5 at 217.3, 188.0 at 219.5, and 188.0 + the 70.5 stop
+  // is 258.5 pips of legs that cannot fit inside a 217-pip box. So the type is cut at the ladder's
+  // RATIO midpoint (√(a·b) = 201.7, i.e. 1.077x his box) and the rung is the deepest one whose
+  // whole leg PACKAGE fits (55/64 x a_k <= h; 0.859 x 300.8 = 258.5 > 217.3, so the node's own
+  // 135.2 stands and both frames charge Eng 31.7 / Trigger 84.5). Three inverses, one per half.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const witFile = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
+    const kindOf = nodes ? bodyOf(nodes, 'int BaseKnotNodeKindOfLength(') : null;
+    const bandFE = nodes ? bodyOf(nodes, 'double BaseKnotNodeBandFtrEtr(') : null;
+    const bandEC = nodes ? bodyOf(nodes, 'double BaseKnotNodeBandEtrCtr(') : null;
+    const hop = ab ? bodyOf(ab, 'int BaseKnotLadderHopAt(') : null;
+
+    // 1 — the TYPE: both boundaries are ratio midpoints, the CTR ceiling stays the structure
+    //     ability itself (the user's own OTR sentence), and no price midpoint survives.
+    if (!kindOf) broken.push('BaseKnotNodeKindOfLength is gone - the type has no owner');
+    else {
+      if (!kindOf.text.includes('MathSqrt(trig * pat)'))
+        broken.push('the FTR/ETR edge is not √(a·b) - the arithmetic midpoint is back, and 218.0 sat 0.3 % from his box');
+      if (!kindOf.text.includes('MathSqrt(pat * str)'))
+        broken.push('the ETR/CTR edge is not √(a·b) - the same 1 % knife edge is back one band up');
+      if (!/if\(h <= str\)\s*return BK_NODE_CTR;/.test(kindOf.text))
+        broken.push('the CTR ceiling is no longer the structure ability itself - «بیشتر از توان حرکتی تایم ساختار» is the user\'s own OTR rule');
+      if (kindOf.text.includes('(trig + pat) * 0.5') || kindOf.text.includes('(pat + str) * 0.5'))
+        broken.push('a price midpoint is still inside the type read - two ways to cut one box');
+    }
+    for (const [name, body] of [['BaseKnotNodeBandFtrEtr', bandFE], ['BaseKnotNodeBandEtrCtr', bandEC]]) {
+      if (!body) broken.push(name + ' is gone - the hover cannot print the boundary the type was cut at');
+      else if (!body.text.includes('MathSqrt('))
+        broken.push(name + ' prints a boundary the type is NOT decided by - the tooltip and the type would name two places on one box');
+    }
+    // 1b — THE SECOND WRITER. The [P-BK-107] journal line printed its OWN (atr+pat)*0.5, and a
+    //      line is what two drags get compared by — so it must ask the owners, never restate.
+    const witText = witFile ? witFile.join('\n') : '';
+    if (!witText.includes('BaseKnotNodeBandFtrEtr(nodeTF, an)') || !witText.includes('BaseKnotNodeBandEtrCtr(nodeTF, an)'))
+      broken.push('[P-BK-107] prints a boundary nobody owns - the log would quote an edge the type stopped using (P-BK-128)');
+    if (/bands FTR<" \+ DoubleToString\(BaseKnotToPips\(\(atr \+ pat\)/.test(witText))
+      broken.push('a price midpoint is back in the [P-BK-107] line - the journal and the type would disagree on the same box');
+
+    // 2 — the RUNG: the deepest package that fits, and the constants are the legs' own.
+    if (!hop) broken.push('BaseKnotLadderHopAt is gone - the rung has no owner');
+    else {
+      if (!hop.text.includes('BK_AB_FIT_NUM / BK_AB_FIT_DEN'))
+        broken.push('the fit is not the leg package over the rung\'s ATR - the gate cannot prove what "fits" means');
+      if (!/if\(h >= fit \* a3\) hop = 3;/.test(hop.text))
+        broken.push('an OTR box is no longer placed by the fourth rung\'s package - the top of the ladder is a guess again');
+      if (/MathFloor\(u/.test(hop.text) || /\bu = /.test(hop.text))
+        broken.push('the linear u is back - the leg boundary is a price midpoint again (P-BK-128 measured 258.5 pips of legs inside a 217-pip box)');
+    }
+    // 2b — 55/64 IS the product's own leg arithmetic: off 5/8 + risk 15/64. Read both files and
+    //      compare the numbers, so a retuned divisor cannot leave a stale fit behind.
+    const abText = ab ? ab.join('\n') : '';
+    const meText = measure ? measure.join('\n') : '';
+    const fitNum = Number((abText.match(/#define BK_AB_FIT_NUM\s+([\d.]+)/) || [])[1]);
+    const fitDen = Number((abText.match(/#define BK_AB_FIT_DEN\s+([\d.]+)/) || [])[1]);
+    const divNum = Number((meText.match(/#define BK_NODE_POWER_DIV\s+([\d.]+)/) || [])[1]);
+    const hNum = Number((meText.match(/#define BK_NODE_HUNT_NUM\s+([\d.]+)/) || [])[1]);
+    const hDen = Number((meText.match(/#define BK_NODE_HUNT_DEN\s+([\d.]+)/) || [])[1]);
+    if (!(fitNum > 0 && fitDen > 0 && divNum > 0 && hNum > 0 && hDen > 0))
+      broken.push('the fit or the leg constants cannot be read - "fits" would be a number nobody can check against the legs');
+    else {
+      const want = (hNum / hDen) + (1 / divNum);
+      const got = fitNum / fitDen;
+      if (Math.abs(want - got) > 1e-6)
+        broken.push(`the fit is ${got.toFixed(6)} but the legs are ${want.toFixed(6)} of a rung's ATR - a box would be sized on a package it cannot hold`);
+    }
+
+    // 3 — the WITNESS: the sample's U is the SAME ratio coordinate, and the flushed line carries
+    //     the height, the type and the rung — so "one time ETR one time FTR" is one line.
+    const uFn = shot ? bodyOf(shot, 'double BaseKnotLadderU(') : null;
+    if (!uFn) broken.push('BaseKnotLadderU is gone - a sample no longer says where the box sat between two rungs');
+    else {
+      if (!uFn.text.includes('MathLog(h / a0) / MathLog(a1 / a0)'))
+        broken.push('the sample\'s U is the ARITHMETIC position again - it would disagree with the ratio boundary the type is cut at');
+      if (uFn.text.includes('(h - a0) / (a1 - a0)'))
+        broken.push('the linear segment is still in U - two coordinates, one sample');
+    }
+    const wit = shot ? bodyOf(shot, 'void BaseKnotKnotWitness(') : null;
+    if (!wit) broken.push('BaseKnotKnotWitness is gone - a type flip leaves no line');
+    else {
+      for (const [f, label] of [
+        ['" h=" + DoubleToString(BaseKnotToPips(MathAbs(top - bot)), 1) +', 'h'],
+        ['" type=" + BaseKnotNodeShort(kind) + " hop=" + IntegerToString(hop) +', 'type/hop'],
+      ])
+        if (!wit.text.includes(f)) broken.push(`the witness dropped \`${label}=\` - a type flip would still need a screenshot to prove`);
+    }
+    const planText = plan ? plan.join('\n') : '';
+    if (!planText.includes('BaseKnotKnotWitness(id, nd.kind, hop,'))
+      broken.push('Sync no longer hands the witness the type and the rung it published - the line would print a second read of the same box');
+
+    // 4 — the harness proves the pair: the old edge no longer moves the type or the rung, and an
+    //     ETR box can wear its OWN rung when the pattern's package does not fit.
+    const hText = harness ? harness.join('\n') : '';
+    if (!hText.includes('P-BK-128 · 58.4 above it is ETR too'))
+      broken.push('the harness no longer nudges across the OLD arithmetic edge - the regression it guards is the report itself');
+    if (!hText.includes('P-BK-128 · ETR on the node\'s rung · stop = Eng(M5) 43.4'))
+      broken.push('the harness no longer proves an ETR box may read its own rung - the two owners could be re-tied without a failure');
+
+    if (broken.length)
+      failures.push('P-BK-128: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Nodes / BaseKnot_Shot / BaseKnot_Measure / BaseKnot_Plan / the harness)');
+    else
+      console.log('[PASS] P-BK-128 one box, one answer: the type is cut at the ladder\'s RATIO midpoints (√(a·b): 201.7 on 135.2/300.8, not 218.0) and the rung is the deepest leg package the box can HOLD (55/64 x a_k <= h), so a 1 % nudge no longer flips the name, the Trigger cell or the stop');
+  }
+
+  // P-BK-129 (2026-10-27) — ONE TF, TWO SPELLINGS: THE MACHINE NAME AND THE CLOCK.
+  //
+  // The report: «این 700 m به ساعت و دقیقه و غیره بنویس که سریع بفهمیم» on the note he was reading —
+  // `35 bars · 700m base · FTR` above `ATR 700m:313.5 | D1:994.8 | W1:2528.8`. 700 is the base's own
+  // SPAN (35 bars x 20m), i.e. 11h40m of market, and the face is the only place a reader has to make
+  // that conversion. But `700m` is ALSO the machine spelling the tools parse (`[BK-KNOT] readTF=` /
+  // `nodeTF=`, the shot's `Node_TF:`), so the two can never be one function: the display asks
+  // BaseKnotTFHuman, every witness / CSV field keeps BaseKnotTFName, and a ladder rung keeps its own
+  // name (M15 / H4 / D1 — "15m" would read as a length, not as the rung it is). Three inverses:
+  // the clock must be computed, the note must wear it, and the machine fields must not.
+  {
+    const broken = [];
+    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const witFile = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
+    const ownerFile = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
+    // 1 — the clock's arithmetic, off ONE rung list (it asks BaseKnotTFName; it never copies it)
+    const human = base ? bodyOf(base, 'string BaseKnotTFHuman(') : null;
+    if (!human) broken.push('BaseKnotTFHuman is gone - the face prints `700m` again');
+    else {
+      for (const [f, w] of [
+        ['tfMin / 1440,', 'days'],
+        ['(tfMin % 1440) / 60', 'hours'],
+        ['tfMin % 60', 'minutes'],
+      ])
+        if (!human.text.includes(f))
+          broken.push(`the clock no longer computes its ${w} (${f}) - a span falls out of the field it came from`);
+      if (!human.text.includes('BaseKnotTFName(tfMin)'))
+        broken.push('the display name copies the rung list instead of asking BaseKnotTFName - one rung could then be spelled two ways');
+      if (!human.text.includes('IntegerToString(tfMin) + "m"'))
+        broken.push('the display name cannot tell a rung from an off-ladder span - either `H4` reads as `4h` or a span stays `700m`');
+    }
+    // 2 — every READER-facing field asks the clock: the note's own face, its hover, the risk name.
+    const fields = [
+      ['string BaseKnotBaseTag(', nodes],
+      ['string BaseKnotBaseLine(', nodes],
+      ['string BaseKnotNodeLine(', nodes],
+      ['string BaseKnotATRTag(', note],
+      ['string BaseKnotATRPctCell(', note],
+      ['string BaseKnotOwnerTag(', note],
+      ['string BaseKnotEntryWhy(', measure],
+      ['string BaseKnotStopWhy(', measure],
+    ];
+    for (const [sig, file] of fields) {
+      const body = file ? bodyOf(file, sig) : null;
+      const nm = sig.replace('string ', '').replace('(', '');
+      if (!body) broken.push(nm + ' is gone - a field of the note has no owner');
+      else if (!body.text.includes('BaseKnotTFHuman('))
+        broken.push(nm + ' prints the machine TF name - the note/hover shows `700m` where the reader needs `11h40m`');
+    }
+    // 2b — the harness EXECUTES the clock on the user's own numbers, not on a source shape.
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['P-BK-129 · 700m -> 11h40m', 'P-BK-129 · a rung keeps its name (H4)'])
+      if (!hText.includes(s))
+        broken.push('the harness no longer runs `' + s + '` - the clock would be a spelling nobody executes');
+    // 3 — and the MACHINE spelling survives exactly where a tool parses it.
+    const shotText = shot ? shot.join('\n') : '';
+    for (const [s, label] of [
+      ['" readTF=" + BaseKnotTFName(readUsed) +', 'readTF'],
+      ['" nodeTF=" + BaseKnotTFName(nodeTF) +', 'nodeTF'],
+      ['FileWrite(fh, "Node_TF: " + (nodeTF > 0 ? BaseKnotTFName(nodeTF) : ""));', 'Node_TF'],
+    ])
+      if (!shotText.includes(s))
+        broken.push('the shot dropped the machine spelling of ' + label + ' - a reader of a sample would have to parse `11h40m`');
+    const witText = witFile ? witFile.join('\n') : '';
+    if (!witText.includes('BaseKnotTFName(nodeTF)'))
+      broken.push('[P-BK-107] dropped the machine spelling of the node TF - the diag line and the tools that read it break together');
+    const ownText = ownerFile ? ownerFile.join('\n') : '';
+    if (!ownText.includes('BaseKnotTFName(bkOwner)'))
+      broken.push('[BK-OWNER] dropped the machine spelling of the owner TF - the measured rung would print as a clock');
+    for (const [txt, nm] of [[shotText, 'BaseKnot_Shot.mqh'], [witText, 'BaseKnot_Witness.mqh'], [ownText, 'BaseKnot_Owner.mqh']])
+      if ((txt.match(/BaseKnotTFHuman\(/g) || []).length > 0)
+        broken.push(nm + ' prints the display clock in a witness/CSV field - every tool that parses `readTF=`/`Node_TF:` reads `11h40m`');
+
+    if (broken.length)
+      failures.push('P-BK-129: ' + broken.join('; ') + ' (BaseKnot_Base / BaseKnot_Nodes / BaseKnot_Note / BaseKnot_Measure / BaseKnot_Shot)');
+    else
+      console.log('[PASS] P-BK-129 one TF, two spellings: the note and its hover read the clock (700m -> 11h40m, 235 -> 3h55m, a rung keeps M15/H4/D1) out of BaseKnotTFHuman, while every witness and CSV field keeps BaseKnotTFName, which the tools parse');
   }
 
   if (failures.length) {

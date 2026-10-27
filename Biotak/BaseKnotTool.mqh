@@ -80,8 +80,8 @@
 //|    rung whose ability the length matched (P-BK-75/78), so the time   |
 //|    that OWNS the node is its own time stepped up by the type's own   |
 //|    count: FTR 0 · ETR 1 · CTR 2 · OTR 3 (BaseKnotMeasureHops is the  |
-//|    ONE owner). The ENTRY does not hop — the user confirmed that read |
-//|    («ورودش که درسته»): BaseKnotEntryTFMin is the node's own time.    |
+//|    ONE owner). P-BK-127: the ENTRY hops with it — the card's Trigger |
+//|    cell and the entry line are ONE number (BaseKnotEntryTFMin).      |
 //|    The label prints the stop's TF beside the name (`EngSL M5`)       |
 //|    whenever it differs from the class — and a deep leg may leave the |
 //|    box: pushed EngSL/HuntSL as-is — no node-power cap (BKCAP-OFF). |
@@ -230,10 +230,12 @@
 
 #include "BaseKnot_Base.mqh"
 #include "BaseKnot_Direction.mqh"   // P-BK-111: the user's own call on the side (the follow asks it)
+#include "BaseKnot_Ability.mqh"     // P-BK-125: the (TF, anchor) table + the stop's rung (split out of Nodes, P-SIZE-1500)
 #include "BaseKnot_Measure.mqh"
 #include "BaseKnot_Nodes.mqh"
 #include "BaseKnot_Note.mqh"   // P-BK-104/109: the note's own text fields (their one writer is below)
 #include "BaseKnot_Plan.mqh"
 #include "BaseKnot_Drag.mqh"
+#include "BaseKnot_Shot.mqh"   // P-BK-124: one press, one sample folder (reads the ink back)
 
 #endif // BASE_KNOT_TOOL_MQH

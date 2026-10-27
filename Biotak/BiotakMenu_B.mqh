@@ -892,21 +892,23 @@ int SubPageCount()
 {
    if(!SubIsPaged()) return 1;
    int ps = SubPageSize();
-   return (CAT_COUNT + ps - 1) / ps;
+   return (CircCellCount() + ps - 1) / ps;   // TH3TOOL-OFF: pages hold SLOTS, not catalog indices
 }
 // Only the items on the current page are real; the rest park off-screen.
 bool SubItemOnPage(const int i)
 {
+   int cell = CircCatCell(i);   // TH3TOOL-OFF: -1 = retired cell, no slot at all
+   if(cell < 0) return false;
    if(!SubIsPaged()) return true;
-   return ((i / SubPageSize()) == g_ToolsPage);
+   return ((cell / SubPageSize()) == g_ToolsPage);
 }
 int SubVisibleRows()
 {
    int n;
    if(!SubIsPaged())
-      n = CAT_COUNT;
+      n = CircCellCount();                                  // TH3TOOL-OFF: slots, not indices
    else
-      n = CAT_COUNT - g_ToolsPage * SubPageSize();
+      n = CircCellCount() - g_ToolsPage * SubPageSize();
    int rows = (n + SUB_GRID_COLS - 1) / SUB_GRID_COLS;
    int cap  = SubPageRowsCap();
    if(rows < 1)   return 1;
@@ -977,12 +979,15 @@ void SubPlaceItem(const int i, int &x, int &y)
    SubChartRect(cw, ch, ox, oy);
    int mode = SubMode();
 
+   // TH3TOOL-OFF: the index is the cell's IDENTITY, the SLOT is its position.
+   int cell = CircCatCell(i); if(cell < 0) { x = CIRC_HIDE_POS; y = CIRC_HIDE_POS; return; }
+
    if(mode == SUB_MODE_GRID || mode == SUB_MODE_GRID_PAGED)
    {
       if(!SubItemOnPage(i)) { x = CIRC_HIDE_POS; y = CIRC_HIDE_POS; return; }
       int px, py, pw, ph;
       SubPanelRect(px, py, pw, ph);
-      int k = SubIsPaged() ? (i % SubPageSize()) : i;
+      int k = SubIsPaged() ? (cell % SubPageSize()) : cell;   // TH3TOOL-OFF: the SLOT lays the tile
       x = px + SUB_GRID_PAD + (k % SUB_GRID_COLS) * SUB_GRID_PITCH + SUB_CELL_VIS / 2;
       y = py + SUB_GRID_HDR + (k / SUB_GRID_COLS) * SUB_GRID_PITCH + SUB_CELL_VIS / 2;
       return;

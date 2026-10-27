@@ -5,7 +5,7 @@
 static double g_highestHigh = EMPTY_VALUE;
 static double g_lowestLow = EMPTY_VALUE;
 // P-TH3-DEL2 (2026-09-22) -- OUR OWN deletes announce themselves by TIME.
-// Redraws drop and remake family members (mother overlay with no match,
+// Redraws drop and remake family members (base overlay with no match,
 // proof with no vote, zone style switches); each drop queues an
 // OBJECT_DELETE behind the draw. The delete cascade (OnABCDMouseEvent)
 // heals those while this second is fresh and only wipes a family whose

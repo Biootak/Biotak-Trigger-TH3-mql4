@@ -110,7 +110,7 @@ struct TH3Pattern {
     bool       bullish;     // A->B is upward
     TH3Skeleton skeleton;   // the five axes + the step they imply (appended: no reordering)
     // P-TH3-PB-OFF (2026-09-21): the DRAWN pivot base is retired — nothing is
-    // dragged any more, Path 1 is the hand-typed `inpTH3PivotBasePips` (see
+    // dragged any more, Path 1 is the hand-typed `inpTH3BaseRangePips` (see
     // TH3ManualBaseStep, TH3Pivots.mqh). The two fields stay in the struct so
     // the store layout and the old pins keep compiling; the UI never writes
     // them and the renderer never reads them.

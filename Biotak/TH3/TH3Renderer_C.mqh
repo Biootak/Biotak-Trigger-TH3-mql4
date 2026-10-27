@@ -4,7 +4,7 @@
 
 void TH3PivotMarkersUpdate()
 {
-    // P-TH3-DISC: markers OFF — the hand-marked base is the only mother.
+    // P-TH3-DISC: markers OFF — the hand-marked base is the only base.
     // (inpTH3AutoPivots still owns the click snap in TH3Tool_C.)
     // One shot per attach: the namespace stays empty (nothing recreates it),
     // so the tick path below pays zero — no scan, no clear loop, no redraw.

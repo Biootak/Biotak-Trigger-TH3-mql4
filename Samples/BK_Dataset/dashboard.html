@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دیتاست بیس‌نات</title>
+<style>
+:root{--bg:#0e1116;--card:#161b22;--line:#2b3240;--txt:#d7dde6;--dim:#8b95a5;
+      --real:#3fb950;--inv:#f85149;--unclear:#d29922;--none:#6e7681;--accent:#58a6ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.6 "Segoe UI",Tahoma,sans-serif}
+header.top{padding:18px 24px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;
+      background:#0e1116f2;backdrop-filter:blur(6px);z-index:5}
+h1{margin:0;font-size:19px} h1 small{color:var(--dim);font-weight:400;margin-right:8px;font-size:13px}
+.kpis{display:flex;flex-wrap:wrap;gap:10px;padding:14px 24px 6px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:104px}
+.kpi b{display:block;font-size:18px} .kpi span{color:var(--dim);font-size:12px}
+.next{margin:12px 24px 0;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;
+      border:1px solid var(--line);border-right:3px solid var(--accent);border-radius:8px;
+      background:#11161d;padding:9px 14px;font-size:13px}
+.next b{font-size:13px} .next span{color:var(--dim);font-size:12px}
+.next code{font:12px/1.4 Consolas,monospace;background:#0d1117;border:1px solid var(--line);
+      border-radius:5px;padding:2px 8px;margin-right:auto;direction:ltr;unicode-bidi:embed;color:#9ecbff}
+.next kbd{font:11px/1 Consolas,monospace;background:#0d1117;border:1px solid var(--line);
+      border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:#fff}
+.next.file{border-right-color:var(--unclear)} .next.ok{border-right-color:var(--real)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0 4px}
+.step{background:#11161d;border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.step b{display:block;font-size:12px;color:var(--accent);margin-bottom:3px}
+.step p{margin:0 0 6px;font-size:12px;color:#b9c2cf}
+.step code{display:block;font:11px/1.5 Consolas,monospace;color:#9ecbff;direction:ltr;
+      unicode-bidi:embed;text-align:left;overflow-x:auto;white-space:pre}
+.step kbd{font:11px/1 Consolas,monospace;background:#0d1117;border:1px solid var(--line);
+      border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:#fff}
+.tchips{display:flex;flex-wrap:wrap;gap:8px;padding:6px 24px 12px}
+.tchip{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+.tchip b{font-size:14px;margin-left:6px} .tchip small{display:block;color:var(--dim)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 24px 10px;align-items:center}
+select,input,button{background:#0d1117;color:var(--txt);border:1px solid var(--line);
+      border-radius:6px;padding:6px 8px;font:inherit;font-size:13px}
+button{cursor:pointer} button:hover{border-color:var(--accent);color:#fff}
+main{padding:0 24px 40px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;scroll-margin-top:120px}
+.card:hover{border-color:#3d4757}
+.thumb{width:100%;display:block;background:#0a0d12;cursor:zoom-in;border-bottom:1px solid var(--line);aspect-ratio:16/9;object-fit:cover}
+.thumb.none{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+      color:var(--c);background:linear-gradient(0deg,#0a0d12,#0f141b);cursor:default}
+.thumb.none span{font-size:26px;font-weight:600;opacity:.5} .thumb.none small{color:var(--dim);font-size:12px}
+.card>header{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#11161d;border-bottom:1px solid var(--line)}
+.card>header b{font-size:13px}
+.badge{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+.v-real{color:var(--real);border-color:var(--real)} .v-invented{color:var(--inv);border-color:var(--inv)}
+.v-unclear{color:var(--unclear);border-color:var(--unclear)} .v-none{color:var(--none);border-color:var(--none)}
+.shots{margin-right:auto;color:var(--dim);font-size:11px}
+.meta{padding:8px 12px;display:grid;grid-template-columns:repeat(3,1fr);gap:3px 10px;font-size:12px}
+.meta div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta span{color:var(--dim);margin-left:4px}
+.ladder{padding:0 12px 4px}
+.anchor{padding:0 12px 6px;color:var(--dim);font-size:11px}
+.anchor span{color:#5f6b7a;margin-left:6px} .anchor span:first-child{margin-left:0}
+.note{padding:2px 12px 8px;font-size:12px;max-height:190px;overflow:auto;border-top:1px dashed var(--line)}
+.note h4,.note h5,.note h6{margin:8px 0 4px;font-size:12px;color:var(--accent);font-weight:500}
+.note p{margin:2px 0;color:#b9c2cf} .note ul{margin:2px 0;padding-inline-start:18px}
+.note table.kv{width:100%;border-collapse:collapse;font-size:11px}
+.note table.kv th,.note table.kv td{padding:2px 4px;border-bottom:1px solid #20262f;text-align:right}
+.note table.kv th{color:var(--dim);font-weight:400;width:38%}
+.dim{color:var(--dim)}
+.card>footer{display:flex;gap:6px;padding:7px 12px;border-top:1px solid var(--line);align-items:center}
+.card>footer code{font:11px/1.4 Consolas,monospace;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card>footer button{font-size:11px;padding:3px 8px}
+section.panel{margin:22px 0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+section.panel h2{margin:0 0 8px;font-size:15px}
+table.cmp{width:100%;border-collapse:collapse;font-size:12px}
+table.cmp th,table.cmp td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--line)}
+table.cmp th{color:var(--dim);font-weight:600}
+.empty{color:var(--dim);font-size:12px;margin:0}
+.lb{position:fixed;inset:0;background:#000e;display:none;align-items:center;justify-content:center;z-index:9}
+.lb.on{display:flex}
+.lb img{max-width:94vw;max-height:88vh;border:1px solid var(--line);cursor:grab;
+       transform-origin:center center;user-select:none;-webkit-user-drag:none}
+.lb img.drag{cursor:grabbing}
+.lbbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;
+       align-items:center;background:#161b22ee;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.lbbar .z{color:var(--dim);min-width:52px;text-align:center;font-size:12px}
+.lbhint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:12px;
+        background:#161b22dd;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+@media (max-width:520px){.grid{grid-template-columns:1fr}.meta{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>دیتاست بیس‌نات <small>هر نمونه یک پوشه: عکس + اعداد + یادداشت</small></h1>
+</header>
+<div class="next file"><b>12 نمونه در صف ثبت است</b>
+      <span>عکس و اعداد روی دیسک‌اند، هنوز در CSV نیستند — با یک دستور ثبت و صفحه بازسازی می‌شوند</span>
+      <code>node tools/bk-shot-sync.js</code></div>
+<div class="kpis">
+  <div class="kpi"><b>4</b><span>نمونه</span></div>
+  <div class="kpi"><b>0</b><span>با عکس</span></div>
+  <div class="kpi"><b>1</b><span>زیر ۱ پیپ از مرز</span></div>
+  <div class="kpi"><b>7.7p</b><span>میانهٔ حاشیه</span></div>
+  <div class="kpi"><b>2</b><span>زیر ۰.۱ رنگ از مرز</span></div>
+  <div class="kpi"><b>0/0/0</b><span>واقعی / ساختگی / نامعلوم</span></div>
+  <div class="kpi"><b>v1</b><span>نسخهٔ فرمول</span></div>
+  <div class="kpi"><b>0</b><span>استاپِ عوض‌شده با v2</span></div>
+  <div class="kpi"><b>4/20</b><span>تا بازبینی نسخه</span></div>
+</div>
+<div class="tchips"><div class="tchip"><b style="color:#EF9F27">CTR</b>
+      <span>1</span>
+      <small>میانهٔ حاشیه 7.3p · میانهٔ استاپ 32.0p</small></div><div class="tchip"><b style="color:#85B7EB">ETR</b>
+      <span>1</span>
+      <small>میانهٔ حاشیه 53.2p · میانهٔ استاپ 31.9p</small></div><div class="tchip"><b style="color:#97C459">FTR</b>
+      <span>1</span>
+      <small>میانهٔ حاشیه 8.1p · میانهٔ استاپ 4.6p</small></div><div class="tchip"><b style="color:#F09595">OTR</b>
+      <span>1</span>
+      <small>میانهٔ حاشیه 0.5p · میانهٔ استاپ 72.9p</small></div></div>
+<div class="filters">
+  <input id="q" placeholder="جست‌وجو: شناسه، نماد، یادداشت…" style="min-width:220px">
+  <select id="ft"><option value="">همهٔ نوع‌ها</option><option>FTR</option><option>ETR</option><option>CTR</option><option>OTR</option></select>
+  <select id="fv"><option value="">همهٔ داوری‌ها</option><option value="real">واقعی</option><option value="invented">ساختگی</option><option value="unclear">نامعلوم</option><option value="__none">بازبینی‌نشده</option></select>
+  <select id="sort"><option value="id">شناسه ↑</option><option value="margin">حاشیه ↑</option><option value="u">u ↑</option><option value="stop">استاپ ↑</option><option value="h">h ↑</option></select>
+  <span id="count" class="dim" style="font-size:12px"></span>
+</div>
+<main>
+  <div id="grid" class="grid">
+<article class="card" id="BK-0001" data-type="FTR" data-verdict="">
+  <div class="thumb none" style="--c:#97C459"><span>FTR</span><small>بدون عکس</small></div>
+  <header>
+    <b class="mono">BK-0001</b>
+    <span class="badge" style="color:#97C459;border-color:#97C459;background:#1d2a13">FTR</span>
+    <span class="badge v-none">بازبینی نشده</span>
+    
+  </header>
+  <div class="meta">
+    <div><span>نماد</span>XAUUSD M1</div>
+    <div><span>گره</span>M1</div>
+    <div><span>h</span>23.8p</div>
+    <div><span>فاصله از مرز</span>8.1p</div>
+    <div><span>u</span>0.235</div>
+    <div><span>ورود</span>4.6p</div>
+    <div><span>استاپ</span>4.6p</div>
+    <div><span>لات</span>1.08</div>
+    <div><span>ریسک</span>$49.7</div>
+  </div>
+  <div class="ladder" title="0 = ATR گره · 1 = +1 · 2 = +2 · 3 = +3"><svg viewBox="0 0 240 24" width="100%" height="24" role="img" aria-label="ladder position"><rect x="0" y="7" width="40" height="10" fill="#97C459" fill-opacity="0.22"/><rect x="40" y="7" width="80" height="10" fill="#85B7EB" fill-opacity="0.22"/><rect x="120" y="7" width="40" height="10" fill="#EF9F27" fill-opacity="0.22"/><rect x="160" y="7" width="80" height="10" fill="#F09595" fill-opacity="0.22"/><line x1="40" y1="5" x2="40" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="120" y1="5" x2="120" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="160" y1="4" x2="160" y2="20" stroke="#F09595" stroke-width="1" stroke-opacity="0.8"/><circle cx="18.8" cy="12" r="4" fill="#e6edf3"/></svg></div>
+  <div class="anchor"><span>داستان</span>2026.10.23 20:04 <span>لبه</span>2026.10.23 20:50</div>
+  <div class="note"><p class="dim">بدون یادداشت — از دکمهٔ دستور پایین اضافه کن.</p></div>
+  <footer>
+    <code>note BK-0001 "…"</code>
+    <button data-copy="note BK-0001 &quot;…&quot;">کپی</button>
+  </footer>
+</article>
+<article class="card" id="BK-0002" data-type="ETR" data-verdict="">
+  <div class="thumb none" style="--c:#85B7EB"><span>ETR</span><small>بدون عکس</small></div>
+  <header>
+    <b class="mono">BK-0002</b>
+    <span class="badge" style="color:#85B7EB;border-color:#85B7EB;background:#132030">ETR</span>
+    <span class="badge v-none">بازبینی نشده</span>
+    
+  </header>
+  <div class="meta">
+    <div><span>نماد</span>XAUUSD M5</div>
+    <div><span>گره</span>M15</div>
+    <div><span>h</span>169.8p</div>
+    <div><span>فاصله از مرز</span>53.2p</div>
+    <div><span>u</span>1.270</div>
+    <div><span>ورود</span>39.2p</div>
+    <div><span>استاپ</span>31.9p</div>
+    <div><span>لات</span>0.15</div>
+    <div><span>ریسک</span>$47.9</div>
+  </div>
+  <div class="ladder" title="0 = ATR گره · 1 = +1 · 2 = +2 · 3 = +3"><svg viewBox="0 0 240 24" width="100%" height="24" role="img" aria-label="ladder position"><rect x="0" y="7" width="40" height="10" fill="#97C459" fill-opacity="0.22"/><rect x="40" y="7" width="80" height="10" fill="#85B7EB" fill-opacity="0.22"/><rect x="120" y="7" width="40" height="10" fill="#EF9F27" fill-opacity="0.22"/><rect x="160" y="7" width="80" height="10" fill="#F09595" fill-opacity="0.22"/><line x1="40" y1="5" x2="40" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="120" y1="5" x2="120" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="160" y1="4" x2="160" y2="20" stroke="#F09595" stroke-width="1" stroke-opacity="0.8"/><circle cx="101.6" cy="12" r="4" fill="#e6edf3"/></svg></div>
+  <div class="anchor"><span>داستان</span>2026.10.22 06:00 <span>لبه</span>2026.10.22 07:35</div>
+  <div class="note"><p class="dim">بدون یادداشت — از دکمهٔ دستور پایین اضافه کن.</p></div>
+  <footer>
+    <code>note BK-0002 "…"</code>
+    <button data-copy="note BK-0002 &quot;…&quot;">کپی</button>
+  </footer>
+</article>
+<article class="card" id="BK-0003" data-type="CTR" data-verdict="">
+  <div class="thumb none" style="--c:#EF9F27"><span>CTR</span><small>بدون عکس</small></div>
+  <header>
+    <b class="mono">BK-0003</b>
+    <span class="badge" style="color:#EF9F27;border-color:#EF9F27;background:#2e2312">CTR</span>
+    <span class="badge v-none">بازبینی نشده</span>
+    
+  </header>
+  <div class="meta">
+    <div><span>نماد</span>XAUUSD M5</div>
+    <div><span>گره</span>M5</div>
+    <div><span>h</span>129.0p</div>
+    <div><span>فاصله از مرز</span>7.3p</div>
+    <div><span>u</span>1.911</div>
+    <div><span>ورود</span>27.1p</div>
+    <div><span>استاپ</span>32.0p</div>
+    <div><span>لات</span>0.15</div>
+    <div><span>ریسک</span>$48.0</div>
+  </div>
+  <div class="ladder" title="0 = ATR گره · 1 = +1 · 2 = +2 · 3 = +3"><svg viewBox="0 0 240 24" width="100%" height="24" role="img" aria-label="ladder position"><rect x="0" y="7" width="40" height="10" fill="#97C459" fill-opacity="0.22"/><rect x="40" y="7" width="80" height="10" fill="#85B7EB" fill-opacity="0.22"/><rect x="120" y="7" width="40" height="10" fill="#EF9F27" fill-opacity="0.22"/><rect x="160" y="7" width="80" height="10" fill="#F09595" fill-opacity="0.22"/><line x1="40" y1="5" x2="40" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="120" y1="5" x2="120" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="160" y1="4" x2="160" y2="20" stroke="#F09595" stroke-width="1" stroke-opacity="0.8"/><circle cx="152.9" cy="12" r="4" fill="#e6edf3"/></svg></div>
+  <div class="anchor"><span>داستان</span>2026.10.23 16:55 <span>لبه</span>2026.10.23 17:15</div>
+  <div class="note"><p class="dim">بدون یادداشت — از دکمهٔ دستور پایین اضافه کن.</p></div>
+  <footer>
+    <code>note BK-0003 "…"</code>
+    <button data-copy="note BK-0003 &quot;…&quot;">کپی</button>
+  </footer>
+</article>
+<article class="card" id="BK-0004" data-type="OTR" data-verdict="">
+  <div class="thumb none" style="--c:#F09595"><span>OTR</span><small>بدون عکس</small></div>
+  <header>
+    <b class="mono">BK-0004</b>
+    <span class="badge" style="color:#F09595;border-color:#F09595;background:#331a1a">OTR</span>
+    <span class="badge v-none">بازبینی نشده</span>
+    
+  </header>
+  <div class="meta">
+    <div><span>نماد</span>XAUUSD M5</div>
+    <div><span>گره</span>M5</div>
+    <div><span>h</span>136.8p</div>
+    <div><span>فاصله از مرز</span>0.5p</div>
+    <div><span>u</span>2.004</div>
+    <div><span>ورود</span>27.1p</div>
+    <div><span>استاپ</span>72.9p</div>
+    <div><span>لات</span>0.06</div>
+    <div><span>ریسک</span>$43.7</div>
+  </div>
+  <div class="ladder" title="0 = ATR گره · 1 = +1 · 2 = +2 · 3 = +3"><svg viewBox="0 0 240 24" width="100%" height="24" role="img" aria-label="ladder position"><rect x="0" y="7" width="40" height="10" fill="#97C459" fill-opacity="0.22"/><rect x="40" y="7" width="80" height="10" fill="#85B7EB" fill-opacity="0.22"/><rect x="120" y="7" width="40" height="10" fill="#EF9F27" fill-opacity="0.22"/><rect x="160" y="7" width="80" height="10" fill="#F09595" fill-opacity="0.22"/><line x1="40" y1="5" x2="40" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="120" y1="5" x2="120" y2="19" stroke="#8b95a5" stroke-width="0.5" stroke-opacity="0.6"/><line x1="160" y1="4" x2="160" y2="20" stroke="#F09595" stroke-width="1" stroke-opacity="0.8"/><circle cx="160.4" cy="12" r="4" fill="#e6edf3"/></svg></div>
+  <div class="anchor"><span>داستان</span>2026.10.23 16:55 <span>لبه</span>2026.10.23 16:55</div>
+  <div class="note"><p class="dim">بدون یادداشت — از دکمهٔ دستور پایین اضافه کن.</p></div>
+  <footer>
+    <code>note BK-0004 "…"</code>
+    <button data-copy="note BK-0004 &quot;…&quot;">کپی</button>
+  </footer>
+</article>
+  </div>
+  <section class="panel">
+    <h2>مقایسه <small class="dim" style="font-weight:400">— دو تا چهار نمونه را از دکمهٔ تیک هر کارت انتخاب کن</small></h2>
+    <div id="cmp"></div>
+  </section>
+  <section class="panel">
+    <h2>روال کار <small class="dim" style="font-weight:400">— چهار قدم، هر قدم یک دستور، هر دست‌آورد یک فایل</small></h2>
+    <div class="steps">
+      <div class="step"><b>۱ · گرفتن</b>
+        <p>مستطیل نود را کلیک کن، <kbd>K</kbd> را بزن. یک پوشه با عکس و ۳۷ عدد ساخته می‌شود.</p>
+        <code>K  →  MQL4FilesBK_DatasetSamples</code></div>
+      <div class="step"><b>۲ · ثبت</b>
+        <p>صف را در CSV بنویس، پوشهٔ نمونه بساز، صفحه را بازسازی کن.</p>
+        <code>node tools/bk-shot-sync.js --watch</code></div>
+      <div class="step"><b>۳ · گفتن</b>
+        <p>عکس دوم، جملهٔ دلیل، داوری. یادداشت به نمونه می‌چسبد نه به روز.</p>
+        <code>node tools/bk-dataset-dashboard.js note BK-0005 "…"</code></div>
+      <div class="step"><b>۴ · تصمیم</b>
+        <p>فرمول فقط وقتی عوض می‌شود که یک نسخه روی همین سطرها ببرد. امروز v2 رفت (hop = round(u)) و تصمیمِ نهایی به <b>۲۰ نمونه</b> موکول شد: هر سطر «استاپ v1» را هم نگه می‌دارد، پس مقایسه بدون سفرِ دوم به چارت انجام می‌شود.</p>
+        <code>Formula_Version: v1 → v2  (next: 20)</code></div>
+    </div>
+    <p class="empty">عددها از خودِ چارت خوانده می‌شوند (مستطیل و برچسب‌های ENTRY/SL/TP)، پس یک سطر نمی‌تواند استاپی را توصیف کند که چارت نمی‌کشد. متن کامل روال: <code>docs/bk-dataset.md</code> بند ۸.</p>
+  </section>
+</main>
+<div class="lb" id="lb">
+  <div class="lbbar"><button id="prev">‹</button><span class="z" id="zi">100%</span><button id="next">›</button><button id="close">بستن</button></div>
+  <img id="lbimg" alt="">
+  <div class="lbhint">چرخ ماوس = زوم · کشیدن = جابه‌جایی · Esc = بستن</div>
+</div>
+<script>
+var DATA = [{"id":"BK-0001","type":"FTR","symbol":"XAUUSD","tf":"M1","h":23.8,"margin":8.1,"u":0.235,"exact":true,"off":4.6,"stop":4.6,"stopv1":4.6,"tp1":11,"tp2":23,"tp3":48,"lot":1.08,"risk":49.7,"dir":"?","ver":"v1","verdict":"","imgs":[]},{"id":"BK-0002","type":"ETR","symbol":"XAUUSD","tf":"M5","h":169.8,"margin":53.2,"u":1.27,"exact":true,"off":39.2,"stop":31.9,"stopv1":31.9,"tp1":74,"tp2":160,"tp3":330,"lot":0.15,"risk":47.9,"dir":"?","ver":"v1","verdict":"","imgs":[]},{"id":"BK-0003","type":"CTR","symbol":"XAUUSD","tf":"M5","h":129,"margin":7.3,"u":1.911,"exact":true,"off":27.1,"stop":32,"stopv1":32,"tp1":75,"tp2":160,"tp3":331,"lot":0.15,"risk":48,"dir":"?","ver":"v1","verdict":"","imgs":[]},{"id":"BK-0004","type":"OTR","symbol":"XAUUSD","tf":"M5","h":136.8,"margin":0.5,"u":2.004,"exact":true,"off":27.1,"stop":72.9,"stopv1":72.9,"tp1":170,"tp2":365,"tp3":753,"lot":0.06,"risk":43.7,"dir":"?","ver":"v1","verdict":"","imgs":[]}];
+var picked = [];
+var sortKey = "id";
+
+function esc2(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function fmt(v,d){ return (v===null||v===undefined||isNaN(v))?"—":Number(v).toFixed(d); }
+function pill(t){
+  var col={FTR:"#97C459",ETR:"#85B7EB",CTR:"#EF9F27",OTR:"#F09595"}[t]||"#8b95a5";
+  return '<span class="badge" style="color:'+col+';border-color:'+col+'">'+esc2(t)+'</span>';
+}
+function verdictCell(v){
+  if(!v) return '<span class="badge v-none">—</span>';
+  return '<span class="badge v-'+esc2(v)+'">'+esc2(v)+'</span>';
+}
+function rowsNow(){
+  var q=(document.getElementById("q").value||"").toLowerCase();
+  var ft=document.getElementById("ft").value;
+  var fv=document.getElementById("fv").value;
+  var out=DATA.filter(function(r){
+    if(ft && r.type!==ft) return false;
+    if(fv==="__none"){ if(r.verdict) return false; }
+    else if(fv && r.verdict!==fv) return false;
+    if(!q) return true;
+    return (r.id+" "+r.symbol+" "+r.type+" "+r.verdict).toLowerCase().indexOf(q)>=0;
+  });
+  out.sort(function(a,b){
+    var x=a[sortKey], y=b[sortKey];
+    if(sortKey==="id"){ x=String(x); y=String(y); return x<y?-1:x>y?1:0; }
+    x=(x===null?Infinity:x); y=(y===null?Infinity:y);
+    return x-y;
+  });
+  return out;
+}
+function render(){
+  var keep=rowsNow();
+  var ids={}; keep.forEach(function(r){ ids[r.id]=1; });
+  var cards=document.querySelectorAll("#grid .card");
+  for(var i=0;i<cards.length;i++) cards[i].style.display = ids[cards[i].id]?"":"none";
+  document.getElementById("count").textContent = keep.length+" / "+DATA.length+" نمونه";
+  renderCompare();
+}
+function renderCompare(){
+  var rows=DATA.filter(function(r){ return picked.indexOf(r.id)>=0; });
+  var box=document.getElementById("cmp");
+  if(rows.length<2){ box.innerHTML = rows.length ? '<p class="empty">یک نمونه انتخاب شده — یکی دیگر هم تیک بزن.</p>' : '<p class="empty">چیزی انتخاب نشده.</p>'; return; }
+  var head="<tr><th></th>"+rows.map(function(r){return "<th>"+esc2(r.id)+"</th>";}).join("")+"</tr>";
+  var defs=[["نوع",function(r){return pill(r.type);}],
+    ["h",function(r){return fmt(r.h,1)+"p";}],
+    ["حاشیه",function(r){return fmt(r.margin,1)+"p";}],
+    ["u",function(r){return (r.u===null)?"—":((r.exact?"":"~")+r.u.toFixed(3));}],
+    ["ورود",function(r){return fmt(r.off,1)+"p";}],
+    ["استاپ",function(r){return fmt(r.stop,1)+"p";}],
+    ["استاپ v1",function(r){return fmt(r.stopv1,1)+"p"+(r.stopv1!==null&&r.stop!==null&&Math.abs(r.stopv1-r.stop)>0.05?' <span class="dim">Δ</span>':'');}],
+    ["TP",function(r){return fmt(r.tp1,0)+" / "+fmt(r.tp2,0)+" / "+fmt(r.tp3,0);}],
+    ["لات",function(r){return fmt(r.lot,2);}],
+    ["ریسک $",function(r){return fmt(r.risk,1);}],
+    ["داوری",function(r){return verdictCell(r.verdict);}],
+    ["عکس",function(r){return r.imgs.length;}],
+    ["",function(r){return '<button data-pick="'+esc2(r.id)+'">حذف</button>';}]];
+  var body=defs.map(function(d){
+    return "<tr><td class=\"dim\">"+d[0]+"</td>"+rows.map(function(r){return "<td>"+d[1](r)+"</td>";}).join("")+"</tr>";
+  }).join("");
+  box.innerHTML='<table class="cmp"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+}
+document.addEventListener("change",function(e){
+  if(e.target && e.target.dataset && e.target.dataset.pick!==undefined){
+    var id=e.target.dataset.pick, i=picked.indexOf(id);
+    if(i>=0) picked.splice(i,1); else { picked.push(id); if(picked.length>4) picked.shift(); }
+    renderCompare();
+  }
+});
+document.addEventListener("click",function(e){
+  var b=e.target.closest?e.target.closest("[data-pick]"):null;
+  if(b){ var id=b.dataset.pick, i=picked.indexOf(id); if(i>=0) picked.splice(i,1); renderCompare(); return; }
+  var c=e.target.closest?e.target.closest("[data-copy]"):null;
+  if(c){ if(navigator.clipboard) navigator.clipboard.writeText("node tools/bk-dataset-dashboard.js "+c.dataset.copy); c.textContent="کپی شد"; setTimeout(function(){c.textContent="کپی";},1200); return; }
+});
+document.addEventListener("input",function(e){
+  if(e.target && (e.target.id==="q")) render();
+});
+document.addEventListener("change",function(e){
+  if(e.target && (e.target.id==="ft"||e.target.id==="fv"||e.target.id==="sort")){
+    if(e.target.id==="sort") sortKey=e.target.value;
+    render();
+  }
+});
+
+var ALL=[];
+DATA.forEach(function(r){ r.imgs.forEach(function(src){ ALL.push({src:src,id:r.id}); }); });
+var cur=-1, zoom=1, ox=0, oy=0;
+var lb=document.getElementById("lb"), img=document.getElementById("lbimg"), zi=document.getElementById("zi");
+function show(i){
+  if(i<0||i>=ALL.length) return;
+  cur=i; zoom=1; ox=0; oy=0;
+  img.src=ALL[i].src; img.alt=ALL[i].id; img.style.transform="translate(0,0) scale(1)";
+  zi.textContent="100%"; lb.classList.add("on");
+}
+document.addEventListener("click",function(e){
+  var t=e.target;
+  if(t && t.classList && t.classList.contains("thumb") && t.dataset.id){
+    var i=ALL.findIndex(function(a){return a.src===t.getAttribute("src");});
+    if(i>=0) show(i);
+  }
+});
+document.getElementById("close").onclick=function(){ lb.classList.remove("on"); };
+document.getElementById("prev").onclick=function(){ show(cur-1); };
+document.getElementById("next").onclick=function(){ show(cur+1); };
+lb.addEventListener("click",function(e){ if(e.target===lb) lb.classList.remove("on"); });
+document.addEventListener("keydown",function(e){
+  if(!lb.classList.contains("on")) return;
+  if(e.key==="Escape") lb.classList.remove("on");
+  if(e.key==="ArrowLeft") show(cur+1);
+  if(e.key==="ArrowRight") show(cur-1);
+});
+lb.addEventListener("wheel",function(e){
+  e.preventDefault();
+  zoom=Math.max(0.4,Math.min(8,zoom*(e.deltaY<0?1.15:1/1.15)));
+  img.style.transform="translate("+ox+"px,"+oy+"px) scale("+zoom+")";
+  zi.textContent=Math.round(zoom*100)+"%";
+},{passive:false});
+var drag=false, sx=0, sy=0;
+img.addEventListener("mousedown",function(e){ drag=true; sx=e.clientX-ox; sy=e.clientY-oy; img.classList.add("drag"); });
+window.addEventListener("mousemove",function(e){ if(!drag) return; ox=e.clientX-sx; oy=e.clientY-sy; img.style.transform="translate("+ox+"px,"+oy+"px) scale("+zoom+")"; });
+window.addEventListener("mouseup",function(){ drag=false; img.classList.remove("drag"); });
+render();
+</script>
+</body>
+</html>

@@ -215,7 +215,12 @@ void TH3ROPlateAt(const string plate, const ENUM_BASE_CORNER corner,
         ObjectSetInteger(0, plate, OBJPROP_COLOR,       TH3RO_EDGE);
         ObjectSetInteger(0, plate, OBJPROP_BGCOLOR,     TH3RO_FILL);
         ObjectSetInteger(0, plate, OBJPROP_BACK,        false);
-        ObjectSetInteger(0, plate, OBJPROP_SELECTABLE,  false);
+        // P-TH3-DEL4: the plate is the readout's ONE handle. The rows stay
+        // non-selectable (ten draggable labels would be ten ways to break a
+        // readout), so this is the single object the terminal can name — and a
+        // readout the terminal can name is a readout the hand can delete, the
+        // same bargain P-LM-17 struck for the leg's line.
+        ObjectSetInteger(0, plate, OBJPROP_SELECTABLE,  true);
         ObjectSetInteger(0, plate, OBJPROP_HIDDEN,      true);
         ObjectSetInteger(0, plate, OBJPROP_ZORDER,      Z_TH3_RO_PLATE);
         ObjectSetString( 0, plate, OBJPROP_TOOLTIP,     tooltip);
@@ -228,6 +233,11 @@ void TH3ROPlateAt(const string plate, const ENUM_BASE_CORNER corner,
     // writer left with BACK=true slides under every label on the chart.
     if((bool)ObjectGetInteger(0, plate, OBJPROP_BACK))
         ObjectSetInteger(0, plate, OBJPROP_BACK, false);
+    // P-TH3-DEL4: a plate an older build born non-selectable is a plate the
+    // hand cannot name — one read, one write only on the chart that needs it,
+    // so a still frame still costs zero writes.
+    if(!(bool)ObjectGetInteger(0, plate, OBJPROP_SELECTABLE))
+        ObjectSetInteger(0, plate, OBJPROP_SELECTABLE, true);
 }
 
 // One row of ink: created on the first call, then only moved and re-inked.
@@ -387,7 +397,7 @@ bool TH3IsInfoLabelName(const string objName)
 //| Step3 346.3 vs 328.8 — each pattern owns its closedStep, so each  |
 //| owns its q winner and its lock). The ladder is the ACTIVE         |
 //| pattern's answer the way the caption already is (P-TH3-P6d) and   |
-//| the mother badge already is (one badge per chart): other patterns |
+//| the base badge already is (one badge per chart): other patterns  |
 //| keep their ABCD ink and their caption slot, but no targets, no   |
 //| proof (P-TH3-DISC: zones stay ON for every pattern — the user's    |
 //| order). Chart objects obey TIMEFRAMES (the P-TH3-INFO-10            |
@@ -428,6 +438,28 @@ void TH3LadderSetVisible(const string base, const bool visible)
 }
 
 //+------------------------------------------------------------------+
+//| P-TH3-BASE-01 (2026-10-24) -- THE OLD PREFIX DIES ONCE.          |
+//| The overlay objects were `TH3_MP_<pattern>_*` and are `TH3_BASE_` |
+//| now. A previous build's names are ORPHANS: they survive on the    |
+//| chart and paint a second zone beside the new one, so the first    |
+//| draw of every attach walks the object list ONCE (bounded by the   |
+//| chart's own count, never per tick) and deletes the old spelling.  |
+//| A reattach or a template re-apply resets the static and sweeps    |
+//| again — which is exactly when an old chart comes back.            |
+//+------------------------------------------------------------------+
+void TH3LegacyMpPrefixSweep()
+{
+    static bool s_done = false;
+    if(s_done) return;
+    s_done = true;
+    for(int i = ObjectsTotal(0, -1, -1) - 1; i >= 0; i--)
+    {
+        string nm = ObjectName(0, i, -1, -1);
+        if(StringFind(nm, "TH3_MP_") == 0) ObjectDelete(0, nm);
+    }
+}
+
+//+------------------------------------------------------------------+
 //| P-TH3-DEL1 (2026-09-22) -- THE FAMILY BASE, OFF THE NAME.       |
 //| Pattern names are `ABCD_Pattern_<digits>` (TH3Tool.mqh: the      |
 //| completion stamps GetTickCount()). Any member name — point, line, |
@@ -439,7 +471,11 @@ void TH3LadderSetVisible(const string base, const bool visible)
 string TH3FamilyBaseOf(const string objName)
 {
     string rest = objName;
-    if(StringFind(rest, "TH3_MP_") == 0)
+    // P-TH3-BASE-01: TH3_BASE_ (9) is the current spelling, TH3_MP_ (7) the
+    // legacy one — a hand-delete of either still finds its family.
+    if(StringFind(rest, "TH3_BASE_") == 0)
+        rest = StringSubstr(rest, 9);
+    else if(StringFind(rest, "TH3_MP_") == 0)
         rest = StringSubstr(rest, 7);
     string pre = TH3_PATTERN_PREFIX;
     if(StringFind(rest, pre) != 0) return "";
@@ -566,6 +602,83 @@ void TH3InfoFamilyDelete(const string base)
 }
 
 //+------------------------------------------------------------------+
+//| P-TH3-DEL4 (2026-10-24) — THE READOUT THE HAND DELETED STAYS     |
+//| DELETED.                                                         |
+//|                                                                  |
+//| The report: «اینو حذف میزنم حذف نمیشه به درستی» — the AB=CD       |
+//| caption, deleted by every path the terminal offers, would not    |
+//| leave. Three facts, all measured here:                            |
+//|                                                                  |
+//|   * the family was born `OBJPROP_SELECTABLE=false`               |
+//|     (TH3ROPlateAt below), so the terminal could not select it    |
+//|     and neither the Delete key nor right-click → Delete ever      |
+//|     named it;                                                     |
+//|   * the delete handler THREW THE EVENT AWAY by design            |
+//|     (P-TH3-DEL3, TH3Tool_C.mqh:1421 "the caption is display,      |
+//|     never a delete trigger") — that rule exists so a caption      |
+//|     drop cannot wipe a healthy ABCD, and it also silenced the     |
+//|     user's own delete;                                            |
+//|   * and Draw/Verify/heal rebuilt the family on the next pass      |
+//|     anyway.                                                       |
+//|                                                                  |
+//| The three are one rule: a hand-delete of a caption member IS the  |
+//| user saying "this readout is done". So it DISMISSES the readout — |
+//| the rows and the plate go, the pattern, its ladder and its zones  |
+//| stay, and no later pass brings the readout back for that base.    |
+//| A NEW pattern is a new base (`ABCD_Pattern_<tick>`) and gets its  |
+//| own caption, which is the way back.                               |
+//|                                                                  |
+//| The latch is per base, a ring of eight, and it lives beside the   |
+//| visit clock because both are the readout's own lifecycle. It is   |
+//| asked by EVERY path that could paint the family (draw, verify,    |
+//| set-visible, heal, visit-arm), so the state cannot be re-lit by a |
+//| path that forgot the question.                                    |
+//+------------------------------------------------------------------+
+#define TH3_INFO_OFF_MAX 8
+string g_th3InfoOff[TH3_INFO_OFF_MAX];
+int    g_th3InfoOffN = 0;
+
+bool TH3InfoOff(const string base)
+{
+    if(base == "") return false;
+    for(int i = 0; i < g_th3InfoOffN; i++)
+        if(g_th3InfoOff[i] == base) return true;
+    return false;
+}
+
+void TH3InfoOffAdd(const string base)
+{
+    if(base == "" || TH3InfoOff(base)) return;
+    if(g_th3InfoOffN < TH3_INFO_OFF_MAX)
+    {
+        g_th3InfoOff[g_th3InfoOffN] = base;
+        g_th3InfoOffN++;
+        return;
+    }
+    for(int i = 1; i < TH3_INFO_OFF_MAX; i++) g_th3InfoOff[i - 1] = g_th3InfoOff[i];
+    g_th3InfoOff[TH3_INFO_OFF_MAX - 1] = base;
+}
+
+// Do the family's rows still stand LIT? This is the discriminator the delete
+// handler needs, and it is a STATE question, not a clock: every path of OURS
+// masks the rows BEFORE it drops the plate (SetVisible, Verify, Draw's inactive
+// branch), and the rebuild recreates the rows it deleted — so "rows lit" is
+// never true for a drop this module made. A plate that is gone while its rows
+// are still lit was taken by a hand.
+bool TH3InfoRowsLit(const string base)
+{
+    bool any = false;
+    for(int line = 0; line < TH3_INFO_MAX_LINES; line++)
+    {
+        string nm = TH3InfoLineName(base, line);
+        if(ObjectFind(0, nm) < 0) continue;
+        if((int)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS) return false;
+        any = true;
+    }
+    return any;
+}
+
+//+------------------------------------------------------------------+
 //| P-TH3-INFO-10 (2026-09-22) — THE PLATE IS HIDDEN BY ABSENCE,     |
 //| NEVER BY A MASK.                                                  |
 //|                                                                   |
@@ -666,6 +779,9 @@ bool TH3InfoFamilyPlateGrow(const string base)
 // caption is visible, and "one" means every line of it AND its plate).
 void TH3InfoFamilySetVisible(const string base, const bool visible)
 {
+    // P-TH3-DEL4: a readout the hand deleted is not re-lit by anyone — not the
+    // mute's show, not a pattern switch, not the 250 ms net.
+    if(TH3InfoOff(base)) { TH3InfoFamilyDelete(base); return; }
     // P-TH3-INFO-08: never show a plate with no rows — it paints as a dark
     // empty bar. Showing is display-only: deleting the orphan loses nothing a
     // redraw cannot recreate.
@@ -763,6 +879,9 @@ void TH3InfoOrphanPlateSweep()
 // other orphan (the store-side twin of the chart-wide sweep).
 void TH3InfoFamilyVerify(const string base, const bool isActive)
 {
+    // P-TH3-DEL4: the dismissed readout has nothing to verify — and the heal
+    // net asks here, so this is where a resurrection would have started.
+    if(TH3InfoOff(base)) { TH3InfoFamilyDelete(base); return; }
     int rows = 0;
     for(int line = 0; line < TH3_INFO_MAX_LINES; line++)
         if(ObjectFind(0, TH3InfoLineName(base, line)) >= 0) rows++;
@@ -824,6 +943,10 @@ bool TH3InfoVisitPending() { return (g_th3InfoVisitUntilMs != 0); }
 // is a drop.
 void TH3InfoVisitArm()
 {
+    // P-TH3-DEL4: a dismissed readout buys no visit — an armed clock would
+    // expire into a drop of whatever caption IS up, i.e. the user's delete
+    // would take a DIFFERENT pattern's readout with it one duration later.
+    if(TH3InfoOff(g_activeABCDPattern)) { g_th3InfoVisitUntilMs = 0; return; }
     int durSec = inpModeLabelDuration;
     if(durSec <= 0) { g_th3InfoVisitUntilMs = 0; return; }   // 0 = permanent
     if(durSec > 86400) durSec = 86400;
@@ -838,6 +961,34 @@ void TH3InfoFamilyDropActive()
     string base = g_activeABCDPattern;
     if(base == "") return;
     TH3InfoFamilySetVisible(base, false);
+}
+
+// The dismissal's own verb — ONE writer of the latch, called from the terminal's
+// delete (TH3Tool_C's OBJECT_DELETE branch) and nowhere else. The readout goes
+// and stays gone for this base; the pattern, its ladder and its zones are not
+// touched (P-TH3-DEL3's rule keeps its whole meaning: a caption is display).
+void TH3InfoFamilyDismiss(const string base)
+{
+    if(base == "") return;
+    TH3InfoOffAdd(base);
+    TH3InfoFamilyDelete(base);
+    g_th3InfoVisitUntilMs = 0;
+    // P-TH3-DEL4 witness: one line per dismissal, the same shape the heal net's
+    // own TH3CAP line uses, so a "it came back" report has a number to read.
+    Print("TH3CAP dismissed ", base, " st=", IntegerToString((long)TimeCurrent()));
+    ThrottledChartRedraw();
+}
+
+// The delete handler's question, answered HERE because the family, its rows and the
+// latch are this module's. A member the terminal named that is STILL GONE while its
+// rows stand LIT was taken by a hand; everything else is our own maintenance — a
+// member our rebuild already put back, a family we darkened before dropping the
+// plate, a family already wiped (TH3Tool_C's DEL3 rule).
+void TH3InfoOnMemberDelete(const string objName, const string base)
+{
+    if(ObjectFind(0, objName) >= 0) return;    // our rebuild put it back
+    if(!TH3InfoRowsLit(base)) return;          // our own drop: the rows went dark first
+    TH3InfoFamilyDismiss(base);
 }
 
 //+------------------------------------------------------------------+
@@ -863,6 +1014,10 @@ void TH3InfoCaptionHeal()
     // expiry is a drop, a redraw re-arms).
     if(IsIndicatorHidden()) return;
     string base = g_activeABCDPattern;
+    // P-TH3-DEL4: the user's own delete outranks the heal — a readout that is
+    // gone because a hand took it is not "damaged", and healing it here is
+    // exactly the 250 ms resurrection the report would see.
+    if(TH3InfoOff(base)) return;
     // P-TH3-INFO-13 (2026-09-22): the caption is a TIMED VISITOR first. The
     // user's order: «لیبل مود ها و لیبل abcd باید بعد چند ثانیه حذف بشن
     // هرچی که اطلاعاتی هستش» — every info readout leaves after a few
@@ -911,6 +1066,10 @@ void TH3InfoCaptionHeal()
 int TH3InfoFamilyDraw(const string base, const string text,
                       const bool isActive, const int topY)
 {
+    // P-TH3-DEL4: the draw is the LAST path that could re-light a dismissed
+    // readout, and it runs on every pattern pass — so it asks first, and the
+    // family leaves rather than being rebuilt with a new plate.
+    if(TH3InfoOff(base)) { TH3InfoFamilyDelete(base); return 0; }
     string lines[];
     int n = TH3InfoWrap(text, TH3_INFO_TEXT_MAX, lines);
     if(n <= 0)

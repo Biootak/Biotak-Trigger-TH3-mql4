@@ -157,8 +157,11 @@ void BaseKnotTypeWitness()
                         " ATR=" + DoubleToString(warm ? BaseKnotToPips(atr) : 0.0, 1) +
                         " pattern=" + DoubleToString(warm ? BaseKnotToPips(pat) : 0.0, 1) +
                         " structure=" + DoubleToString(warm ? BaseKnotToPips(str) : 0.0, 1) +
-                        " bands FTR<" + DoubleToString(BaseKnotToPips((atr + pat) * 0.5), 1) +
-                        " ETR<" + DoubleToString(BaseKnotToPips((pat + str) * 0.5), 1) +
+                        // P-BK-128: the boundaries are the owners', never a second copy of the
+                        // rule — this line was the page's own arithmetic ((atr+pat)*0.5) and it
+                        // would have kept printing a boundary the type no longer uses.
+                        " bands FTR<" + DoubleToString(BaseKnotToPips(BaseKnotNodeBandFtrEtr(nodeTF, an)), 1) +
+                        " ETR<" + DoubleToString(BaseKnotToPips(BaseKnotNodeBandEtrCtr(nodeTF, an)), 1) +
                         " CTR<" + DoubleToString(BaseKnotToPips(str), 1) +
                         " stepTH=" + DoubleToString(BaseKnotToPips(step), 1) +
                         " labelATR=" + DoubleToString(label, 1) +

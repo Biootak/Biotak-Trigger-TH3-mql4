@@ -421,6 +421,13 @@ void OnTimer()
     // the first line of the function so a still chart settles the label.
     TH3RecorderFlashTick();
 
+    // P-BK-124b (2026-10-27): and the knot capture's receipt. `K` writes a folder and paints
+    // a label; the pump that ages the label out rides the TICKS, so a market that stops
+    // ticking (a weekend, a dead symbol) kept the receipt on the chart for ever. The delete is
+    // owed HERE for the same reason the line above exists (P-TH3-REC-04): the timer is the one
+    // clock already running when nothing else is. One int compare while no receipt is armed.
+    BaseKnotShotFlashTick();
+
     // P-PERF-16: the 250 ms safety refresh behind the cached UI metrics. Resizing
     // the chart also fires a chart-change event (which invalidates immediately);
     // this line covers a missed notification and costs two terminal reads per

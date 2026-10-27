@@ -12,7 +12,7 @@
 //| P-TH3-REC (2026-10-05) — INTERACTIVE AUDIT RECORDER (key M, 77).  |
 //| Human visual discretion is mandatory for telling a valid market   |
 //| structure from an invented one, so the trader anchors the pattern |
-//| and the mother pivot BY HAND and this captures the sample for     |
+//| and the base range BY HAND and this captures the sample for     |
 //| off-terminal formula validation: a PNG plus a full diagnostic TXT |
 //| INSIDE ITS OWN FOLDER under                                       |
 //| MQL4\Files\TH3_Dataset\Samples\<date>-<clock>_<SYM>_<TF>_S<NNN>,   |
@@ -198,15 +198,18 @@ void TH3_ExportCurrentSample(const string patternName = "")
    double ratioBC_AB = (legAB > 0) ? legBC / legAB : 0.0;
    double ratioCD_BC = (legBC > 0) ? legCD / legBC : 0.0;
    double kFactor = TH3UnifiedK(ratioCD_BC);
-   double motherIn = TH3ManualBaseStep(inpTH3PivotBasePips, pip);
+   double baseIn = TH3ManualBaseStep(inpTH3BaseRangePips, pip);   // 1:1, pips -> price
    int cdBars = TH3ClosedBars(pat.C.time, pat.D.time);
    int ownerTF = TH3ClosedOwnerTF(cdBars);
    double rung = TH3PatternStepRungTF(ownerTF);
    if(rung <= 0) rung = TH3PatternStepRung();
-   double stepMother = (motherIn >= 2.5 * rung) ? (motherIn / 3.0) : motherIn;
-   if(stepMother <= 0) stepMother = rung;
-   double stepPattern = (kFactor > 0) ? legCD / kFactor : 0.0;
-   double baseUnit = CalculateUnifiedMasterStep(legCD, ratioCD_BC, motherIn, rung);
+   //--- P-TH3-BASE-01: the two components come from the formula's OWN owners.
+   //--- The `/3 when >= 2.5*rung` rule had survived HERE as a private copy, so
+   //--- the dataset's Step_Mother column could disagree with the step the chart
+   //--- drew. One arithmetic, one owner: TH3Pivots_B.mqh.
+   double stepBase = TH3StepBaseComponent(baseIn, rung);
+   double stepPattern = TH3StepPatternComponent(legCD, ratioCD_BC);
+   double baseUnit = CalculateUnifiedMasterStep(legCD, ratioCD_BC, baseIn, rung);
    if(baseUnit <= 0)
       baseUnit = (rung > 0) ? rung
                  : ((legCD > 0 ? legCD : MathAbs(pat.B.price - pat.A.price)) * (GetCurrentTH3Frequency() / 100.0));
@@ -303,14 +306,14 @@ void TH3_ExportCurrentSample(const string patternName = "")
    row[10] = DoubleToString(pat.D.price, Digits);
    row[11] = IntegerToString(Digits);
    row[12] = DoubleToString(pip, Digits);
-   row[13] = DoubleToString(motherIn / pip, 1);
+   row[13] = DoubleToString(baseIn / pip, 1);
    row[14] = DoubleToString(legAB / pip, 1);
    row[15] = DoubleToString(legBC / pip, 1);
    row[16] = DoubleToString(legCD / pip, 1);
    row[17] = DoubleToString(ratioBC_AB, 3);
    row[18] = DoubleToString(ratioCD_BC, 3);
    row[19] = DoubleToString(kFactor, 3);
-   row[20] = DoubleToString(stepMother / pip, 1);
+   row[20] = DoubleToString(stepBase / pip, 1);
    row[21] = DoubleToString(stepPattern / pip, 1);
    row[22] = DoubleToString(baseUnit / pip, 1);
    row[23] = DoubleToString(lv[0], Digits);
@@ -395,10 +398,10 @@ void TH3_ExportCurrentSample(const string patternName = "")
       FileWrite(fh, "  Ratio_CD_BC: " + DoubleToString(ratioCD_BC, 3));
       FileWrite(fh, "  K_Factor: " + DoubleToString(kFactor, 3));
       FileWrite(fh, "MOTHER_PIVOT:");
-      FileWrite(fh, "  Size_Pips: " + DoubleToString(motherIn / pip, 1));
+      FileWrite(fh, "  Size_Pips: " + DoubleToString(baseIn / pip, 1));
       FileWrite(fh, "  Type: \"External_Historical_Shelf\"");
       FileWrite(fh, "FORMULA_OUTPUT:");
-      FileWrite(fh, "  Step_Mother: " + DoubleToString(stepMother / pip, 1));
+      FileWrite(fh, "  Step_Mother: " + DoubleToString(stepBase / pip, 1));
       FileWrite(fh, "  Step_Pattern: " + DoubleToString(stepPattern / pip, 1));
       FileWrite(fh, "  Final_Step_BaseUnit: " + DoubleToString(baseUnit / pip, 1));
       FileWrite(fh, "LADDER_TARGETS:");

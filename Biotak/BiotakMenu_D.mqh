@@ -577,14 +577,20 @@ int RingFeatureClick(const int feat)
    //   return REFRESH_NONE;
    //}
    // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
-   else if(feat == CIR_TH3)
-   {
-      // P-UI-96: the press ARMS the AB=CD draw. One owner for the whole
-      // decision (enable + mode repairs + the session itself) lives in
-      // `CircArmTH3Draw`; the ENABLED switch this branch used to flip is the
-      // TH3 TOOL card's row 0.
-      refreshFlags = CircArmTH3Draw();
-   }
+   // TH3TOOL-OFF (2026-10-24): parked again, and this branch is the tool's THIRD
+   // and last way in. The cell that could press it has no seat (`CircCatRetired`
+   // in BiotakMenu_Ring.mqh) and no grid slot (`CircCatCell`), so `feat` can
+   // never arrive as CIR_TH3 — commented for that guarantee, not because a live
+   // press is expected. `CircArmTH3Draw` keeps its body: it is the arm owner the
+   // day this comes back, and nothing else calls it.
+   //else if(feat == CIR_TH3)
+   //{
+   //   // P-UI-96: the press ARMS the AB=CD draw. One owner for the whole
+   //   // decision (enable + mode repairs + the session itself) lives in
+   //   // `CircArmTH3Draw`; the ENABLED switch this branch used to flip is the
+   //   // TH3 TOOL card's row 0.
+   //   refreshFlags = CircArmTH3Draw();
+   //}
     else if(feat == CIR_HTF)
     {
        SetHTFVisible(!g_UI.showHTF);

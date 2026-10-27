@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Base Knot — چهار نوع گره و شکل خط‌هایی که رسم می‌شود</title>
+<style>
+:root{
+  --navy:#0E1B33; --ink:#16202E; --muted:#6B7688; --line:#E4E8EF; --bg:#F4F6FA;
+  --card:#FFFFFF; --entry:#2E8B57; --stop:#D8322F; --tp:#1E7FE0; --amber:#A9772A;
+  --code:#0B1526; --codeInk:#E6EDF8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Vazirmatn","IRANSansX","Segoe UI",Tahoma,Arial,sans-serif;
+  font-size:15px; line-height:1.85; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1040px;margin:0 auto;padding:0 22px 90px}
+.hero{background:var(--navy);color:#fff;padding:44px 0 34px;margin-bottom:28px;border-bottom:3px solid #C9A227}
+.hero .wrap{padding-bottom:0}
+.hero .kicker{font-size:12px;letter-spacing:.14em;color:#8FA3C4;margin:0 0 10px}
+.hero h1{margin:0 0 12px;font-size:30px;font-weight:600;line-height:1.4}
+.hero p{margin:0;color:#B9C6DC;font-size:14px;max-width:820px}
+.meta{margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.12);
+  display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:#93A6C4}
+.meta b{color:#DCE6F6;font-weight:500}
+nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;
+  margin-bottom:28px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+nav.toc a{color:var(--muted);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--navy);border-bottom-color:#C9A227}
+section{margin:0 0 38px}
+.eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+.eyebrow span.n{display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:6px;background:var(--navy);color:#fff;font-size:12px}
+.eyebrow span.t{font-size:12px;letter-spacing:.1em;color:var(--muted)}
+h2{margin:0 0 14px;font-size:21px;font-weight:600;letter-spacing:-.2px}
+h3{margin:22px 0 8px;font-size:15px;font-weight:600}
+p{margin:0 0 12px}
+.lead{color:#3C4759}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:0 0 16px}
+.card.tight{padding:16px 18px}
+code,.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:13px;
+  direction:ltr;unicode-bidi:isolate}
+.calc{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:13px;
+  direction:ltr;unicode-bidi:isolate}
+pre{margin:0 0 12px;background:var(--code);color:var(--codeInk);border-radius:10px;
+  padding:14px 16px;overflow-x:auto;direction:ltr;text-align:left;line-height:1.8;font-size:13px}
+.formula{background:#F8FAFD;border:1px solid var(--line);border-right:3px solid var(--navy);
+  border-radius:8px;padding:12px 14px;direction:ltr;text-align:left;margin:0 0 12px;line-height:1.9}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+th{background:#F7F9FC;color:#41506A;font-weight:600;font-size:12.5px}
+tr:last-child td{border-bottom:none}
+td.ltr,th.ltr{direction:ltr;text-align:left;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12.5px}
+.note{border-right:3px solid var(--amber);background:#FDF9F0;border-radius:8px;padding:12px 14px;margin:0 0 12px;font-size:14px}
+.note b{color:var(--amber)}
+.tag{display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:11px;
+  background:#EEF2F9;color:#3E5B8A;border:1px solid #DCE4F0;border-radius:5px;padding:1px 6px;direction:ltr}
+.pill{display:inline-block;font-size:11.5px;border-radius:20px;padding:2px 9px;margin-inline-start:6px;
+  font-family:ui-monospace,Consolas,monospace;direction:ltr}
+.pill.ftr{background:#EAF3DE;color:#3B6D11}
+.pill.etr{background:#E6F1FB;color:#185FA5}
+.pill.ctr{background:#FAEEDA;color:#854F0B}
+.pill.otr{background:#FCEBEB;color:#A32D2D}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.journal{background:var(--code);color:#C7D6EC;border-radius:9px;padding:11px 13px;direction:ltr;
+  text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.75;
+  overflow-x:auto;margin:0 0 10px;white-space:pre-wrap;word-break:break-all}
+.journal em{color:#8FD6A8;font-style:normal}
+.journal b{color:#E9C46A;font-weight:400}
+.steps{list-style:none;padding:0;margin:0 0 10px;counter-reset:s}
+.steps li{position:relative;padding:0 30px 9px 0;font-size:14px}
+.steps li::before{counter-increment:s;content:counter(s);position:absolute;right:0;top:3px;
+  width:20px;height:20px;border-radius:50%;background:#EEF2F9;color:#3E5B8A;font-size:11px;
+  display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace}
+.case{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:0 0 18px;background:#fff}
+.case header{background:#F7F9FC;border-bottom:1px solid var(--line);padding:12px 18px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.case header h3{margin:0;font-size:15px}
+.case header .when{font-size:12px;color:var(--muted);margin-inline-start:auto}
+.case .body{padding:16px 18px}
+.res{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.res span{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#F4F6FA;
+  border:1px solid var(--line);border-radius:6px;padding:3px 8px;direction:ltr}
+.res span.hi{background:#FDF9F0;border-color:#EADFC4;color:#7A5410}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:10px 0 4px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 10px 10px}
+.panel h4{margin:0 0 2px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.panel .sub{font-size:11.5px;color:var(--muted);margin:0 0 8px;direction:ltr;text-align:left;
+  font-family:ui-monospace,Consolas,monospace}
+.panel svg{display:block;width:100%;height:auto}
+.panel .cap{font-size:11.5px;color:var(--muted);margin:6px 0 0;line-height:1.6}
+.ladder{margin:8px 0 0}
+.lrow{display:grid;grid-template-columns:38px 1fr 52px;align-items:center;gap:6px;
+  font-family:ui-monospace,Consolas,monospace;font-size:11px;direction:ltr;margin:0 0 4px}
+.lbar{height:8px;border-radius:3px;background:#1E7FE0;opacity:.85}
+.ltrack{background:#EEF2F9;border-radius:3px;height:8px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:#41506A;margin:3px 0 10px}
+.legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-inline-end:6px}
+.legend .e i{border-color:var(--entry);border-top-style:solid}
+.legend .s i{border-color:var(--stop);border-top-style:dashed}
+.legend .t i{border-color:var(--tp);border-top-width:4px}
+.art{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 8px 4px;margin:0 0 8px}
+.art svg{display:block;width:100%;height:auto}
+.art .cap{font-size:12px;color:var(--muted);padding:0 6px 6px;margin:0}
+svg text{direction:ltr;unicode-bidi:isolate}
+footer{border-top:1px solid var(--line);margin-top:40px;padding-top:18px;color:var(--muted);font-size:12.5px}
+@media (max-width:900px){
+  .grid4{grid-template-columns:1fr 1fr}
+  .two{grid-template-columns:1fr}
+  .hero h1{font-size:23px}
+}
+@media (max-width:540px){ .grid4{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <p class="kicker">BIOTAK TRIGGER TH3 — BASE KNOT</p>
+    <h1>چهار نوع گره — و شکلی که هر کدام روی چارت رسم می‌کند</h1>
+    <p>جواب کوتاه: <b style="color:#fff;font-weight:500">شکلِ خط‌ها برای هر چهار نوع یکی است.</b>
+    نوع گره استایل را عوض نمی‌کند؛ دو عدد را عوض می‌کند — عمق ورود و پلهٔ استاپ — و همهٔ تارگت‌ها از همان استاپ ساخته می‌شوند.
+    پایین، شکل خط‌ها با نام آبجکت و استایل، بعد چهار نمونهٔ واقعی (یکی از هر نوع) با خطِ ژورنال و حسابِ همان عددها.</p>
+    <div class="meta">
+      <span><b>سورس:</b> BaseKnot_Nodes.mqh · BaseKnot_Measure.mqh · BaseKnot_Plan.mqh · BaseKnot_Note.mqh · Runtime_A.mqh</span>
+      <span><b>ژورنال:</b> MQL4\Logs\20261024.log · XAUUSD</span>
+      <span><b>اندازه‌گیری:</b> ۲۰۲۶.۱۰.۲۲ – ۲۰۲۶.۱۰.۲۴</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<nav class="toc">
+  <a href="#rule">۱ · قاعدهٔ نوع</a>
+  <a href="#shape">۲ · شکل خط‌ها</a>
+  <a href="#four">۳ · چهار نوع، یک شکل</a>
+  <a href="#real">۴ · چهار نمونهٔ واقعی</a>
+  <a href="#edge">۵ · مرز CTR/OTR</a>
+  <a href="#check">۶ · چطور خودت چک کنی</a>
+</nav>
+
+<!-- ══════════════════════════════ ۱ ══════════════════════════════ -->
+<section id="rule">
+  <div class="eyebrow"><span class="n">۱</span><span class="t">THE RULE</span></div>
+  <h2>نوع گره از یک عدد می‌آید: ارتفاع باکس</h2>
+  <p class="lead">نوع، از سه ATR ساخته می‌شود که همه در <b>یک کندل</b> خوانده می‌شوند — کندلِ خودِ باکس (<span class="mono">anchor</span>):</p>
+
+  <div class="formula"><span class="mono">
+trig = ATR( nodeTF )        pat = ATR( nodeTF +1 )        str = ATR( nodeTF +2 )
+h    = (top − bot) / pipSize
+
+FTR :  h ≤ √(trig · pat)          ← مرز، وسطِ نسبتی دو ATR است نه خودِ ATR
+ETR :  h ≤ √(pat  · str)
+CTR :  h ≤ str
+OTR :  h &gt; str                    ← این تنها مرزِ سخت است (بخش ۵)
+</span></div>
+
+  <p>دو مرز اول <b>نسبتی</b> وسط‌چین‌اند (<span class="mono">√(a·b)</span>، نه <span class="mono">(a+b)/2</span>) تا باکسی که یک مو بالا/پایین یک ATR است، نوعش با یک تیک عوض نشود
+  (<span class="tag">P-BK-76</span> <span class="tag">P-BK-128</span>). صفر یا ناشناخته ⇒ <span class="mono">NONE</span> — نوع ادعا نمی‌شود.
+  کد: <span class="mono">BaseKnot_Nodes.mqh</span> (<span class="mono">BaseKnotNodeKindOfLength</span>)، باندها برای متن‌ها: <span class="mono">BaseKnotNodeBandFtrEtr</span> / <span class="mono">…BandEtrCtr</span>.</p>
+
+  <div class="note">
+    <b>نردبان TF:</b> <span class="mono">M1 → M5 → M15 → H1 → H4 → D1 → W1 → MN</span>
+    — «M30» در این نردبان نیست (<span class="mono">BaseKnot_Nodes.mqh:135-146</span>).
+    پس «یک پله بالاتر» از M15 می‌شود H1، و از M5 با دو پله می‌شود H1، با سه پله H4.
+  </div>
+</section>
+
+<!-- ══════════════════════════════ ۲ ══════════════════════════════ -->
+<section id="shape">
+  <div class="eyebrow"><span class="n">۲</span><span class="t">THE INK</span></div>
+  <h2>شکل خط‌ها — سه خانواده، سه استایل</h2>
+  <p class="lead">از یک بیس‌نات سه خانواده خط رسم می‌شود (به‌علاوهٔ خودِ کادر و خوانش عددی کنار محور قیمت). هر سه با نامِ یک prefix ساخته می‌شوند:
+  <span class="mono">THLevels_BK_&lt;id&gt;_…</span>.</p>
+
+  <div class="legend">
+    <span class="e"><i></i>ENTRY — سبز، ممتد، ضخامت ۲، تا بی‌نهایت راست</span>
+    <span class="s"><i></i>SL — قرمز، خط‌چین، ضخامت ۲، تا بی‌نهایت راست</span>
+    <span class="t"><i></i>TP1..3 — آبی، ممتد، ضخامت ۳، تیک کوتاه روی لبهٔ راست چارت</span>
+  </div>
+
+  <div class="art">
+    <svg viewBox="0 0 880 372" dir="ltr" role="img" aria-label="آناتومی خطوط بیس‌نات">
+      <title>آناتومی: باکس، ورود، استاپ، تارگت‌ها، ستون پیپ</title>
+      <rect x="0" y="0" width="880" height="372" fill="#FBFCFE"/>
+
+      <!-- candles (decor) -->
+      <g stroke="#C9D4E4" fill="#E8EEF7">
+        <line x1="46" y1="120" x2="46" y2="210"/><rect x="42" y="140" width="8" height="48"/>
+        <line x1="72" y1="132" x2="72" y2="228"/><rect x="68" y="150" width="8" height="56"/>
+        <line x1="98" y1="108" x2="98" y2="196"/><rect x="94" y="122" width="8" height="46"/>
+        <line x1="124" y1="140" x2="124" y2="236"/><rect x="120" y="156" width="8" height="58"/>
+      </g>
+
+      <!-- box -->
+      <rect x="180" y="74" width="300" height="162" fill="#F5EBD0" fill-opacity="0.45"
+            stroke="#C9A227" stroke-width="1.6"/>
+      <text x="180" y="66" font-size="11.5" fill="#7A5410">top edge — BUY از همین لبه داخل می‌آید</text>
+      <text x="180" y="250" font-size="11.5" fill="#7A5410">bottom edge — SELL از همین لبه داخل می‌آید</text>
+      <text x="186" y="160" font-size="12" fill="#A9772A">BOX · t1 → t2</text>
+
+      <!-- entry -->
+      <line x1="480" y1="118" x2="806" y2="118" stroke="#2E8B57" stroke-width="2.6"/>
+      <text x="486" y="108" font-size="11.5" fill="#2E8B57">ENTRY · SOLID · 2px · RAY_RIGHT</text>
+      <text x="486" y="134" font-size="11" fill="#6B7688">entry = top − off  (off = TRex یا Trigger روی TF خودِ گره)</text>
+
+      <!-- sl -->
+      <line x1="480" y1="162" x2="806" y2="162" stroke="#D8322F" stroke-width="2.6" stroke-dasharray="10 7"/>
+      <text x="486" y="152" font-size="11.5" fill="#D8322F">SL · DASH · 2px · RAY_RIGHT</text>
+      <text x="486" y="178" font-size="11" fill="#6B7688">sl = entry − risk  (risk = TRex روی پلهٔ نوع)</text>
+
+      <!-- tp ticks -->
+      <g stroke="#1E7FE0" stroke-width="3.6" stroke-linecap="butt">
+        <line x1="762" y1="62" x2="806" y2="62"/>
+        <line x1="762" y1="40" x2="806" y2="40"/>
+        <line x1="762" y1="18" x2="806" y2="18"/>
+      </g>
+      <text x="756" y="66" font-size="11" fill="#1E7FE0" text-anchor="end">TP1 +11.0p</text>
+      <text x="756" y="44" font-size="11" fill="#1E7FE0" text-anchor="end">TP2 +23.0p</text>
+      <text x="756" y="22" font-size="11" fill="#1E7FE0" text-anchor="end">TP3 +48.0p</text>
+      <text x="486" y="300" font-size="11" fill="#6B7688">TP = تیک ۲ کندلی روی لبهٔ راست چارت، بدون RAY</text>
+      <text x="486" y="316" font-size="11" fill="#6B7688">نه یک خط تا بی‌نهایت</text>
+
+      <!-- price axis -->
+      <line x1="812" y1="8" x2="812" y2="356" stroke="#DCE4F0" stroke-width="1.2"/>
+      <text x="818" y="14" font-size="10.5" fill="#6B7688">محور قیمت</text>
+
+      <!-- pip ink rows -->
+      <g font-size="11" font-family="ui-monospace,Consolas,monospace">
+        <text x="806" y="114" fill="#2E8B57" text-anchor="end">4.6p</text>
+        <text x="806" y="158" fill="#D8322F" text-anchor="end">-4.6p</text>
+      </g>
+      <text x="486" y="330" font-size="11" fill="#6B7688">ستون PIP — x = لبهٔ راست منهای ۴ پیکسل</text>
+
+      <!-- ray ends: RAY_RIGHT means the line continues past the last bar -->
+    </svg>
+    <p class="cap">طرح‌واره؛ نسبت‌ها نمایشی است. جهت قیمت به راست، محور قیمت به راست — مثل خود چارت.</p>
+  </div>
+
+  <table>
+    <tr><th>آبجکت</th><th>نوع MT4</th><th>استایل / ضخامت</th><th>span</th><th>جلو/عقب</th></tr>
+    <tr><td class="ltr">…_BOX</td><td class="ltr">OBJ_RECTANGLE</td><td>border + fill</td><td class="ltr">t1 → t2</td><td class="ltr">BACK</td></tr>
+    <tr><td class="ltr">…_ENTRY</td><td class="ltr">OBJ_TREND</td><td class="ltr">SOLID · 2</td><td>از لبهٔ راست باکس تا بی‌نهایت (<span class="mono">RAY_RIGHT=true</span>)</td><td class="ltr">front</td></tr>
+    <tr><td class="ltr">…_SL</td><td class="ltr">OBJ_TREND</td><td class="ltr">DASH · 2</td><td>همان span ورود</td><td class="ltr">front</td></tr>
+    <tr><td class="ltr">…_TP1..TP3</td><td class="ltr">OBJ_TREND</td><td class="ltr">SOLID · 3</td><td>۲ کندل، چسبیده به لبهٔ راست چارت (<span class="mono">RAY_RIGHT=false</span>)</td><td class="ltr">front</td></tr>
+    <tr><td class="ltr">…_PIPENTRY / PIPSL / PIPTPk</td><td class="ltr">OBJ_LABEL</td><td>—</td><td class="ltr">x = right edge − 4px ، y = قیمت همان خط</td><td class="ltr">front</td></tr>
+  </table>
+
+  <p style="font-size:13.5px;color:var(--muted)">
+    رنگ پیش‌فرض: ورود <span class="mono">C'46,139,87'</span> · استاپ <span class="mono">C'220,50,50'</span> ·
+    تارگت <span class="mono">C'30,144,255'</span> (<span class="mono">Runtime_A.mqh:38-40</span>) — از پالت قابل تغییر است و روی چارت
+    ذخیره می‌شود (<span class="mono">BXE / BXL / BXG</span>)، پس روی چارت تو ممکن است رنگ دیگری ببینی. استایل و ضخامت اما ثابت است.
+  </p>
+
+  <h3>هندسه — دو خط، سه عدد</h3>
+  <div class="formula"><span class="mono">
+BUY  :  entry = top − off          sl = entry − risk
+SELL :  entry = bot + off          sl = entry + risk
+TPk  :  entry ± tp_k               tp_k = round( risk × { 7/3 , 5 , 31/3 } )
+
+off  = (FTR ? TRex : Trigger) روی TF خودِ گره        ← ورود هرگز یک پله بالاتر نمی‌رود
+risk = TRex روی TFِ نوع (FTR: خود گره · ETR: +1 · CTR: +2 · OTR: +3)
+</span></div>
+  <p style="font-size:13.5px;color:var(--muted)">
+    <span class="mono">BaseKnot_Measure.mqh:908-943</span> (هندسه) ·
+    <span class="mono">654-666</span> (پلهٔ استاپ) ·
+    <span class="mono">BaseKnot_Nodes.mqh:1314-1318</span> (تارگت‌ها) ·
+    رسم: <span class="mono">BaseKnot_Plan.mqh:1307-1326</span> و <span class="mono">BaseKnot_Measure.mqh:945-986</span>.
+  </p>
+
+  <div class="note">
+    <b>ترتیب انتخاب measure:</b> FTR همیشه <span class="mono">EngSL</span> می‌گیرد؛ ETR/CTR/OTR
+    <span class="mono">HuntSL</span> می‌خواهند و اگر برای آن TF، HuntSL پوش نشده باشد،
+    به <span class="mono">EngSL</span> برمی‌گردد و همان جمله در tooltip نوشته می‌شود
+    (<span class="mono">BaseKnot_Measure.mqh:693-729</span>).
+  </div>
+</section>
+
+<!-- ══════════════════════════════ ۳ ══════════════════════════════ -->
+<section id="four">
+  <div class="eyebrow"><span class="n">۳</span><span class="t">FOUR TYPES, ONE SHAPE</span></div>
+  <h2>چهار نوع — و همان سه خط، با عددهای واقعی</h2>
+  <p class="lead">هر پنل، <b>همان باکسِ یک نمونهٔ واقعی</b> است و به ارتفاع خودش نرمال شده — پس ارتفاع کادرها را با هم
+  مقایسه نکن. همهٔ پنل‌ها سمت <b>BUY</b>اند (SELL آینهٔ آن است)، و برچسب کنار هر خط، بخشِ پیپِ همان ستون PIP چارت است:
+  عمق ورود بدون علامت، ریسک با منفی. آن ستون فقط روی باکسِ <b>انتخاب‌شده</b> رسم می‌شود، پولِ هر ردیف را هم می‌نویسد
+  (<span class="mono">-4.6p $49.7</span>)، و ردیفی که روی ردیف دیگری بیفتد حذف می‌شود. تیک‌های تارگت روی لبهٔ راست
+  چارت‌اند، نه کنار باکس، پس جدا فهرست شده‌اند.</p>
+
+  <div class="grid4">
+
+    <!-- FTR -->
+    <div class="panel">
+      <h4>FTR <span class="pill ftr">box 1_6501484</span></h4>
+      <p class="sub">h 23.8p · node M1<br>off 4.6 · stop 4.6</p>
+      <svg viewBox="0 0 210 258" dir="ltr" role="img" aria-label="FTR entry و stop داخل باکس">
+        <rect x="0" y="0" width="210" height="258" fill="#FBFCFE"/>
+        <rect x="26" y="40" width="76" height="180" fill="#F5EBD0" fill-opacity=".45" stroke="#C9A227"/>
+        <text x="26" y="34" font-size="10" fill="#7A5410">top</text>
+        <text x="26" y="234" font-size="10" fill="#7A5410">h 23.8p</text>
+        <text x="108" y="46" font-size="9.5" fill="#6B7688">edge</text>
+        <line x1="102" y1="74.8" x2="158" y2="74.8" stroke="#2E8B57" stroke-width="2.4"/>
+        <line x1="102" y1="109.6" x2="158" y2="109.6" stroke="#D8322F" stroke-width="2.4" stroke-dasharray="7 5"/>
+        <text x="161" y="67.8" font-size="9.5" fill="#2E8B57">4.6p</text>
+        <text x="161" y="102.6" font-size="9.5" fill="#D8322F">-4.6p</text>
+      </svg>
+      <div class="ladder">
+        <div class="lrow"><span>TP1</span><div class="ltrack"><div class="lbar" style="width:23%"></div></div><span>+11.0p</span></div>
+        <div class="lrow"><span>TP2</span><div class="ltrack"><div class="lbar" style="width:48%"></div></div><span>+23.0p</span></div>
+        <div class="lrow"><span>TP3</span><div class="ltrack"><div class="lbar" style="width:100%"></div></div><span>+48.0p</span></div>
+      </div>
+      <p class="cap">ورود و استاپ هر دو TRex(M1) — پس دقیقاً هم‌اندازه: <span class="mono">off = risk</span>.</p>
+    </div>
+
+    <!-- ETR -->
+    <div class="panel">
+      <h4>ETR <span class="pill etr">box 5_8851328</span></h4>
+      <p class="sub">h 169.8p · node M15<br>off 39.2 · stop 31.9</p>
+      <svg viewBox="0 0 210 258" dir="ltr" role="img" aria-label="ETR entry و stop داخل باکس">
+        <rect x="0" y="0" width="210" height="258" fill="#FBFCFE"/>
+        <rect x="26" y="40" width="76" height="180" fill="#F5EBD0" fill-opacity=".45" stroke="#C9A227"/>
+        <text x="26" y="34" font-size="10" fill="#7A5410">top</text>
+        <text x="26" y="234" font-size="10" fill="#7A5410">h 169.8p</text>
+        <line x1="102" y1="81.6" x2="158" y2="81.6" stroke="#2E8B57" stroke-width="2.4"/>
+        <line x1="102" y1="115.4" x2="158" y2="115.4" stroke="#D8322F" stroke-width="2.4" stroke-dasharray="7 5"/>
+        <text x="161" y="74.6" font-size="9.5" fill="#2E8B57">39.2p</text>
+        <text x="161" y="108.4" font-size="9.5" fill="#D8322F">-31.9p</text>
+      </svg>
+      <div class="ladder">
+        <div class="lrow"><span>TP1</span><div class="ltrack"><div class="lbar" style="width:22.4%"></div></div><span>+74.0p</span></div>
+        <div class="lrow"><span>TP2</span><div class="ltrack"><div class="lbar" style="width:48.5%"></div></div><span>+160p</span></div>
+        <div class="lrow"><span>TP3</span><div class="ltrack"><div class="lbar" style="width:100%"></div></div><span>+330p</span></div>
+      </div>
+      <p class="cap">ورود Trigger(M15) روی TF خودِ گره؛ استاپ TRex(H1).</p>
+    </div>
+
+    <!-- CTR -->
+    <div class="panel">
+      <h4>CTR <span class="pill ctr">box 5_10454640</span></h4>
+      <p class="sub">h 129.0p · node M5<br>off 27.1 · stop 32.0</p>
+      <svg viewBox="0 0 210 258" dir="ltr" role="img" aria-label="CTR entry و stop داخل باکس">
+        <rect x="0" y="0" width="210" height="258" fill="#FBFCFE"/>
+        <rect x="26" y="40" width="76" height="180" fill="#F5EBD0" fill-opacity=".45" stroke="#C9A227"/>
+        <text x="26" y="34" font-size="10" fill="#7A5410">top</text>
+        <text x="26" y="234" font-size="10" fill="#7A5410">h 129.0p</text>
+        <line x1="102" y1="77.8" x2="158" y2="77.8" stroke="#2E8B57" stroke-width="2.4"/>
+        <line x1="102" y1="122.5" x2="158" y2="122.5" stroke="#D8322F" stroke-width="2.4" stroke-dasharray="7 5"/>
+        <text x="161" y="70.8" font-size="9.5" fill="#2E8B57">27.1p</text>
+        <text x="161" y="115.5" font-size="9.5" fill="#D8322F">-32.0p</text>
+      </svg>
+      <div class="ladder">
+        <div class="lrow"><span>TP1</span><div class="ltrack"><div class="lbar" style="width:22.7%"></div></div><span>+75.0p</span></div>
+        <div class="lrow"><span>TP2</span><div class="ltrack"><div class="lbar" style="width:48.3%"></div></div><span>+160p</span></div>
+        <div class="lrow"><span>TP3</span><div class="ltrack"><div class="lbar" style="width:100%"></div></div><span>+331p</span></div>
+      </div>
+      <p class="cap">استاپ دو پله بالاتر: TRex(H1) = ۳۲.۰ (از M5).</p>
+    </div>
+
+    <!-- OTR -->
+    <div class="panel">
+      <h4>OTR <span class="pill otr">box 5_10454640</span></h4>
+      <p class="sub">h 136.8p · node M5<br>off 27.1 · stop 72.9</p>
+      <svg viewBox="0 0 210 258" dir="ltr" role="img" aria-label="OTR entry و stop داخل باکس">
+        <rect x="0" y="0" width="210" height="258" fill="#FBFCFE"/>
+        <rect x="26" y="40" width="76" height="180" fill="#F5EBD0" fill-opacity=".45" stroke="#C9A227"/>
+        <text x="26" y="34" font-size="10" fill="#7A5410">top</text>
+        <text x="26" y="234" font-size="10" fill="#7A5410">h 136.8p</text>
+        <line x1="102" y1="75.7" x2="158" y2="75.7" stroke="#2E8B57" stroke-width="2.4"/>
+        <line x1="102" y1="171.6" x2="158" y2="171.6" stroke="#D8322F" stroke-width="2.4" stroke-dasharray="7 5"/>
+        <text x="161" y="68.7" font-size="9.5" fill="#2E8B57">27.1p</text>
+        <text x="161" y="164.6" font-size="9.5" fill="#D8322F">-72.9p</text>
+      </svg>
+      <div class="ladder">
+        <div class="lrow"><span>TP1</span><div class="ltrack"><div class="lbar" style="width:22.6%"></div></div><span>+170p</span></div>
+        <div class="lrow"><span>TP2</span><div class="ltrack"><div class="lbar" style="width:48.5%"></div></div><span>+365p</span></div>
+        <div class="lrow"><span>TP3</span><div class="ltrack"><div class="lbar" style="width:100%"></div></div><span>+753p</span></div>
+      </div>
+      <p class="cap">همان ورود CTR؛ استاپ سه پله بالاتر: TRex(H4) = ۷۲.۹.</p>
+    </div>
+
+  </div>
+
+  <table style="margin-top:16px">
+    <tr><th>نوع</th><th>طول</th><th>ورود (عمق)</th><th>TF ورود</th><th>پلهٔ اسم</th><th>نسبت واقعی off/stop</th></tr>
+    <tr><td><span class="pill ftr">FTR</span></td><td class="ltr">h ≤ √(trig·pat)</td><td>TRex · EngSL</td><td>همان پلهٔ استاپ</td><td class="ltr">+0</td><td class="ltr">4.6 / 4.6 = 1.00</td></tr>
+    <tr><td><span class="pill etr">ETR</span></td><td class="ltr">h ≤ √(pat·str)</td><td>Trigger · HuntSL</td><td>همان پلهٔ استاپ</td><td class="ltr">+1</td><td class="ltr">39.2 / 31.9 = 1.23</td></tr>
+    <tr><td><span class="pill ctr">CTR</span></td><td class="ltr">h ≤ str</td><td>Trigger · HuntSL</td><td>همان پلهٔ استاپ</td><td class="ltr">+2</td><td class="ltr">27.1 / 32.0 = 0.85</td></tr>
+    <tr><td><span class="pill otr">OTR</span></td><td class="ltr">h &gt; str</td><td>Trigger · HuntSL</td><td>همان پلهٔ استاپ</td><td class="ltr">+3</td><td class="ltr">27.1 / 72.9 = 0.37</td></tr>
+  </table>
+
+  <p><b>ستون «پلهٔ اسم» دیگر جایی نیست که لگ‌ها خوانده می‌شوند.</b> هر دو لگ (ورود و استاپ) روی
+  <b>یک</b> پله می‌نشینند: عمیق‌ترین پله‌ای که کل بستهٔ لگ‌هایش داخل باکس جا شود —
+  <span class="mono">55/64 × ATR ≤ h</span>. پس یک ETR می‌تواند روی پلهٔ خودِ گره بنشیند، و یک باکس
+  ۲۱۷پیپی روی ATR ۱۳۵.۲/۳۰۰.۸ به‌جای Trigger ۱۸۸ همان ۸۴.۵ را می‌خواند. <span class="tag">P-BK-127</span> <span class="tag">P-BK-128</span></p>
+
+  <p><b>نسبت <span class="mono">off/stop</span> امضای نوع است، نه قاعده‌اش.</b> FTR همیشه ۱.۰۰ است (هر دو یک EngSL)،
+  ولی ETR/CTR/OTR به اختلاف ATR دو TF بستگی دارد — پس عدد ثابت ندارند. اگر روی چارت فقط دو عدد را بخوانی
+  (پیپ ورود و پیپ استاپ در ستون PIP)، همین نسبت می‌گوید نوع چیست.</p>
+
+  <p style="font-size:13.5px;color:var(--muted)">نوع، روی خودِ note هم به‌صورت پسوند نوشته می‌شود: <span class="mono"> · FTR</span>
+  (<span class="mono">BaseKnot_Nodes.mqh:1032-1036</span>)، و hover باکس هر سه باند را با عدد، و کندلی که ATR رویش خوانده شد، نام می‌برد.</p>
+</section>
+
+<!-- ══════════════════════════════ ۴ ══════════════════════════════ -->
+<section id="real">
+  <div class="eyebrow"><span class="n">۴</span><span class="t">REAL LINES</span></div>
+  <h2>چهار نمونهٔ واقعی — یکی از هر نوع</h2>
+  <p class="lead">هر کارت سه خطِ ژورنال خودِ ترمینال است (همان لحظه، همان باکس) و بعد حسابِ همان عددها.
+  شمارهٔ خط، خطِ فایل <span class="mono">MQL4\Logs\20261024.log</span> است. سه خط به ترتیبِ خواندن چیده شده‌اند
+  (مالک → نوع → پیپ)، نه به ترتیبِ فایل؛ هر خط شمارهٔ خودش را دارد.</p>
+
+  <!-- FTR -->
+  <div class="case">
+    <header>
+      <h3>FTR — کوچک‌ترین باکس، ورود و استاپ هم‌اندازه</h3>
+      <span class="pill ftr">FTR</span>
+      <span class="when">box 1_6501484 · XAUUSD M1 · anchor 2026.10.23 20:04</span>
+    </header>
+    <div class="body">
+      <div class="journal">20261024.log:2245
+[BK-OWNER] box=1_6501484 boxPips=<em>23.8</em> owner=none read=none atr=0.0 r=0.00 anchor=2026.10.23 20:50
+20261024.log:2251
+[P-BK-107] box=1_6501484 chart=M1 commit=M1 type=<em>FTR</em> node=M1 anchor=2026.10.23 20:04
+            ATR=19.7 pattern=44.0 structure=79.5 bands FTR&lt;31.9 ETR&lt;61.8 CTR&lt;79.5
+20261024.log:2247
+[BK-PIP]   id=1_6501484 lot=1.08 perPip=10.00 balance=5000 riskPct=1.00
+           stop=<em>4.6p</em> $49.7 off=<em>4.6p</em> tp1=11.0p $119 tp2=23.0p $248 tp3=48.0p $518</div>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px">
+        نکتهٔ خودِ لاگ: خط ۲۲۴۶ همان <span class="mono">[P-BK-107]</span> است با <span class="mono">type=</span> خالی،
+        و خط ۲۲۵۱ همان خط با <span class="mono">type=FTR</span> — پس نوع در پاس دوم نوشته شد. خط ۲۲۴۵ هم هنوز
+        <span class="mono">owner=none · atr=0.0</span> دارد.</p>
+      <ol class="steps">
+        <li><span class="calc">h = 23.8 ≤ 31.9 = (19.7 + 44.0)/2 → <b>FTR</b></span></li>
+        <li>ورود: <span class="calc">TRex(M1) = 19.7 / 4.266666 = 4.6 → entry = top − 4.6</span></li>
+        <li>استاپ: <span class="calc">TRex(M1) = 4.6 → sl = entry − 4.6</span> (۹.۲ پیپ داخل لبه)</li>
+        <li>تارگت: <span class="calc">4.6 × 7/3 = 10.7 → 11 · ×5 = 23 · ×31/3 = 47.5 → 48</span></li>
+        <li>لات و ریسک: <span class="calc">(5000 × 1%) / (4.6 × 10) = 1.087 → 1.08 · 4.6 × 10 × 1.08 = $49.7</span></li>
+      </ol>
+      <div class="res"><span>h 23.8 ≤ FTR 31.9</span><span>off 4.6 = stop 4.6</span><span class="hi">entry 4.6p · sl −4.6p</span></div>
+    </div>
+  </div>
+
+  <!-- ETR -->
+  <div class="case">
+    <header>
+      <h3>ETR — ورود روی M15، استاپ روی H1</h3>
+      <span class="pill etr">ETR</span>
+      <span class="when">box 5_8851328 · XAUUSD M5 · anchor 2026.10.22 06:00</span>
+    </header>
+    <div class="body">
+      <div class="journal">20261024.log:7402
+[BK-OWNER] box=5_8851328 boxPips=<em>169.8</em> owner=M15 read=M15 atr=61.8 r=2.75 anchor=2026.10.22 07:35
+20261024.log:7404
+[P-BK-107] box=5_8851328 chart=M5 commit=M5 type=<em>ETR</em> node=M15 anchor=2026.10.22 06:00
+            ATR=62.7 pattern=135.9 structure=310.1 bands FTR&lt;99.3 ETR&lt;223.0 CTR&lt;310.1
+20261024.log:7403
+[BK-PIP]   id=5_8851328 lot=0.15 perPip=10.00 balance=5000 riskPct=1.00
+           stop=<em>31.9p</em> $47.9 off=<em>39.2p</em> tp1=74.0p $111 tp2=160.0p $240 tp3=330.0p $495</div>
+      <ol class="steps">
+        <li><span class="calc">99.3 &lt; 169.8 ≤ 223.0 = (135.9 + 310.1)/2 → <b>ETR</b></span></li>
+        <li>ورود: <span class="calc">Trigger(M15) = 62.7 × 5/8 = 39.2</span> — روی TF خودِ گره، نه یک پله بالاتر</li>
+        <li>استاپ: <span class="calc">TRex(H1) = 135.9 / 4.266666 = 31.9 → sl = entry − 31.9</span></li>
+        <li>تارگت: <span class="calc">31.9 × 7/3 = 74.4 → 74 · ×5 = 159.5 → 160 · ×31/3 = 329.6 → 330</span></li>
+        <li>ورود و استاپ دو TF مختلف‌اند، پس نسبت <span class="mono">1.23</span> است — امضای ETR.</li>
+      </ol>
+      <div class="res"><span>99.3 &lt; 169.8 ≤ 223.0</span><span>off 39.2 (M15) / stop 31.9 (H1)</span><span class="hi">entry 39.2p · sl −31.9p</span></div>
+    </div>
+  </div>
+
+  <!-- CTR -->
+  <div class="case">
+    <header>
+      <h3>CTR — همان ورود، استاپ دو پله بالاتر</h3>
+      <span class="pill ctr">CTR</span>
+      <span class="when">box 5_10454640 · XAUUSD M5 · anchor 2026.10.23 16:55</span>
+    </header>
+    <div class="body">
+      <div class="journal">20261024.log:9986
+[BK-OWNER] box=5_10454640 boxPips=<em>129.0</em> owner=M5 read=M5 atr=46.3 r=2.78 anchor=2026.10.23 17:15
+20261024.log:9993
+[P-BK-107] box=5_10454640 chart=M5 commit=M5 type=<em>CTR</em> node=M5 anchor=2026.10.23 16:55
+            ATR=43.4 pattern=73.3 structure=136.3 bands FTR&lt;58.4 ETR&lt;104.8 CTR&lt;136.3
+20261024.log:9994
+[BK-PIP]   id=5_10454640 lot=0.15 perPip=10.00 balance=5000 riskPct=1.00
+           stop=<em>32.0p</em> $48.0 off=<em>27.1p</em> tp1=75.0p $113 tp2=160.0p $240 tp3=331.0p $496</div>
+      <ol class="steps">
+        <li><span class="calc">104.8 &lt; 129.0 ≤ 136.3 = str → <b>CTR</b></span></li>
+        <li>ورود: <span class="calc">Trigger(M5) = 43.4 × 5/8 = 27.1</span></li>
+        <li>استاپ: <span class="calc">TRex(H1) = 136.3 / 4.266666 = 32.0</span> — M5 + دو پله = H1</li>
+        <li>تارگت: <span class="calc">32.0 × 7/3 = 74.7 → 75 · ×5 = 160 · ×31/3 = 330.7 → 331</span></li>
+        <li>نسبت <span class="calc">27.1 / 32.0 = 0.85</span> — ورود از استاپ کوچک‌تر، امضای CTR.</li>
+      </ol>
+      <div class="res"><span>104.8 &lt; 129.0 ≤ 136.3</span><span>off 27.1 (M5) / stop 32.0 (H1)</span><span class="hi">entry 27.1p · sl −32.0p</span></div>
+    </div>
+  </div>
+
+  <!-- OTR -->
+  <div class="case">
+    <header>
+      <h3>OTR — باکس از توان ساختار بلندتر، استاپ روی H4</h3>
+      <span class="pill otr">OTR</span>
+      <span class="when">box 5_10454640 · XAUUSD M5 · anchor 2026.10.23 16:55</span>
+    </header>
+    <div class="body">
+      <div class="journal">20261024.log:10040
+[BK-OWNER] box=5_10454640 boxPips=<em>136.8</em> owner=M5 read=M5 atr=43.4 r=3.16 anchor=2026.10.23 16:55
+20261024.log:10041
+[P-BK-107] box=5_10454640 chart=M5 commit=M5 type=<em>OTR</em> node=M5 anchor=2026.10.23 16:55
+            ATR=43.4 pattern=73.3 structure=136.3 bands FTR&lt;58.4 ETR&lt;104.8 CTR&lt;136.3
+20261024.log:10042
+[BK-PIP]   id=5_10454640 lot=0.06 perPip=10.00 balance=5000 riskPct=1.00
+           stop=<em>72.9p</em> $43.7 off=<em>27.1p</em> tp1=170.0p $102 tp2=365.0p $219 tp3=753.0p $452</div>
+      <ol class="steps">
+        <li><span class="calc">136.8 &gt; 136.3 = str → <b>OTR</b></span> (نیم پیپ آن‌طرفِ مرز)</li>
+        <li>ورود: <span class="calc">Trigger(M5) = 27.1</span> — دقیقاً مثل نمونهٔ CTR، چون TF گره یکی است</li>
+        <li>استاپ: <span class="calc">72.9 = TRex(H4)</span> — M5 + سه پله = H4. لاگ فقط ۷۲.۹ را چاپ می‌کند؛
+        <span class="calc">ATR(H4) = 311.0 = 72.9 × 4.266666</span> عددِ بازسازی‌شده است، نه خوانده‌شده</li>
+        <li>تارگت: <span class="calc">72.9 × 7/3 = 170.1 → 170 · ×5 = 364.5 → 365 · ×31/3 = 753.3 → 753</span></li>
+        <li>نسبت <span class="calc">27.1 / 72.9 = 0.37</span> — بزرگ‌ترین ۱R و کوچک‌ترین لات (<span class="mono">0.06</span>).</li>
+      </ol>
+      <div class="res"><span>136.8 &gt; 136.3</span><span>off 27.1 (M5) / stop 72.9 (H4)</span><span class="hi">entry 27.1p · sl −72.9p</span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>یک چیز که در چهار نمونه دیده می‌شود:</b> استایل هر سه خط در هر چهار کارت یکی است.
+    تنها چیزی که عوض شده عددهاست: عمق ورود (۴.۶ / ۳۹.۲ / ۲۷.۱ / ۲۷.۱) و پلهٔ استاپ
+    (خود گره / +1 / +2 / +3). تارگت‌ها همیشه از همان استاپ ساخته می‌شوند، با همان سه نسبت.
+  </div>
+</section>
+
+<!-- ══════════════════════════════ ۵ ══════════════════════════════ -->
+<section id="edge">
+  <div class="eyebrow"><span class="n">۵</span><span class="t">THE SHARP EDGE</span></div>
+  <h2>یک باکس، ۷.۸ پیپ جابه‌جایی، استاپ ۲.۳ برابر</h2>
+  <p class="lead">نمونهٔ CTR و OTR بالا <b>یک باکس در یک بازهٔ ۴ ثانیه‌ای</b> هستند: کارت CTR در <span class="mono">11:22:17</span> با ارتفاع ۱۲۹.۰،
+  و کارت OTR در <span class="mono">11:22:21</span> با ارتفاع ۱۳۶.۸ — همان <span class="mono">box=5_10454640</span>، همان
+  <span class="mono">anchor=2026.10.23 16:55</span>، همان باندها.</p>
+
+  <div class="formula"><span class="mono">
+h = 129.0  ≤  str 136.3   →  CTR  →  stop TF = H1  →  1R = 32.0p   lot 0.15   risk $48.0
+h = 136.8  &gt;  str 136.3   →  OTR  →  stop TF = H4  →  1R = 72.9p   lot 0.06   risk $43.7
+Δ:   h +7.8p        ·   1R ×2.28        ·   lot ÷2.5
+</span></div>
+
+  <p>مرز <span class="mono">CTR/OTR</span> خودِ <span class="mono">str</span> است، نه وسط دو ATR — پس شیب ندارد
+  (<span class="mono">BaseKnot_Nodes.mqh:712</span>). یک drag کوچک روی باکس می‌تواند نوع را عوض کند و ۱R را بپراند.
+  این نقص رسم نیست؛ قانون خودِ نوع است. اگر بخواهی این مرز هم وسط‌چین شود، آن یک تغییر در قانون نوع است،
+  نه در رسم — و بدون تأیید تو انجام نمی‌شود.</p>
+
+  <p style="font-size:13.5px;color:var(--muted)">هر دو کارت در همان ژورنال، ۴ ثانیه فاصله:
+  <span class="mono">20261024.log:9986/9993/9994</span> و <span class="mono">10040/10041/10042</span> —
+  و بین آن‌ها <span class="mono">[BK] drag release sync box=5_10454640</span> در خط ۱۰۰۳۸.</p>
+</section>
+
+<!-- ══════════════════════════════ ۶ ══════════════════════════════ -->
+<section id="check">
+  <div class="eyebrow"><span class="n">۶</span><span class="t">PROVE IT</span></div>
+  <h2>چطور خودت همین چهار عدد را ببینی</h2>
+  <p class="lead">سه خطِ <span class="mono">[BK-OWNER]</span>، <span class="mono">[P-BK-107]</span> و <span class="mono">[BK-PIP]</span>
+  روی کانال flush‌شده می‌آیند (فایل + journal) — پس نیازی به منتظر ماندن برای تب Experts نیست.</p>
+
+<pre><span class="c"># ۱) آخرین فریمِ روی دیسک، با verdict خودش</span>
+python tools/diag-live.py --diff
+python tools/diag-live.py --all
+
+<span class="c"># ۲) خودِ خطوطِ نوع و خطوطِ پیپ، در ژورنال همان روز</span>
+Select-String -Path "$env:APPDATA\MetaQuotes\Terminal\&lt;id&gt;\MQL4\Logs\20261024.log" `
+  -Pattern "\[P-BK-107\]|\[BK-PIP\]|\[BK-OWNER\]"
+
+<span class="c"># ۳) رسم: خطوط، استایل و span</span>
+Biotak/BaseKnot_Plan.mqh:1307-1326    <span class="c">// ENTRY / SL / TP1..3</span>
+Biotak/BaseKnot_Measure.mqh:945-986   <span class="c">// MakeRay + TPTickSpan</span>
+Biotak/Runtime_A.mqh:38-40            <span class="c">// رنگ پیش‌فرض سه خط</span>
+Biotak/BaseKnot_Measure.mqh:777       <span class="c">// EngSL = H / 4.266666 (BK_NODE_POWER_DIV)</span>
+
+<span class="c"># ۴) خودِ کد، چهار نوع × سه مولفه — ۶۵ assertion با PASS/FAIL و عدد</span>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-bk-lines.ps1</pre>
+
+  <p style="font-size:13.5px;color:var(--muted)">هارنسِ ۴، <span class="mono">tests/Biotak_BaseKnot_Lines_Test.mq4</span> است و با همان
+  چهار مالکِ تولید کار می‌کند (<span class="mono">BaseKnotNodeKindOfLength</span> · <span class="mono">BaseKnotCalcLevels</span> ·
+  <span class="mono">BaseKnotTPLevel</span> · <span class="mono">BaseKnotMeasureTFMin</span>) — نه با یک بازنویسیِ موازی.
+  هر ردیف لاگ، عددِ دیده‌شده و عددِ خواسته را کنار هم می‌نویسد.</p>
+
+  <div class="note">
+    <b>هر خط یک read-back دارد:</b> <span class="mono">[P-BK-107]</span> خودش می‌گوید نوع را با کدام ATR و کدام
+    <span class="mono">anchor</span> خوانده، و <span class="mono">[BK-PIP]</span> خودِ عددهایی است که رسم شد
+    (<span class="mono">BaseKnot_Witness.mqh:76-171</span> و <span class="mono">203-208</span>).
+    اگر عددی روی چارت با این خطوط نخواند، همان خطِ لاگ مدرک است، نه حافظه.
+  </div>
+</section>
+
+<footer>
+  هر عدد این صفحه از <span class="mono">MQL4\Logs\20261024.log</span> (ترمینال A1660DA4…) خوانده شده و شمارهٔ خطش کنارش است؛
+  شکل خط‌ها از <span class="mono">BaseKnot_Plan.mqh</span> و <span class="mono">BaseKnot_Measure.mqh</span>.
+  ارتفاع باکس در هر کارت همان عددی است که خط <span class="mono">[BK-OWNER]</span> همان لحظه چاپ کرده — باکس با drag عوض می‌شود،
+  پس دو کارت یک باکس می‌توانند دو ارتفاع داشته باشند (بخش ۵ همین است).
+</footer>
+
+</div>
+</body>
+</html>

@@ -553,12 +553,11 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
     BaseKnotMakeRay(tag + "SL", te, tLiveFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
                     "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + stopWhyLive, tfMask, true);
     // BKE2-OFF: no 2nd-entry rays here (created above only to purge).
-   // P-BK-50: the targets are the box' own legs — a short, THICK tick at the right edge,
-   // drawn only when pushed. P-BK-120: a preview is FTR, so its measure TF IS this chart's.
-   for(int tk = 1; tk <= BaseKnotTPCount(); tk++)
+   // P-BK-50: the targets are the box' own legs — a short, THICK tick at the right edge, drawn only when pushed. P-BK-120: a preview is FTR, so its measure TF IS this chart's. P-BK-122: AND THE WALK IS THE WHOLE RANGE — a leg that stopped being drawn is DELETED, never left behind (the same loop, the same rule, in BaseKnotSync).
+   for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
-      double lv = BaseKnotTPLevel(entry, dir, 0, tk, 0);
-      if(lv <= 0.0) continue;
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, 0, tk, 0) : 0.0);
+      if(lv <= 0.0) { ObjectDelete(0, tag + "TP" + IntegerToString(tk)); continue; }
       double tpP = BaseKnotPlanTPPips(0, tk, 0);
       BaseKnotMakeRay(tag + "TP" + IntegerToString(tk), tLiveTps, tLiveTpe, lv, g_bkTargetColor,
                       BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
@@ -1195,8 +1194,8 @@ void BaseKnotSync(const string id)
    // stand-still count and the memo's geometry key).
    datetime bs1, bs2;
    BaseKnotClassSpan(sp, t1, t2, bs1, bs2);
-   int baseTF = (g_bkBoxes[k].ownerTFMin > 0 && baseReadTF == g_bkBoxes[k].ownerTFMin && bars > 0 ? baseReadTF : BaseKnotBaseTFMin(still, bs1, bs2, top, bot, tfMin));   // P-BK-114: owner first; P-BK-112: candle-count fallback
-   g_bkBoxes[k].baseTFMin = baseTF;
+   int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF); if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;   // P-BK-126b: THE THREE STAND-STILL CANDLES DECIDE THE KNOT'S TIME and the ATR owner is the FALLBACK only (P-BK-114 read it first, so the M5 band — 119.9 / 34.6 = 3.47 — beat the three M30 candles the user drew: 119.2 pips = 99.4 % of the box, 32m already 123.4; docs/bk-dataset.md §11)
+   g_bkBoxes[k].baseTFMin = baseTF;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces
    g_bkBoxes[k].storyT = sp.tLast; if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);   // P-BK-41: the same story the pump re-reads; P-ANCHOR-LAST: the active owner follows the story it just published
    g_bkBoxes[k].exitT  = sp.tExit;   // P-BK-81: the base's OWN exit candle — the ONE candle the
                                      //          direction is read from, published so the pump's
@@ -1247,21 +1246,22 @@ void BaseKnotSync(const string id)
    // INSIDE the edge the side comes in on, the STOP is ONE EngSL behind the entry, and the
    // TARGETS are the plan's own TP1..TP3 of the node's own TF — every one of them SAYS which
    // measure / which TF / which plan it rode.
-   // P-BK-51/83: WHICH TF EACH LEG IS READ ON — the ENTRY on the node's own class, the STOP on
-   // the TYPE'S own time (BaseKnotEntryTFMin / BaseKnotMeasureTFMin are the TWO owners; the
-   // geometry below asks the same pair, so the drawn legs and the texts cannot part).
+   // P-BK-51/83/127: WHICH TF EACH LEG IS READ ON — BOTH on the TYPE'S own rung (the entry rode
+   // the node's own class until P-BK-127; the card's Trigger cell and the entry line are ONE number).
    // P-BK-79: AND EVERY ONE OF THEM IS READ AT THE BOX' OWN ANCHOR (`nd.anchor` — the bar its
    // story ended on), the very key the pump pushed its rows with, so the drawn legs and the
    // printed pips come off ONE row and a box whose base ended on an older bar keeps the numbers
    // that bar's market gave it instead of today's drifted TH.
-    int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);   // P-BK-83: the STOP's own time
+    int    hop       = BaseKnotLadderHopAt(nd.baseTF, nd.height, nd.anchor); BaseKnotKnotWitness(id, nd.kind, hop, t1, t2, top, bot, bars, still, baseReadTF, baseTF, sp.tStart, sp.tLast, sp.tExit);   // P-BK-128: the rung the legs read (P-BK-125) AND the derivation's flushed [BK-KNOT] line (P-BK-126f — appended here because the file sits on the 1500-line ceiling)
+    int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF, hop);   // P-BK-83: the STOP's own time
     if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
-    int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);     // ... and the ENTRY's own time
+    int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF, hop);     // P-BK-127: ... and the ENTRY's, on the SAME rung (one ruler)
     string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
     double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
-    bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the ENTRY's own time
+    bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the rung both legs use
     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs BaseKnotCalcLevels PRODUCED — published beside the levels, so the note and its hover name the very numbers the lines were drawn with (never a second read)
-     BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor);
+     BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor,
+                        hop);   // P-BK-125: the same hop the stop's TF above was named with — P-BK-127: and the entry's
      // P-BK-104: the ENTRY's own leg, named and sized, ready for the note's face.
      string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag);
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.
@@ -1301,7 +1301,8 @@ void BaseKnotSync(const string id)
    // which of the two spoke, the same way the entry's measure names where its depth came from.
    // P-BK-51: and HOW DEEP the entry waits INSIDE that edge (EngSL for FTR, HuntSL for the
    // longer nodes) — the box hover's own sentence, spelled once by BaseKnotEntryLine.
-   // P-BK-83: on the ENTRY's own time (`eTF` — the node's class), never the stop's rung.
+   // P-BK-127: on the SAME rung the stop is drawn on (`eTF`), so the sentence names the TF the
+   // number was really read on.
    string entryWhy = " (ONE " + BaseKnotEntryOffsetTag(offIsHunt) + " INSIDE the box' " + edgeName + " edge — " +
                      BaseKnotEntryWhy(nd.kind, eTF, offIsHunt, top, bot, nd.anchor) + "; the side is " +
                      (nd.side != 0 ? "the base's own exit candle" : "the live price") + ")";
@@ -1311,14 +1312,12 @@ void BaseKnotSync(const string id)
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + ", INSIDE the box' " + edgeName +
                    " edge, ONE " + riskTag + " behind the entry" + BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")", tfMask, true);
     // BKE2-OFF: no 2nd-entry rays (purged above).
-    // P-BK-50: the TARGETS are the box' own legs — one SHORT, THICK tick each at the chart's
-   // right edge, never a ray (the user's 2026-09-08 decision). An unpushed leg is NOT drawn.
-   // P-BK-120: READ ON `mTF`, THE STOP'S OWN TIME — the plan's ratios on THAT rung's EngSL,
-   // so the ticks, the stop and the R on each tick are one ruler (never the base TF's).
-   for(int tk = 1; tk <= BaseKnotTPCount(); tk++)
+    // P-BK-50: the TARGETS are the box' own legs — one SHORT, THICK tick each at the chart's right edge, never a ray (the user's 2026-09-08 decision); an unpushed leg is NOT drawn. P-BK-120: READ ON `mTF`, THE STOP'S OWN TIME — the plan's ratios on THAT rung's EngSL, so the ticks, the stop and the R on each tick are one ruler (never the base TF's).
+   // P-BK-122 (2026-10-24): AND THE WALK IS THE WHOLE RANGE. It used to stop at the TP COUNT and `continue` on an absent leg, so a tick drawn by an earlier round was NEVER deleted: the plan went cold (a moved row, a lowered count, a flip) and the old line stayed on the chart at its old price for ever — a level the knot no longer claims. The ink below already reads the same way; now the line does too.
+   for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
-      double lv = BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor);
-      if(lv <= 0.0) continue;
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor) : 0.0);
+      if(lv <= 0.0) { ObjectDelete(0, BaseKnotTPTickName(pfx, tk)); continue; }
       double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);
       BaseKnotMakeRay(BaseKnotTPTickName(pfx, tk), tps, tpe, lv, g_bkTargetColor,
                       BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
@@ -1440,7 +1439,8 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    // the box does not draw with.
     datetime an = g_bkBoxes[k].storyT;
     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: published by the geometry, unused here — the lean mover moves LEVELS only (the note's numbers are the release Sync's own)
-     BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, offPips, riskPips, an);
+     BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, offPips, riskPips, an,
+                        BaseKnotBoxHop(k));   // P-BK-125: the drag follows the release Sync's own rung, so no level jumps at release
     // BKE2-OFF: no 2nd set on the drag (Sync purges it at release).
     datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;
@@ -1463,7 +1463,7 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
       int bit = (tk == 1 ? BK_CH_TP : (tk == 2 ? BK_CH_TP2 : BK_CH_TP3));
       if((s_bkChildMask & bit) == 0) continue;
       double lv = BaseKnotTPLevel(entry, g_bkBoxes[k].dir,
-                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin), tk, an);   // P-BK-120: the stop's own rung
+                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, BaseKnotBoxHop(k)), tk, an);   // P-BK-120: the stop's own rung; P-BK-125: the SAME hop the stop was drawn on
       if(lv <= 0.0) continue;
       BaseKnotMoveOne(BaseKnotTPTickName(pfx, tk), tps, lv, tpe, lv);
    }

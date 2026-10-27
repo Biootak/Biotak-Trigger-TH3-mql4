@@ -673,6 +673,14 @@ One function over the ceiling stays whole and never grows.
   series, only the x pitch is schematic. A rung that already fits returns before any
   read, so its geometry is untouched. Witness: `[P-HTF] slot htf= chart= vis= ratio=
   slot=` (P-HTF-SLOT).
+- **A label lever may not re-step the family.** The strip's `Last object` cell selects WHICH
+  bar the ATR LABELS print (`GetATRForTimeframe` is the anchored read's only home, and the
+  knot witness asks it too). It is not an input of the level build: the geometry funnel
+  `CalculateWeightedATR` is the live read unconditionally, and the plan's source guard reads
+  no anchor at all — so a press can move a number on screen and never a step, a level or a
+  plan. An as-of read is a CALLER's own bar (`CalculateWeightedATRAt`, P-BK-79). This is
+  DELIBERATE, and it was the behaviour until 2026-10-21; putting `CalcAnchorAt()` back at
+  that funnel is the defect (`P-ANCHOR-LAST`, mutations `-d`/`-e`/`-f`).
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 

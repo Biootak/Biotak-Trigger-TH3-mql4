@@ -38,12 +38,10 @@
 //| already carries. That is also what keeps a box being SIZED (the  |
 //| FTR preview, one EngSL for both legs) byte-identical on its face.|
 //|                                                                  |
-//| NO TF ON THE NAME, AND THAT IS NOT AN OMISSION: the entry's leg  |
-//| is read on the NODE'S OWN time (P-BK-83 — BaseKnotEntryTFMin     |
-//| never hops), which is exactly the class the note already prints  |
-//| in the SAME line («H1 base»). Spelling it a second time would   |
-//| name one rung twice. The stop's field is the one that carries a  |
-//| TF («EngSL M15») because it is the leg that hops.                |
+//| NO TF ON THE NAME, AND THAT IS NOT AN OMISSION: the entry hops  |
+//| with the type now (P-BK-127), and the risk field beside it      |
+//| already names that rung («TRex H1»). Spelling it a second time  |
+//| would name one ruler twice - the one thing P-BK-57 forbids.     |
 //+------------------------------------------------------------------+
 string BaseKnotEntryTag(const bool offIsHunt, const double offPips,
                         const int entryTF, const int riskTF, const string riskTag)
@@ -140,20 +138,20 @@ string BaseKnotATRTag(BaseKnotNode &nd)
    // P-BK-106b: the leg ruler's compact shape — ONE `ATR` label, three `TF:value` cells,
    // ascending ladder order (node, pattern, structure). No bar on the face: the hover
    // carries the moment (P-BK-108). Only REAL rows are printed; a cold row stays in hover.
-   string s = " · ATR " + BaseKnotTFName(nd.nodeTF) + ":" + DoubleToString(BaseKnotToPips(nd.abTrig), 1);
+   string s = " · ATR " + BaseKnotTFHuman(nd.nodeTF) + ":" + DoubleToString(BaseKnotToPips(nd.abTrig), 1);
    int up1 = BaseKnotNextTFMin(nd.nodeTF);
    int up2 = (up1 > 0 ? BaseKnotNextTFMin(up1) : 0);
    if(up1 > 0 && nd.abPatRead && nd.abPat > 0.0)
-      s += " | " + BaseKnotTFName(up1) + ":" + DoubleToString(BaseKnotToPips(nd.abPat), 1);
+      s += " | " + BaseKnotTFHuman(up1) + ":" + DoubleToString(BaseKnotToPips(nd.abPat), 1);
    if(up2 > 0 && nd.abStrRead && nd.abStr > 0.0)
-      s += " | " + BaseKnotTFName(up2) + ":" + DoubleToString(BaseKnotToPips(nd.abStr), 1);
+      s += " | " + BaseKnotTFHuman(up2) + ":" + DoubleToString(BaseKnotToPips(nd.abStr), 1);
    return s;
 }
 string BaseKnotATRPctCell(const int tf, const double atr, const double boxPips)
 {
    double a = BaseKnotToPips(atr);
    if(a <= 0.0 || boxPips <= 0.0) return "";
-   return BaseKnotTFName(tf) + ":" + IntegerToString((int)MathRound(boxPips / a * 100.0)) + "%";
+   return BaseKnotTFHuman(tf) + ":" + IntegerToString((int)MathRound(boxPips / a * 100.0)) + "%";
 }
 string BaseKnotATRPctTag(BaseKnotNode &nd, const double boxPips)
 {
@@ -239,7 +237,7 @@ string BaseKnotOwnerTag(BaseKnotNode &nd, const double boxPips)
       (up2 > 0 && nd.abStrRead && nd.abStr > 0.0 && tfs[owner] == up2)) return "";
    double ap = BaseKnotToPips(atrs[owner]);
    if(ap <= 0.0) return "";
-   return "TF " + BaseKnotTFName(tfs[owner]) + " | ATR " + DoubleToString(ap, 1) +
+   return "TF " + BaseKnotTFHuman(tfs[owner]) + " | ATR " + DoubleToString(ap, 1) +
           " | Leg " + IntegerToString((int)MathRound(boxPips / ap * 100.0)) + "%";
 }
 //+------------------------------------------------------------------+
@@ -346,6 +344,20 @@ string BaseKnotCornerPlateName()
    string nm = BaseKnotCornerName();
    if(nm == "") return "";
    return nm + BK_NOTE_PLATE;
+}
+//--- P-BK-121 (2026-10-24) — THE FAMILY IS NOT A BOX' CHILD, AND ITS NAME SAYS SO TOO LATE.
+//--- The rows are named off the CHART-WIDE prefix (`…_BK_NOTE_CORNER`, `…_NOTE_CORNERR2`), so
+//--- the delete handler — whose "an orphan box' children are still here" branch splits the tail
+//--- at its LAST underscore — parsed a row's tail into bid="NOTE" and swept
+//--- `ObjectsDeleteAll(0, prefix("NOTE"))`: THE WHOLE READOUT, plate included, on the ONE event a
+//--- shorter note makes (its writer deletes the rows beyond the new count). MEASURED in the
+//--- journal: `[drawstrip] DELFLUSH obj="THLevels_BK_NOTE_*"` fires on every drag release and on
+//--- every 3 s toast expiry — write, wipe by an unrelated sweep, write again by the keeper, i.e.
+//--- exactly the «الکی حذف و رسم» the user reported. This is the answer the handler asks BEFORE
+//--- any sweep: a note stem is not an id, and the family owns its own deletes.
+bool BaseKnotNoteStemIs(const string bid)
+{
+   return (bid != "" && StringFind(BK_NOTE_CORNER, bid) == 0);   // "NOTE" (a row) / "NOTE_CORNER" (the plate)
 }
 void BaseKnotCornerFamilyWipe()
 {

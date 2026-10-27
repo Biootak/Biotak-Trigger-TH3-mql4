@@ -237,7 +237,7 @@ void BaseKnotEngPump()
     ArrayInitialize(ab, 0.0);      // explicit: the push below reads them for every `mins`
     ArrayInitialize(st, 0.0);
     ArrayInitialize(pric, 0.0); ArrayInitialize(clas, 0.0);
-   BaseKnotOwnerATRPump(); int n = BaseKnotEngNeeds(mins, anchors);
+   BaseKnotOwnerATRPump(); int n = BaseKnotEngNeeds(mins, anchors); BaseKnotShotFlashTick();   // P-BK-124: 1 int compare/round, clears the capture flash 1 s after a press
    for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
    {
        // P-BK-50: one plan call feeds every push; a cold plan pushes ZEROES.

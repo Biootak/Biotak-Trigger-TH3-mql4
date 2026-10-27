@@ -317,11 +317,11 @@ input string S12 = "[14] TH3 TOOL";
 input bool inpEnableTH3Tool = true;
 input ENUM_TH3_DRAWING_MODE inpTH3DrawingMode = TH3_MODE_ABCD;
 input double inpTH3BaseStepPercent = 28.125;
-// P-TH3-PB-MAN (2026-09-21): the pivot base is no longer DRAWN (stage 5 retired).
-// Its height is typed here, in pips, and Path 1 of TH3LockedStep reads it.
-// The marked leg is a three-step run, so one step = leg/3 (course k = 3 fixed).
-// 0 = OFF: the pattern timeframe's own ATR answers (the default before this knob).
-input double inpTH3PivotBasePips = 0.0;
+// P-TH3-BASE-01 (2026-10-24): the base is a RANGE, and the number typed here
+// IS that range — 1:1, in pips. No division by 3, no `knot vs span` guess:
+// CalculateUnifiedMasterStep uses it exactly as entered (TH3Pivots_B.mqh).
+// 0 = OFF: the pattern timeframe's own TH rung answers.
+input double inpTH3BaseRangePips = 0.0;
 input color inpTH3Color = clrDarkBlue;            // Visual align MT5: was clrForestGreen
 input color inpTH3PipTextColor = clrDarkBlue;     // Visual align MT5: was clrNavy
 input ENUM_LINE_STYLE inpTH3Style = STYLE_SOLID;
@@ -334,10 +334,10 @@ input int inpTH3ZoneTransparency = 50;
 input double inpTH3ZoneHeightPercent = 33.0;
 input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
 input int inpTH3ZoneBorderWidth = 1;
-// P-TH3-P6e (2026-09-19) — MOTHER-PIVOT OVERLAY SWITCH. OFF = the chart
+// P-TH3-P6e (2026-09-19) — NESTED-BASE OVERLAY SWITCH. OFF = the chart
 // shows only the pattern + ladder (clean chart); ON = the active pattern
-// also wears its matched mother pivot (two dotted bounds + one badge).
-input bool inpShowMotherPivotZone = false;   // P-TH3-DISC: detector zone OFF — the B-marked base is the only mother
+// also wears its matched nested base (two dotted bounds + one badge).
+input bool inpShowNestedBaseZone = false;   // P-TH3-DISC: detector zone OFF — the hand-typed base is the only base
 #endif
 
 // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF — the [15] AB=CD group is

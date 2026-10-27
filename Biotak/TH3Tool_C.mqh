@@ -333,9 +333,15 @@ bool LegMeasureOnObjectDelete(const string objName)
     if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;
     if(StringFind(objName, TH3_LEG_PREFIX) != 0) return false;
     int len = StringLen(objName);
-    if(len < 6 || StringSubstr(objName, len - 5) != "_Line") return false;
+    if(len >= 5 && StringSubstr(objName, len - 4) == "_Box")   // P-TH3-DEL4: the box deletes too
+    {
+        int idx = LegMeasureIndex(StringSubstr(objName, 0, len - 4));
+        if(idx < 0 || !g_legPlateUp[idx]) return true;   // our own teardown / expiry echo
+        LegMeasurePlateHide(idx); ThrottledChartRedraw(); return true;
+    }
     // ONLY the line cascades: the terminal reports every object WE remove as one of
     // these events too, so a `_Box`/`_Info` member must never re-enter the delete.
+    if(len < 6 || StringSubstr(objName, len - 5) != "_Line") return false;
     LegMeasureDelete(StringSubstr(objName, 0, len - 5));
     return true;
 }
@@ -683,9 +689,9 @@ void TH3CompletePattern()
     }
 
     string patternName = "ABCD_Pattern_" + IntegerToString((long)GetTickCount());
-    // P-TH3-D4: active FIRST, draw second. DrawABCDPattern gates the mother
+    // P-TH3-D4: active FIRST, draw second. DrawABCDPattern gates the base
     // overlay on mpActive, so drawing before SetActive minted every new
-    // pattern with MP:idle on its first (and often only) paint.
+    // pattern with BASE:idle on its first (and often only) paint.
     SetActiveABCDPattern(patternName);
     DrawABCDPattern(patternName, tA, pA, tB, pB, tC, pC, tD, pD);
 
@@ -707,7 +713,7 @@ void TH3CompletePattern()
     UpdateTH3FrequencyLabel(g_th3FreqOverride);
     // P-TH3-PB-OFF (2026-09-21): the session ENDS here — the 5th stage (drag
     // the pivot base) is retired; the base is hand-typed in the TH3 TOOL card
-    // (`inpTH3PivotBasePips` -> TH3ManualBaseStep -> TH3LockedStep Path 1).
+    // (`inpTH3BaseRangePips` -> TH3ManualBaseStep -> TH3LockedStep Path 1).
     g_th3Session.state = TH3_SESSION_IDLE;
     TH3HoverGuardReset();   // P-TH3-PERF-03
     ThrottledChartRedraw();
@@ -717,7 +723,7 @@ void TH3CompletePattern()
 // TH3BaseDraftDraw / TH3BaseStageSkip / TH3BaseStageCommit / TH3BaseStageMouse
 // lived here: press = one node edge, drag = rubber band, release = commit as
 // Path 1 of TH3LockedStep (behind the SHIFT modifier, P-TH3-PB-DRAG). The base
-// is hand-typed now (`inpTH3PivotBasePips`), so there is no gesture, no draft
+// is hand-typed now (`inpTH3BaseRangePips`), so there is no gesture, no draft
 // and no skip. History in git log.
 
 //+------------------------------------------------------------------+
@@ -826,7 +832,7 @@ void TH3BaseMarkCommit(const datetime t1, const double p1,
         Print("TH3: base mark ignored - edges less than 1 pip apart, click again.");
         return;   // stay armed on the SAME first edge
     }
-    g_th3PivotBasePips = bpips;
+    g_th3BaseRangePips = bpips;
     s_th3BaseMarkArmed = false;
     s_th3BaseMarkHas1  = false;
     s_bmDragDown = false; s_bmDragMoved = false;
@@ -950,10 +956,10 @@ void TH3BaseEditorShow(const datetime t1, const double p1,
 // centre, applies the new height around them; builds the band when missing.
 void TH3BaseEditorSync()
 {
-    if(g_th3PivotBasePips <= 0) { ObjectDelete(0, TH3_BASE_EDITOR); return; }
+    if(g_th3BaseRangePips <= 0) { ObjectDelete(0, TH3_BASE_EDITOR); return; }
     double pip = GetCachedPipSize();
     if(pip <= 0) pip = Point;
-    double h = g_th3PivotBasePips * pip;
+    double h = g_th3BaseRangePips * pip;
     if(h <= 0) return;
     datetime t1 = 0, t2 = 0;
     double center = 0;
@@ -1016,8 +1022,8 @@ void TH3BaseEditorOnDrag()
     if(pip <= 0) pip = Point;
     double bpips = TH3BasePipsFromPrices(a, b, pip);
     if(bpips <= 0) return;
-    if(MathAbs(bpips - g_th3PivotBasePips) < 0.5) return;   // dust
-    g_th3PivotBasePips = bpips;
+    if(MathAbs(bpips - g_th3BaseRangePips) < 0.5) return;   // dust
+    g_th3BaseRangePips = bpips;
     RuntimeSettingsSaveOverridesThrottled();   // OV_PBP now
     UpdateAllTH3Objects();
 }
@@ -1090,8 +1096,8 @@ void TH3BaseEditorOnDelete()
         ChartViewLockRelease();
     }
     if(ObjectFind(0, TH3_BASE_EDITOR) >= 0) return;
-    if(g_th3PivotBasePips <= 0) return;
-    g_th3PivotBasePips = 0.0;
+    if(g_th3BaseRangePips <= 0) return;
+    g_th3BaseRangePips = 0.0;
     RuntimeSettingsSaveOverridesThrottled();
     UpdateAllTH3Objects();
     Print("TH3: base editor deleted - BASE PIPS back to OFF (pattern TF ATR).");
@@ -1394,7 +1400,7 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
         // P-TH3-DEL2 (2026-09-22) -- OUR OWN DROPS MUST NOT WIPE US.
         // The DEL1 sweep made EVERY member's delete cascade -- including the
         // drops our own draws queue behind them: a base commit re-steps every
-        // pattern (UpdateAllTH3Objects), a redraw with no mother match drops
+        // pattern (UpdateAllTH3Objects), a redraw with no base match drops
         // the TH3_MP_* overlay, and the queued OBJECT_DELETE used to wipe the
         // whole ABCD («وقتی بیس رو انتخاب میکنم abcd حذف میشه»). Now the
         // ANCHORS decide: points and leg lines intact + this second still
@@ -1418,7 +1424,10 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
         // (P-TH3-RESTORE's orphan sweep drops exactly those captions) must still
         // die whole, and the caption rows are the objects that carry its delete
         // events — without this term broken leftovers would linger forever.
-        if(TH3IsInfoLabelName(sparam) && TH3FamilyAnchorsAlive(baseName)) return;
+        //
+        // P-TH3-DEL4 (2026-10-24) — AND THE HAND'S OWN DELETE IS AN ANSWER: the
+        // rule, the three cases and the latch live in TH3Renderer_A's DEL4 header.
+        if(TH3IsInfoLabelName(sparam) && TH3FamilyAnchorsAlive(baseName)) { TH3InfoOnMemberDelete(sparam, baseName); return; }
         // P-TH3-DEL3: WALL clock. TimeCurrent only moves on ticks, so a drop
         // queued behind a multi-second redraw read the tick-time window as
         // closed on a live chart and wiped the family behind its own draw.

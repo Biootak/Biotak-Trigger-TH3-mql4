@@ -441,7 +441,7 @@ double PnlCurrentSet(const int item,const int row)
                if(row==3) return g_th3Width;
                if(row==4) return (int)g_th3Style;
                if(row==7) return g_showTH3Labels?1.0:0.0;
-               if(row==8) return g_th3PivotBasePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+               if(row==8) return g_th3BaseRangePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
                return 0;
        case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
                if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
@@ -816,13 +816,13 @@ int PnlApplySet(const int item,const int row,const double v)
          else if(row==3)  { g_th3Width=ClampInt((int)MathRound(v),1,5); flags=REFRESH_TH3; }
          else if(row==4)  { g_th3Style=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_TH3; }
          else if(row==7)  { g_showTH3Labels=(v>0.5); flags=REFRESH_TH3; }
-         // P-TH3-PB-MAN: the hand-typed pivot base, in pips. 0 = OFF (the
-         // pattern TF's own ATR). A ladder input, so it re-steps every
-         // pattern exactly like the rows above (REFRESH_TH3 owns the redraw
-         // AND the throttled OV_ persist in ApplyRefreshFlags).
+         // P-TH3-BASE-01: the hand-typed base range, in pips, used 1:1.
+         // 0 = OFF (the pattern TF's own TH rung). A ladder input, so it
+         // re-steps every pattern exactly like the rows above (REFRESH_TH3
+         // owns the redraw AND the throttled OV_ persist in ApplyRefreshFlags).
          // P-TH3-PB-UI: typing also re-projects the editor band around its
          // own centre (0 deletes it) — the band and the row never disagree.
-         else if(row==8)  { g_th3PivotBasePips=MathMax(0.0,v); TH3BaseEditorSync(); flags=REFRESH_TH3; }
+         else if(row==8)  { g_th3BaseRangePips=MathMax(0.0,v); TH3BaseEditorSync(); flags=REFRESH_TH3; }
          break;
        case 6:   // HTF CANDLES
          // P-HTF-PROBE (2026-09-30, Touch rule 5): "the shadow vanished and the body

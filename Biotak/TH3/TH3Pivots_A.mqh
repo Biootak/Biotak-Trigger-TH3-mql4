@@ -39,24 +39,24 @@
 // A choice, marked tunable, not a course number.
 #define TH3_HIT_MAX_STEP_ERR 0.25
 
-// P-TH3-MP2 (2026-09-19) — THE MOTHERNESS SCORE's OWN WEIGHTS. The old
+// P-TH3-MP2 (2026-09-19) — THE NESTED-BASE SCORE's OWN WEIGHTS. The old
 // matcher picked the NEAREST fresh pivot; the user's eye picks the node the
 // market has visited and leaned on. Three named, tunable choices (not course
-// numbers): a mother's touches, its thickness in steps, and its age.
-#define TH3_MP_TOUCH_W        25.0    // per separate touch after declare
-#define TH3_MP_TOUCH_MAX      6       // touches capped (a wall is not ten walls)
-#define TH3_MP_THICK_W        20.0    // per step of node thickness (capped)
-#define TH3_MP_THICK_MAX      2.0     // thickness credited up to 2 steps
-#define TH3_MP_AGE_BONUS      15.0    // predates the pattern origin: the insider ban
-#define TH3_MP_LAUNCH_BONUS   40.0    // the launch test: X->A leg starts in-node
-#define TH3_MP_TOL_STEP       0.5     // tier 1: half a step (the old tol)
-#define TH3_MP_TOL_WIDE       1.5     // tier 2: one and a half steps
-#define TH3_MP_TOL_SPAN       3.0     // tier 3: three steps (the far mother)
-#define TH3_MP_TOUCH_TOL      0.5     // a touch = within half the node's step
+// numbers): a base's touches, its thickness in steps, and its age.
+#define TH3_NB_TOUCH_W        25.0    // per separate touch after declare
+#define TH3_NB_TOUCH_MAX      6       // touches capped (a wall is not ten walls)
+#define TH3_NB_THICK_W        20.0    // per step of node thickness (capped)
+#define TH3_NB_THICK_MAX      2.0     // thickness credited up to 2 steps
+#define TH3_NB_AGE_BONUS      15.0    // predates the pattern origin: the insider ban
+#define TH3_NB_LAUNCH_BONUS   40.0    // the launch test: X->A leg starts in-node
+#define TH3_NB_TOL_STEP       0.5     // tier 1: half a step (the old tol)
+#define TH3_NB_TOL_WIDE       1.5     // tier 2: one and a half steps
+#define TH3_NB_TOL_SPAN       3.0     // tier 3: three steps (the far base)
+#define TH3_NB_TOUCH_TOL      0.5     // a touch = within half the node's step
 
 // One found pivot, on one timeframe.
 //
-// P-TH3-P6e (2026-09-19) — THE NODE, STATED. A mother pivot is not one
+// P-TH3-P6e (2026-09-19) — THE NODE, STATED. A nested base is not one
 // line but the zone [price .. keyPrice]: `price` is the extreme, and
 // `keyPrice` is cond 4's own line — the pivot candle's opposite edge
 // when it is a master (the node IS that candle), or the hypothetical
@@ -290,7 +290,7 @@ double TH3P6KeyPrice(const int tf, const int extIdx, const double extP,
 //| the markers' view). A pattern drawn on old history (D in March,  |
 //| terminal in September) reads nothing otherwise: the latest 400   |
 //| bars never reach its candles, so the cache is empty (nc=0 ns=0   |
-//| nm=0) and every mother/lock/snap caller agrees on "none".        |
+//| nm=0) and every base/lock/snap caller agrees on "none".          |
 //+------------------------------------------------------------------+
 int TH3SixPivotsScanTF(const int tf, TH3PivotSix &out[], const int maxOut,
                        const int lookbackBars = 400, const datetime endTime = 0)
@@ -619,7 +619,7 @@ bool TH3OriginPivotAt(const datetime tRef, const double pRef,
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-P6e — MOTHER PIVOT. Nearest valid non-base pivot of the    |
+//| P-TH3-P6e — NESTED BASE. Nearest valid non-base pivot of the     |
 //| wanted kind strictly before tRef and within tol of pRef. Pass    |
 //| order is the user's spec, stated as a choice, not a course       |
 //| number: fresh chart, fresh structure, mitigated chart, mitigated  |
@@ -667,14 +667,14 @@ double CalculateDynamicPivotScore(const TH3PivotSix &piv, const double targetPri
 //| to the reference bar, on the pivot's OWN tf. Returns 0 when the  |
 //| read fails — absence, never a guess. Pure: no objects.           |
 //+------------------------------------------------------------------+
-int TH3MotherTouches(const int tf, const double level, const datetime confirmTime,
+int TH3NestedBaseTouches(const int tf, const double level, const datetime confirmTime,
                      const datetime tRef, const double step)
 {
     if(tf <= 0 || level <= 0 || step <= 0 || tRef <= confirmTime) return 0;
     int cBar = iBarShift(NULL, tf, confirmTime);
     int rBar = iBarShift(NULL, tf, tRef);
     if(cBar < 0 || rBar < 0 || rBar >= cBar) return 0;
-    double tol = TH3_MP_TOUCH_TOL * step;
+    double tol = TH3_NB_TOUCH_TOL * step;
     int touches = 0;
     bool inside = false;
     for(int j = cBar - 1; j >= rBar; j--)
@@ -689,15 +689,15 @@ int TH3MotherTouches(const int tf, const double level, const datetime confirmTim
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-MP2 — LAUNCH TEST. The mother is where the move came       |
+//| P-TH3-MP2 — LAUNCH TEST. The base is where the move came         |
 //| FROM: the leg X->A (anchor -> first point) must START inside or  |
 //| at the edge of the candidate's node [lo .. hi]. `legStart` is    |
 //| the anchor's price (X, else A), `legEnd` the far point's. True   |
 //| also when the leg merely passes through the node — the base the  |
-//| market lifted off is a mother even when the exact open is a bar  |
+//| market lifted off is a base even when the exact open is a bar    |
 //| beside it. Pure: no objects, no reads beyond the zone test.      |
 //+------------------------------------------------------------------+
-bool TH3MotherLaunch(const double lo, const double hi,
+bool TH3NestedBaseLaunch(const double lo, const double hi,
                      const double legStart, const double legEnd)
 {
     if(lo <= 0 || hi <= 0 || hi < lo || legStart <= 0) return false;
@@ -708,7 +708,7 @@ bool TH3MotherLaunch(const double lo, const double hi,
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-MP2 — MOTHERNESS. The mother score, stated:                |
+//| P-TH3-MP2 — THE BASE SCORE, stated:                              |
 //|   TF weight (same ladder as Pillar 4)                            |
 //| + freshness, scaled BY TF (chart freshness is noise, macro       |
 //|   freshness is structure: macro 30 / structure 25 / chart 12)    |
@@ -717,7 +717,7 @@ bool TH3MotherLaunch(const double lo, const double hi,
 //| - distance, in step units (a near tie still breaks nearer)       |
 //| Score is bounded in its parts; the matcher compares totals.      |
 //+------------------------------------------------------------------+
-double TH3MotherScore(const TH3PivotSix &piv, const double targetPrice,
+double TH3NestedBaseScore(const TH3PivotSix &piv, const double targetPrice,
                       const int tf_structure, const int tf_macro,
                       const double refStep, const int touches,
                       const double nodeStep, const bool launchOK,
@@ -735,16 +735,16 @@ double TH3MotherScore(const TH3PivotSix &piv, const double targetPrice,
     else                            score += 12.0;
     if(piv.mitigated) score -= 12.0;    // mitigated, not disqualified
 
-    int t = touches; if(t > TH3_MP_TOUCH_MAX) t = TH3_MP_TOUCH_MAX;
-    score += t * TH3_MP_TOUCH_W;
+    int t = touches; if(t > TH3_NB_TOUCH_MAX) t = TH3_NB_TOUCH_MAX;
+    score += t * TH3_NB_TOUCH_W;
 
     double thickSteps = 0;
     if(nodeStep > 0) thickSteps = MathAbs(piv.price - piv.keyPrice) / nodeStep;
-    if(thickSteps > TH3_MP_THICK_MAX) thickSteps = TH3_MP_THICK_MAX;
-    score += thickSteps * TH3_MP_THICK_W;
+    if(thickSteps > TH3_NB_THICK_MAX) thickSteps = TH3_NB_THICK_MAX;
+    score += thickSteps * TH3_NB_THICK_W;
 
-    if(predatesOrigin) score += TH3_MP_AGE_BONUS;
-    if(launchOK)       score += TH3_MP_LAUNCH_BONUS;
+    if(predatesOrigin) score += TH3_NB_AGE_BONUS;
+    if(launchOK)       score += TH3_NB_LAUNCH_BONUS;
 
     if(refStep > 0) {
         double distSteps = MathAbs(piv.price - targetPrice) / refStep;
@@ -754,15 +754,15 @@ double TH3MotherScore(const TH3PivotSix &piv, const double targetPrice,
 }
 
 //+------------------------------------------------------------------+
-//| P-TH3-MP2 — MOTHER LADDER SCAN. All three layers (chart +        |
+//| P-TH3-MP2 — NESTED-BASE LADDER SCAN. All three layers (chart +   |
 //| structure + macro) in one read, base pivots INCLUDED: the        |
 //| course's own «مبنا» is the pivot with 4+ side candles (p. 7) —   |
-//| exactly the node the eye picks as the mother — so the old        |
+//| exactly the node the eye picks as the base — so the old          |
 //| `c.base -> skip` was refusing the very thing it hunted. The      |
 //| tolerance is a LADDER, not a gate: a candidate inside any tier   |
 //| competes on score; the tiers only decide who gets to compete.    |
 //+------------------------------------------------------------------+
-bool TH3MotherPivotAt(const datetime tRef, const double pRef,
+bool TH3NestedBasePivotAt(const datetime tRef, const double pRef,
                       const bool wantHigh, const double tol,
                       TH3PivotSix &out,
                       const datetime anchorTime = 0,
@@ -790,10 +790,10 @@ bool TH3MotherPivotAt(const datetime tRef, const double pRef,
     // the tolerance LADDER (P-TH3-MP2): the tiers are entry gates only;
     // the score decides. Tier 1 = the caller's own tol (backward-compat
     // with the old single-tol callers and the §9 tests), tier 2/3 = the
-    // wide tiers that reach the FAR mother the old code could not see.
-    double tol1 = MathMax(tol, TH3_MP_TOL_STEP * step);
-    double tol2 = MathMax(tol1, TH3_MP_TOL_WIDE * step);
-    double tol3 = MathMax(tol2, TH3_MP_TOL_SPAN * step);
+    // wide tiers that reach the FAR base the old code could not see.
+    double tol1 = MathMax(tol, TH3_NB_TOL_STEP * step);
+    double tol2 = MathMax(tol1, TH3_NB_TOL_WIDE * step);
+    double tol3 = MathMax(tol2, TH3_NB_TOL_SPAN * step);
 
     datetime aEff = (anchorTime > 0 ? anchorTime : tRef);
     bool found = false;
@@ -822,8 +822,8 @@ bool TH3MotherPivotAt(const datetime tRef, const double pRef,
             }
             double d = MathAbs(c.price - pRef);
             if(d > tol3) continue;          // the ladder's widest tier
-            // the motherness score decides, not the gate:
-            int touches = TH3MotherTouches(c.tf, c.price, c.confirmTime, tRef, step);
+            // the base score decides, not the gate:
+            int touches = TH3NestedBaseTouches(c.tf, c.price, c.confirmTime, tRef, step);
             // the launch test needs the leg's two ends. Inside the matcher the
             // only leg we know is anchor -> D (pRef): the near end is the
             // anchor's price — unknowable from a time alone — so the matcher
@@ -832,11 +832,11 @@ bool TH3MotherPivotAt(const datetime tRef, const double pRef,
             // arrives here as the two optional leg params below (P-TH3-D4).
             double legStart = (launchAnchorPrice > 0 ? launchAnchorPrice : pRef);
             double legEnd   = pRef;
-            bool launchOK = TH3MotherLaunch(MathMin(c.price, c.keyPrice),
+            bool launchOK = TH3NestedBaseLaunch(MathMin(c.price, c.keyPrice),
                                             MathMax(c.price, c.keyPrice),
                                             legStart, legEnd);
             bool predates = (c.time < aEff);
-            double s = TH3MotherScore(c, pRef, tf_structure, tf_macro, refStep,
+            double s = TH3NestedBaseScore(c, pRef, tf_structure, tf_macro, refStep,
                                       touches, step, launchOK, predates);
             if(s > bestScore || (s == bestScore && d < bestDist))
             { bestScore = s; bestDist = d; out = c; found = true; }
@@ -847,7 +847,7 @@ bool TH3MotherPivotAt(const datetime tRef, const double pRef,
 
 //+------------------------------------------------------------------+
 //| P-TH3-P6e Pillar 3 — S/R FLIP. An OPPOSITE-kind old extreme      |
-//| counts as mother only if the market already honoured the flip:   |
+//| counts as base only if the market already honoured the flip:     |
 //| a completed bar strictly before anchorTime closed beyond          |
 //| price ± 0.5*TH_structure (above an old high = support, below an  |
 //| old low = resistance). 0.5 is the corroboration's own half-step  |
