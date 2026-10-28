@@ -7872,31 +7872,44 @@ function main() {
   }
 
   // -- 75. P-LBL-13 (2026-10-20): the TRex superscript is the STRUCTURE candle's
-  // live TRUE RANGE, and STRUCTURE = TWO fractal rungs up (M15 -> H4).
+  // TRUE RANGE, and STRUCTURE = TWO fractal rungs up (M15 -> H4).
   // MEASURED «این چرا لایو تایم ساختار اشتباه نشون میده … 38.3 نشون میده»: the
   // superscript read `CompatTF(plan.strMin)` (the plan's ONE-rung Eng basis, H1 on
   // M15) and the bare `iHigh - iLow`, so a 38.3p H1 range sat beside a 76.0p M15
   // ATR while the user's own structure read was the H4 candle. The inverse: one
   // rung again, or a high-low that drops the previous close's gap.
+  // P-ANCHOR-CARD (2026-10-28): the READ moved into `TradePlanStructureRange`
+  // (Labels_Countdown), because the card must read the bar the ATR beside it was
+  // read on. The bar is the anchor's when LAST OBJECT is armed and shift 0 (the
+  // forming bar) when it is not - the TrueRange law is the same on both.
   {
     const broken = [];
     const la = linesOf(LABELS_A);
+    const lc = linesOf(path.join(BIOTAK, 'Labels_Countdown.mqh'));
     const trx = la ? bodyOf(la, 'bool DisplayTRexTitleBlock(') : null;
+    const rng = lc ? bodyOf(lc, 'double TradePlanStructureRange(const ENUM_TIMEFRAMES stf)') : null;
     if (!trx) broken.push('DisplayTRexTitleBlock is gone — the superscript has no home');
     else {
       if (!trx.text.includes('TradePlanLadderIndex(Period()) + 2'))
         broken.push('the superscript lost its TWO-rung structure (M15 must read H4, not H1) — the shipped defect');
-      if (!trx.text.includes('iClose(NULL, stf, 1)') || !trx.text.includes('MathAbs(hi - pc)'))
-        broken.push('the read is a bare high-low again: TrueRange must include the previous close (|H-PC|, |L-PC|)');
+      if (!trx.text.includes('TradePlanStructureRange(stf)'))
+        broken.push('the range is read inline again — one number, two owners, and no single bar to name');
       if (!trx.text.includes('rng / pip') || !trx.text.includes('rng / atrVal'))
         broken.push('the text no longer reports the range in pips with its % of the current-TF ATR');
-      if (!trx.text.includes('iHigh(NULL, stf, 0)') || !trx.text.includes('iLow(NULL, stf, 0)'))
-        broken.push('the LIVE (forming) bar is the read: shift 0 on the structure TF');
+    }
+    if (!rng) broken.push('TradePlanStructureRange is gone — the spread row has no owner');
+    else {
+      if (!rng.text.includes('iHigh(NULL, stf, shift)') || !rng.text.includes('iLow(NULL, stf, shift)'))
+        broken.push('the range is not read at the resolved bar — the spread row can be a percentage of two bars');
+      if (!rng.text.includes('iClose(NULL, stf, shift + 1)') || !rng.text.includes('MathAbs(hi - pc)'))
+        broken.push('the read is a bare high-low again: TrueRange must include the previous close (|H-PC|, |L-PC|)');
+      if (!rng.text.includes('iBarShift(Symbol(), stf, fa, false)') || !rng.text.includes('if(shift < 0) shift = 0;'))
+        broken.push('the range has no LIVE (forming) bar to fall back on: shift 0 must be the read when nothing is armed');
     }
     if (broken.length) {
-      failures.push('P-LBL-13: ' + broken.join('; ') + ' (Labels_A DisplayTRexTitleBlock)');
+      failures.push('P-LBL-13: ' + broken.join('; ') + ' (Labels_A DisplayTRexTitleBlock / Labels_Countdown TradePlanStructureRange)');
     } else {
-      console.log('[PASS] P-LBL-13 TRex superscript = the structure candle\'s live TrueRange: two fractal rungs up (M15 reads H4), previous-close gap included, in pips with its % of the current-TF ATR');
+      console.log('[PASS] P-LBL-13 TRex superscript = the structure candle\'s TrueRange: two fractal rungs up (M15 reads H4), previous-close gap included, in pips with its % of the current-TF ATR, read at the anchor\'s bar when LAST OBJECT is armed and at shift 0 when it is not');
     }
   }
 
@@ -7970,7 +7983,7 @@ function main() {
     if (broken.length) {
       failures.push('P-ANCHOR-LAST: ' + broken.join('; ') + ' (ATR_A / CalcAnchor / TH3Tool_C / BaseKnot_Drag / panels)');
     } else {
-      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the strip\'s anchor seat writes it (P-ANCHOR-LAST-MOVE), the card no longer paints it and the GV ships OFF, the anchored read lives ONLY in GetATRForTimeframe (labels + witness) while the geometry funnel CalculateWeightedATR and the plan\'s TradePlanStripPips stay live on purpose, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
+      console.log('[PASS] P-ANCHOR-LAST the newest committed LegMeasure/BaseKnot owns one ATR anchor: the strip\'s anchor seat writes it (P-ANCHOR-LAST-MOVE), the card no longer paints it and the GV ships OFF, the anchored read enters through GetATRForTimeframe (labels + witness) and through the CARD\'S OWN ARGUMENT (P-ANCHOR-CARD, Labels_A), while the geometry funnel CalculateWeightedATR and the plan\'s TradePlanStripPips stay live on purpose, a published story re-anchors the active owner, deletion returns live, and the PRE-CP detector stays live');
     }
   }
 
@@ -8022,6 +8035,71 @@ function main() {
       failures.push('P-ANCHOR-LAST-MOVE: ' + broken.join('; ') + ' (DrawStrip_Tap / DrawStrip_Base / CalcAnchor / EventHandlers_Tail)');
     } else {
       console.log('[PASS] P-ANCHOR-LAST-MOVE the strip\'s anchor seat flips through CalcAnchorSetOn, requests the label relayout + redraw in the same press, repaints its own face from the live flag, and is never polled by the timer');
+    }
+  }
+
+
+  // -- 77b. P-ANCHOR-CARD (2026-10-28): THE CARD IS A LABEL, SO IT WEARS THE LABEL'S BAR --
+  // MEASURED on the user's XAUUSD M15 chart with LAST OBJECT armed at 2026.10.22 17:00: the
+  // card printed `82.0` (the AS-OF M15 ATR, through GetATRForTimeframe) above `TRex 12.8 |
+  // Trigger 34.3 | Pricicle 64 | Classic 154`, and 82.0 / 4.266666 = 19.2 - the legs had been
+  // computed on the LIVE ATR (12.8 x 4.266666 = 54.6). ONE card, TWO moments. The fence is
+  // untouched: `TradePlanFormulas` still never asks the switch (P-ANCHOR-LAST); the CARD hands
+  // it the bar as an argument, so only text moves and every drawn level keeps its own anchor.
+  // Each assertion below is one way the split comes back.
+  {
+    const broken = [];
+    const lblA = linesOf(path.join(BIOTAK, 'Labels_A.mqh')) || [];
+    const lblC = linesOf(path.join(BIOTAK, 'Labels_Countdown.mqh')) || [];
+    const relayout = bodyOf(lblA, 'void DisplayATRTradeLabels(const string objectPrefix)');
+    const pump = bodyOf(lblA, 'void TradePlanLiveTick()');
+    const dump = bodyOf(lblA, 'void TradePlanDumpNow()');
+    const witness = bodyOf(lblA, 'void TradePlanWitness(const STradePlan &plan)');
+    const title = bodyOf(lblA, 'bool DisplayTRexTitleBlock(');
+    const atrLabels = bodyOf(lblA, 'void DisplayATRLabels(');
+    const range = bodyOf(lblC, 'double TradePlanStructureRange(const ENUM_TIMEFRAMES stf)');
+    const anchorText = bodyOf(lblC, 'string TradePlanAnchorText()');
+    // 1. BOTH doors carry the bar. Two doors, one number: a card rebuilt as-of and then pumped
+    //    live is the same defect one 2 s pass later.
+    for (const [name, b] of [['DisplayATRTradeLabels', relayout], ['TradePlanLiveTick', pump]]) {
+      if (!b) { broken.push(name + ' is gone - the card has no painter left to check'); continue; }
+      if (!/TradePlanComputeLive\(Period\(\), plan, CalcAnchorAt\(\)\)/.test(b.text))
+        broken.push(name + ' computes the card LIVE - its four legs and TP row print a different bar than the ATR above them');
+    }
+    // 2. The unanchored spelling survives in exactly ONE place, and it is the X dump: that dump
+    //    is the compare-with-the-professor tool and must stay live. A second occurrence is a
+    //    door that was missed; zero means the dump was anchored and the tool now lies.
+    const rawCalls = (codeOf(lblA).match(/TradePlanComputeLive\(Period\(\), plan\)/g) || []).length;
+    if (rawCalls !== 1)
+      broken.push('Labels_A has ' + rawCalls + ' unanchored card reads (exactly one is allowed: TradePlanDumpNow, the live compare-with-the-professor dump)');
+    if (!dump || !/TradePlanComputeLive\(Period\(\), plan\)/.test(dump.text))
+      broken.push('the X dump is no longer the live read - its numbers cannot be compared with the professor\'s any more');
+    if (!dump || !/anchor=" \+ TradePlanAnchorText\(\)/.test(dump.text))
+      broken.push('the X dump does not name the chart\'s anchor - a live dump read beside an as-of card is unreadable');
+    // 3. The spread row is the OTHER half of the same moment: it used to read the LIVE structure
+    //    bar's high-low and divide it by the AS-OF ATR (his `111.9 (136.5%)` = 111.9 / 82.0).
+    if (!range || !/datetime fa = CalcAnchorAt\(\);/.test(range.text) ||
+        !/iBarShift\(Symbol\(\), stf, fa, false\)/.test(range.text) ||
+        !/iHigh\(NULL, stf, shift\)/.test(range.text))
+      broken.push('TradePlanStructureRange stopped reading the anchor\'s bar - the spread row is a percentage of two different bars again');
+    if (!/double rng = TradePlanStructureRange\(stf\);/.test(codeOf(lblA)) || /iHigh\(NULL, stf, 0\)/.test(codeOf(lblA)))
+      broken.push('the card reads the LIVE structure bar inline - the spread range and its ATR come off two bars');
+    // 4. One source for the two numbers the card prints beside each other: the superscript and
+    //    the ATR columns both ask GetATRForTimeframe, so the card cannot be right while the
+    //    columns are live (or the other way round).
+    if (!title || !/double atrVal = GetATRForTimeframe\(Period\(\)\);/.test(title.text))
+      broken.push('the card\'s ATR superscript no longer reads GetATRForTimeframe - it is not the column\'s number');
+    if (!atrLabels || !/double atrValue = GetATRForTimeframe\(tfMinutes\[i\]\);/.test(atrLabels.text))
+      broken.push('the ATR columns no longer read GetATRForTimeframe - the card and the columns come off two moments');
+    // 5. A witness that does not name its bar cannot be told from a live one.
+    if (!witness || !/anchor=%s/.test(witness.text) || !/TradePlanAnchorText\(\)/.test(witness.text))
+      broken.push('the trade-plan witness stopped naming its anchor - an as-of card and a live one print the same line');
+    if (!anchorText || !/return \(fa > 0 \? TimeToString\(fa, TIME_DATE \| TIME_MINUTES\) : \(string\)"live"\);/.test(anchorText.text))
+      broken.push('TradePlanAnchorText no longer answers `live` when nothing is armed - the witness would name a bar it did not read');
+    if (broken.length) {
+      failures.push('P-ANCHOR-CARD: ' + broken.join('; ') + ' (Labels_A / Labels_Countdown)');
+    } else {
+      console.log('[PASS] P-ANCHOR-CARD the corner card is a label: both its doors (relayout + 2 s pump) hand TradePlanComputeLive the CalcAnchorAt() bar, its spread range reads the SAME bar through TradePlanStructureRange, the ATR superscript and the ATR columns still share GetATRForTimeframe, the witness names its anchor, and the X dump stays live on purpose and says so');
     }
   }
 
@@ -8991,8 +9069,8 @@ function main() {
 
     // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
     // beside a v6 row's, whose run the left edge names.
-    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v7"'))
-      broken.push('the formula is no longer v7 - a v6 row\'s Type/U/Stop were cut at the ARITHMETIC midpoint and on round(u), and are not comparable with the ratio/capacity ones');
+    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v8"'))
+      broken.push('the formula is no longer v8 - v7 rows do not include the box-height grade applied to entry, stop and targets');
 
     if (broken.length)
       failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');

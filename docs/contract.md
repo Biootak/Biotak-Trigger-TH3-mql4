@@ -680,7 +680,19 @@ One function over the ceiling stays whole and never grows.
   no anchor at all — so a press can move a number on screen and never a step, a level or a
   plan. An as-of read is a CALLER's own bar (`CalculateWeightedATRAt`, P-BK-79). This is
   DELIBERATE, and it was the behaviour until 2026-10-21; putting `CalcAnchorAt()` back at
-  that funnel is the defect (`P-ANCHOR-LAST`, mutations `-d`/`-e`/`-f`).
+  that funnel is the defect (`P-ANCHOR-LAST`, mutations `-d`/`-e`/`-f`). A LABEL's number is
+  still a label, and the corner card IS a label: its four legs, its TP row and its spread row
+  read the SAME bar the ATR printed above them reads. The card HANDS that bar in as an
+  argument (`TradePlanComputeLive(Period(), plan, CalcAnchorAt())` at both of its doors,
+  `Biotak/Labels_A.mqh`), so the fence above is untouched and every drawn level keeps its own
+  anchor (a knot's row reads `anchors[i]`). MEASURED 2026-10-28, his XAUUSD M15 with the
+  switch ON at 2026.10.22 17:00: the card printed `82.0` above `TRex 12.8 | Trigger 34.3 |
+  Pricicle 64 | Classic 154`, and `82.0 / 4.266666 = 19.2` while `12.8 x 4.266666 = 54.6` -
+  ONE card, TWO moments, which is the user's report ("these do not update"). The spread row
+  was the same split twice: `111.9 (136.5%)` was a LIVE structure bar over an AS-OF ATR, so
+  the range now comes from `TradePlanStructureRange` at the anchor's bar. One card, one bar.
+  The X dump stays live on purpose (it is the compare-with-the-professor tool) and now names
+  its anchor. Gate: `P-ANCHOR-CARD`, mutations `-a..-f`.
 - **A knot's own minutes is not a rung.** The plan's ladder (`TradePlanLadderIndex`) is
   `{1,5,15,60,240,1440,10080,43200}` and it snaps an off-ladder ask to the rung below;
   that snap is a LABEL's job (`p.chartMin`, `strMin`, `trigMin`) and never the ATR's. Every

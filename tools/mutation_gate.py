@@ -5331,6 +5331,71 @@ MUTATIONS = [
         "replace": "if(false) return \" - the box is TALLER than \"   // MUTATION: no reason",
         "expect": "[FAIL] P-BK-132",
     },
+    #--- P-ANCHOR-CARD (2026-10-28) - THE CARD IS A LABEL, SO IT WEARS THE LABEL'S BAR. MEASURED
+    #--- on his XAUUSD M15 chart with LAST OBJECT armed: the card printed `82.0` (as-of) above
+    #--- `TRex 12.8 | Trigger 34.3 | Pricicle 64 | Classic 154` (live; 12.8 x 4.266666 = 54.6,
+    #--- while 82.0 / 4.266666 = 19.2). One card, two moments. The bar goes in as an ARGUMENT, so
+    #--- `TradePlanFormulas` still never reads the switch and no drawn level moves.
+    {
+        "id": "P-ANCHOR-CARD-a",
+        "gate": "regression",
+        "rule": "the relayout door hands the card the anchor's bar",
+        "what": "the rebuilt card is live again - its four legs and TP row print a different bar than the ATR above them",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "if(!TradePlanComputeLive(Period(), plan, CalcAnchorAt())) return;\n\n    // ONE card layout per pass",
+        "replace": "if(!TradePlanComputeLive(Period(), plan)) return;\n\n    // ONE card layout per pass   // MUTATION: live card",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
+    {
+        "id": "P-ANCHOR-CARD-b",
+        "gate": "regression",
+        "rule": "the 2 s pump hands the card the SAME bar",
+        "what": "one card is as-of when it is rebuilt and live 2 s later - the split comes back on the next pump",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "if(!TradePlanComputeLive(Period(), plan, CalcAnchorAt())) return;\n    // P-TP4-WITNESS",
+        "replace": "if(!TradePlanComputeLive(Period(), plan)) return;\n    // P-TP4-WITNESS   // MUTATION: live pump",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
+    {
+        "id": "P-ANCHOR-CARD-c",
+        "gate": "regression",
+        "rule": "the spread row reads the ATR's own bar",
+        "what": "the range helper has no anchor - `111.9 (136.5%)` is 111.9 (live bar) over 82.0 (as-of bar) again",
+        "file": "Biotak/Labels_Countdown.mqh",
+        "find": "datetime fa = CalcAnchorAt();\n   int shift = 0;",
+        "replace": "datetime fa = 0;   // MUTATION: no anchor\n   int shift = 0;",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
+    {
+        "id": "P-ANCHOR-CARD-d",
+        "gate": "regression",
+        "rule": "the card reads the range through its ONE owner",
+        "what": "the live structure bar is read inline again - one number, two owners, and no bar to name",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "double rng = TradePlanStructureRange(stf);",
+        "replace": "double rng = iHigh(NULL, stf, 0) - iLow(NULL, stf, 0);   // MUTATION: the live bar",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
+    {
+        "id": "P-ANCHOR-CARD-e",
+        "gate": "regression",
+        "rule": "the witness names the bar the card read",
+        "what": "the witness drops `anchor=` - an as-of card and a live one print the same line",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "strMin=%d anchor=%s",
+        "replace": "strMin=%d anchorbar=%s   // MUTATION: no bar named",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
+    {
+        "id": "P-ANCHOR-CARD-f",
+        "gate": "regression",
+        "rule": "the X dump stays LIVE on purpose (the compare-with-the-professor tool)",
+        "what": "the dump was swept into the anchor - its numbers can no longer be compared with the professor's",
+        "file": "Biotak/Labels_A.mqh",
+        "find": "if(!TradePlanComputeLive(Period(), plan)) return;\n    TradePlanExportBegin();",
+        "replace": "if(!TradePlanComputeLive(Period(), plan, CalcAnchorAt())) return;\n    TradePlanExportBegin();   // MUTATION: the dump is anchored",
+        "expect": "[FAIL] P-ANCHOR-CARD",
+    },
     #--- P-BE-08 (2026-10-22) - ONE OWNER FOR THE ROW'S Y. The formula was spelled
     #--- eleven times in four files; PnlRowY is the owner now and the gate counts.
     {

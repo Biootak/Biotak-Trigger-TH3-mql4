@@ -858,11 +858,12 @@ the tick. It has no business in the arithmetic that decides where a level lands,
 until 2026-10-21, when the fence was moved up the funnel and the switch started re-stepping the
 chart.
 
-**The two readers, and the one that was wrong.**
+**The three readers, and the one that was wrong.**
 
 | reader | entry | what the switch does to it |
 |---|---|---|
 | the ATR labels (`Labels_A` 769 / 894) and the knot witness (`BaseKnot_Witness` 123) | `GetATRForTimeframe` - the anchored read's ONE home | moves the NUMBER it prints (`-`, `ATR`, the `%`, the plan's readout) |
+| the corner card's four legs, TP row and spread row (both `Labels_A` doors, `TradePlanStructureRange`) | `TradePlanComputeLive(Period(), plan, CalcAnchorAt())` - the bar is an ARGUMENT (P-ANCHOR-CARD) | moves the NUMBER it prints; the plan's drawn levels are untouched |
 | the TH step, the fractal range, the adaptive shift, the plan's ruler | `CalculateWeightedATR` - the geometry funnel, LIVE unconditionally | nothing. Five consumers, one fence: `CalculateATRBasedStep`, `CalculateATRFractalValues`, `AdaptiveScaling.mqh:110` (all through `CalculateWeightedATR_Locked`), `CalculateHybridATR` and `TradePlanStripPips` |
 
 The second door was `TradePlanFormulas.mqh`'s source guard, which read `CalcAnchorAt()` and so let
@@ -886,6 +887,53 @@ pass got cheaper, not dearer. Nothing polls the switch (P-ANCHOR-LAST-MOVE alrea
 
 **What is NOT proven.** No live frame has read the step before/after a press on the new ex4 yet; the
 proof here is the source, the gate and the mutation, plus `0 errors` on both entries.
+
+### 20a. The card is a label too - P-ANCHOR-CARD (2026-10-28)
+
+**The report.** `«ایا وقتی این دکمه فعال هستش اینا اپدیت میشه مثل بقیه یا نه ... بررسی کن که دیگه
+کجا اپدیت نمیشه»`, with the card on screen: `82.0` above `TRex 12.8 | Trigger 34.3 | Pricicle 64 |
+Classic 154`. So: which surfaces do NOT follow the switch.
+
+**The measured split, from his own screenshot.** `82.0` is the AS-OF M15 ATR (`GetATRForTimeframe`,
+the anchored read). `82.0 / 4.266666 = 19.2`, and the card printed `12.8` - which is `54.6 /
+4.266666`, the LIVE ATR. The four legs, the TP row and the superscript therefore came off two
+different bars in ONE card. On 82.0 the same four constants give about `19.2 / 51.3 / 96 / 231`
+(8/3, 5 and 12 times 19.21875), not `12.8 / 34.3 / 64 / 154`.
+
+**The spread row was the same split twice.** `111.9 (136.5%)`: `111.9` was the LIVE structure bar's
+TrueRange and `136.5%` was that live range over the AS-OF `82.0`. One string, two moments.
+
+**The fix is an ARGUMENT, not a new fence.** `TradePlanFormulas.mqh` must keep containing no
+`CalcAnchorAt(` (P-ANCHOR-LAST, `check-regressions.js`), so the CARD hands the bar in:
+`TradePlanComputeLive(Period(), plan, CalcAnchorAt())` at BOTH of its doors
+(`DisplayATRTradeLabels` = the relayout, `TradePlanLiveTick` = the 2 s pump; one door alone is the
+same defect one pump later). Two new owners live in `Biotak/Labels_Countdown.mqh` (Labels_A never
+grows past its ceiling): `TradePlanStructureRange(stf)` reads the range at the anchor's bar
+(`iBarShift(Symbol(), stf, fa, false)`, previous-close gap kept, shift 0 when nothing is armed;
+unusable prices answer -1.0 so a genuinely FLAT bar still prints `0.0 (0.0%)` as before) and
+`TradePlanAnchorText()` names the bar (`live` or `yyyy.mm.dd hh:mm`) for the witness. The witness
+line gained `anchor=%s`; the X dump stays LIVE on purpose (it is the compare-with-the-professor
+tool) and now prints its anchor so the two cannot be confused.
+
+**What does NOT move.** Every drawn level: a knot's row computes its own plan with its own
+`anchors[i]` (`EventHandlers_Objects.mqh:246`), the geometry funnel is still the live
+`CalculateWeightedATR`, and `TradePlanStripPips` still ignores the switch. The card changes numbers,
+never a step.
+
+**How it is checked.** `P-ANCHOR-CARD` in `tools/check-regressions.js`: both doors carry
+`CalcAnchorAt()`, `Labels_A` holds exactly ONE unanchored `TradePlanComputeLive(Period(), plan)` and
+it is the dump's, the dump names its anchor, the range helper reads `iBarShift` + `CalcAnchorAt`,
+the call site uses the helper (no inline `iHigh(NULL, stf, 0)`), the witness prints `anchor=%s`, and
+`TradePlanAnchorText` answers `live` when nothing is armed. Six mutations put each defect back by
+literal (`-a` relayout door, `-b` pump door, `-c` helper without the anchor, `-d` inline live range,
+`-e` witness without `anchor=`, `-f` the dump swept into the anchor). MEASURED 2026-10-28: **6
+killed, 0 survived, 0 stale, tree byte-identical**.
+
+**What is NOT proven.** No live frame has been captured on the new ex4 yet (MT4 still runs the old
+one until a restart or a re-add), so the pairing `82.0 <-> TRex 19.2` is proven by arithmetic on his
+screenshot, not by a fresh capture. The check that settles it: arm `Last object`, open the card, and
+confirm `TRex x 4.266666` equals the number printed above it.
+
 
 ## 21. A knot's own minutes is not a rung - P-BK-130 (2026-10-27)
 

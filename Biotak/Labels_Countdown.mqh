@@ -62,6 +62,50 @@ string TradePlanLegsText(const STradePlan &plan)
         + "  Classic: " + IntegerToString(plan.classic);
 }
 
+// P-ANCHOR-CARD (2026-10-28) - THE CARD IS A LABEL, SO IT WEARS THE LABEL'S ONE BAR.
+//
+// MEASURED 2026-10-28 on the user's XAUUSD M15 chart with LAST OBJECT armed at 2026.10.22
+// 17:00: the card printed `82.0` above `TRex 12.8 | Trigger 34.3 | Pricicle 64 | Classic
+// 154`. `82.0` is the AS-OF M15 ATR (GetATRForTimeframe -> CalcAnchorAt), and 82.0 / 4.266666
+// = 19.2, not 12.8: the four legs had been computed on the LIVE ATR (12.8 x 4.266666 = 54.6).
+// ONE card, TWO moments - its superscript as-of, its legs live - which is what the user's
+// report ("these do not update") was pointing at. The fence is untouched: `TradePlanFormulas`
+// still never reads the switch itself (P-ANCHOR-LAST), the card HANDS it the bar as an
+// argument, so only the TEXT moves and every drawn level stays on its own anchor.
+//
+// The range below is the other half of the same moment: the spread row read the LIVE structure
+// bar's high-low and divided it by the AS-OF ATR (his `111.9 (136.5%)` = 111.9 / 82.0), a
+// percentage of two different bars. Reading the range at the anchor's bar makes the pair one
+// measurement again.
+//
+// The answer is the TrueRange, or -1.0 when the bar has no usable prices - a sentinel, not 0.0,
+// so a genuinely FLAT bar still prints `0.0 (0.0%)` exactly as it did before this move (the old
+// caller's own `hi > 0 && lo > 0` gate).
+double TradePlanStructureRange(const ENUM_TIMEFRAMES stf)
+{
+   if(stf == PERIOD_CURRENT) return -1.0;
+   datetime fa = CalcAnchorAt();
+   int shift = 0;
+   if(fa > 0)
+   {
+      shift = iBarShift(Symbol(), stf, fa, false);   // the bar the ATR was read on, never a shift
+      if(shift < 0) shift = 0;                       // not loaded yet: the live bar, the old read
+   }
+   double hi = iHigh(NULL, stf, shift), lo = iLow(NULL, stf, shift), pc = iClose(NULL, stf, shift + 1);
+   if(hi <= 0.0 || lo <= 0.0 || hi < lo) return -1.0;
+   double rng = hi - lo;
+   if(pc > 0.0) rng = MathMax(rng, MathMax(MathAbs(hi - pc), MathAbs(lo - pc)));
+   return rng;
+}
+
+// The card's own witness has to say WHICH bar it read: an as-of card and a live one print the
+// same field names, and a reader of `tradeplan-witness-<symbol>.log` cannot tell them apart.
+string TradePlanAnchorText()
+{
+   datetime fa = CalcAnchorAt();
+   return (fa > 0 ? TimeToString(fa, TIME_DATE | TIME_MINUTES) : (string)"live");
+}
+
 // Countdown to the current chart bar close. Default = the long corner form
 // ("Close in : 22d 12h 32m 13s"); compact = the live-candle tag form with no
 // prefix and no spaces ("22d12h32m13s"). Units below the leading non-zero one
