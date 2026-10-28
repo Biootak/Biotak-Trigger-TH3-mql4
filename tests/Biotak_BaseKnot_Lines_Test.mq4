@@ -327,6 +327,50 @@ int OnStart()
          " eng=", DoubleToString(p6.eng, 1), " hunter=", DoubleToString(p6.hunter, 1),
          " | H4 read=", DoubleToString(h4Read, 2), " | 6h read=", DoubleToString(TradePlanStripPips(360, 0), 2));
 
+   //---- 9. P-BK-132: THE BOX' OWN POWER IS THE FLOOR OF THE LEG. His 6h FTR box had drifted a
+   //---- short step past its own time's ability but had not reached the next rung's range, and the
+   //---- ladder still priced it on its own rung - so its entry, stop and targets kept the size of a
+   //---- box it no longer was. The law is the log interpolation's own identity: a leg graded by the
+   //---- box' height across [a_k, a_k+1] IS h / 4.266666 (the parameter and the curve cancel), so ONE
+   //---- factor - boxLeg / rungLeg, clamped at 1 - turns the rung's pair into the box' pair. The
+   //---- fence: a box AT or UNDER its rung is byte-identical (the pushed leg is never shrunk).
+   Print("[BKLINES] ============ P-BK-132: the box' own power is the floor of the leg");
+   BkCheck("P-BK-132 - a box under its rung is untouched", BkNear(BaseKnotLegGrade(9.4, 43.4), 1.0), BaseKnotLegGrade(9.4, 43.4), 1.0);
+   BkCheck("P-BK-132 - a box exactly its rung is untouched", BkNear(BaseKnotLegGrade(43.4, 43.4), 1.0), BaseKnotLegGrade(43.4, 43.4), 1.0);
+   BkCheck("P-BK-132 - twice the box, twice the leg", BkNear(BaseKnotLegGrade(86.8, 43.4), 2.0), BaseKnotLegGrade(86.8, 43.4), 2.0);
+   BkCheck("P-BK-132 - no leg, no grade", BkNear(BaseKnotLegGrade(86.8, 0.0), 1.0), BaseKnotLegGrade(86.8, 0.0), 1.0);
+   // the boundary: h = 43.4 x 4.2667 = 185.2 pips makes the box' own power EQUAL the rung's leg
+   double hB = 43.4 * 4.2667, tB = 3000.0 + hB * g_bkPip, bB = 3000.0;
+   double eB = 0.0, sB = 0.0, oB = 0.0, rB = 0.0;
+   BaseKnotCalcLevels(tB, bB, +1, BK_NODE_FTR, 5, eB, sB, oB, rB, an);
+   BkCheck("P-BK-132 - the boundary is byte-identical (both legs = the rung's)",
+           BkNear(oB, 43.4) && BkNear(rB, 43.4), rB, 43.4);
+   // twice the rung: h = 86.8 x 4.2667 = 370.4 pips -> BOTH legs 86.8, never one of the two
+   double hC = 86.8 * 4.2667, tC = 3000.0 + hC * g_bkPip, bC = 3000.0;
+   double eC = 0.0, sC = 0.0, oC = 0.0, rC = 0.0;
+   BaseKnotCalcLevels(tC, bC, +1, BK_NODE_FTR, 5, eC, sC, oC, rC, an);
+   BkCheck("P-BK-132 - a box twice its rung doubles BOTH legs", BkNear(oC, 86.8) && BkNear(rC, 86.8), rC, 86.8);
+   BkCheck("P-BK-132 - the stop line moves with it (entry = top - 86.8)", BkNear(eC, tC - 86.8 * g_bkPip), eC, tC - 86.8 * g_bkPip);
+   double noteC = BaseKnotRiskPips(5, tC, bC, an);
+   BkCheck("P-BK-132 - the note's risk IS the drawn stop", BkNear(noteC, rC), noteC, rC);
+   BkCheck("P-BK-132 - the graded pair fills exactly 30/64 of the box (off/risk = 1)", BkNear(oC + rC, 30.0 / 64.0 * hC), oC + rC, 30.0 / 64.0 * hC);
+   double tpC = BaseKnotPlanTPPips(5, 1, an, noteC);
+   BkCheck("P-BK-132 - TP1 rides the same ruler (x2)", BkNear(tpC, BkRowTP(5, 1) * 2.0), tpC, BkRowTP(5, 1) * 2.0);
+   BkCheck("P-BK-132 - an ungraded read keeps the plan's own leg", BkNear(BaseKnotPlanTPPips(5, 1, an), BkRowTP(5, 1)),
+           BaseKnotPlanTPPips(5, 1, an), BkRowTP(5, 1));
+   BkCheck("P-BK-132 - the R on a tick never moves", BkNear(tpC / noteC, BkRowTP(5, 1) / 43.4), tpC / noteC, BkRowTP(5, 1) / 43.4);
+   // ... and the HUNT side grades by the SAME factor: an ETR box twice its rung's ability (2 x 73.3)
+   double hE = 2.0 * 73.3 * 4.2667, tE = 3000.0 + hE * g_bkPip, bE = 3000.0;
+   double eE = 0.0, sE = 0.0, oE = 0.0, rE = 0.0;
+   BaseKnotCalcLevels(tE, bE, +1, BK_NODE_ETR, 5, eE, sE, oE, rE, an);
+   BkCheck("P-BK-132 - an ETR grades its entry AND its stop (off 91.6 / risk 146.6)",
+           BkNear(oE, 2.0 * BkRowHunt(15)) && BkNear(rE, 2.0 * BkRowEng(15)), rE, 2.0 * BkRowEng(15));
+   BkCheck("P-BK-132 - the grade preserves the entry/stop ratio", BkNear(oE / rE, BkRowHunt(15) / BkRowEng(15)), oE / rE, BkRowHunt(15) / BkRowEng(15));
+   // the product's real Hunt/Eng is 8/3 (5/8 of the ATR against 15/64 of it), so the deepest graded
+   // pair fills 55/64 of the box - the SAME constant the hop test reserves (BK_AB_FIT_NUM/DEN).
+   BkCheck("P-BK-132 - the product's Hunt/Eng fills 55/64 of the box (the ladder's own fit)",
+           BkNear((1.0 + 8.0 / 3.0) * (15.0 / 64.0), 55.0 / 64.0), (1.0 + 8.0 / 3.0) * (15.0 / 64.0), 55.0 / 64.0);
+
    Print("[BKLINES] DONE pass=", g_bkPass, " fail=", g_bkFail);
    return (g_bkFail == 0 ? 0 : 1);
 }

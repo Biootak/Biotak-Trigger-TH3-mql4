@@ -693,9 +693,20 @@ One function over the ceiling stays whole and never grows.
   Trigger 5/8 = 203.1, Pricle 75/64 = 381, Classic 45/16 = 914), so the entry, the stop and
   every target of a 6h knot were H4's. On his own H4 row the ladder then reads
   `H4 324.9 -> 700m 554.9 -> D1 999.3`: a knot may never jump to the chart's TF, never keep
-  a neighbour's number, and never be scaled by a ratio under 1. The read is one number per
+  a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **A box taller than its rung is priced as the box it is.** The ladder picks a rung; it may
+  not price a box that has outgrown that rung. ONE factor, `boxLeg / rungLeg` clamped at 1
+  (`BaseKnotLegGrade`), lifts BOTH legs, so the entry and the stop keep their ratio (P-BK-127)
+  and every R multiple on a tick stays put; the targets (`BaseKnotPlanTPPips`) and the card's
+  four cells (`BaseKnotLegsTag`) ride the same factor, and the hover says why it grew. This is
+  the log interpolation's own identity - a leg graded by the height across two rungs IS
+  `h / 4.266666`, because every leg is `a / 4.266666` and the parameter cancels - so there is
+  no second model and no table. The fence: a box AT or UNDER its rung is byte-identical (the
+  pushed leg is never shrunk, BKCAP-OFF's rule), and the graded pair fills `30/64` of the box
+  (`195/512` when the entry is the Hunt) - always inside the ladder's own `55/64` fit. Gate:
+  `P-BK-132`, mutations `-a..-g`.
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 

@@ -8405,9 +8405,9 @@ function main() {
     // the box: every read on the STOP's time, and the base TF gone from all four sites
     // (P-BK-122 wraps the call in a `tk <= TP COUNT` guard, so the test names the READ —
     // its TF argument — and never the statement's shape around it).
-    if (!plan || !/BaseKnotTPLevel\(entry, dir, mTF, tk, nd\.anchor\)/.test(plan.join('\n')))
+    if (!plan || !/BaseKnotTPLevel\(entry, dir, mTF, tk, nd\.anchor, hPips\)/.test(plan.join('\n')))
       broken.push('the ticks are no longer read on the stop\'s TF');
-    if (!plan || !plan.join('\n').includes('double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);'))
+    if (!plan || !plan.join('\n').includes('double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor, hPips);'))
       broken.push('the tick tooltip counts its pips on another TF than the level it sits on');
     if (!plan || !plan.join('\n').includes('BaseKnotTPPlanTip(mTF, entry, dir, hPips, nd.anchor);'))
       broken.push('the box hover still spells the legs of the base TF');
@@ -8421,7 +8421,7 @@ function main() {
       broken.push('the lean mover drops the stop\'s TF - every tick jumps when the drag is released');
     // the ink column reads the TF it is handed, never a hard-coded base
     const ink = note ? bodyOf(note, 'void BaseKnotPipInk(') : null;
-    if (!ink || !ink.text.includes('BaseKnotTPLevel(entry, dir, tpTF, tk, anchor)'))
+    if (!ink || !ink.text.includes('BaseKnotTPLevel(entry, dir, tpTF, tk, anchor, hPips)'))
       broken.push('the line-end column draws its levels off a TF it was not handed');
     if (broken.length)
       failures.push('P-BK-120: ' + broken.join('; ') + ' (TradePlanFormulas / EventHandlers_Objects / BaseKnot_Plan / BaseKnot_Note)');
@@ -8573,7 +8573,7 @@ function main() {
     const writer = (tfArg) => new RegExp(
       'for\\(int tk = 1; tk <= BK_TP_PLAN_MAX; tk\\+\\+\\)\\s*\\{\\s*' +
       'double lv = \\(tk <= BaseKnotTPCount\\(\\) \\? BaseKnotTPLevel\\(entry, dir, ' + tfArg +
-      ', tk, (0|nd\\.anchor)\\) : 0\\.0\\);').test(planCode);
+      ', tk, (0|nd\\.anchor), hPips\\) : 0\\.0\\);').test(planCode);
     if (!writer('mTF'))
       broken.push('the committed tick walk stops at the TP COUNT again - a tick drawn by an earlier round is never reached, so a lowered count leaves its line on the chart');
     if (!writer('0'))
@@ -9514,6 +9514,89 @@ function main() {
       failures.push('P-BK-131: ' + broken.join('; ') + ' (TradePlanFormulas / BaseKnot_Nodes / the harness)');
     else
       console.log('[PASS] P-BK-131 no series is not no answer: a length MT4 has no bar for (700m / 45m / 8m) is scaled from the rung below by the project\'s √-law - the same arithmetic BaseKnotRungScale applies to the type\'s row - so the plan\'s price is ONE continuous monotone function of the knot\'s own minutes (H4 324.9 -> 700m 554.9 -> D1 999.3) and two knots can be compared');
+  }
+
+  // P-BK-132 (2026-10-27) — THE BOX' OWN POWER IS THE FLOOR OF THE LEG.
+  //
+  // The user's own case: an FTR box that drifts a short step (or a C step) past its own time's
+  // ability but never reaches the next rung's range. The type ladder still prices it on its own
+  // rung, so its entry, stop and three targets keep the size of a box it no longer is. The law is
+  // the log interpolation's own identity — a leg graded by the height across [a_k, a_k+1] IS
+  // h / 4.266666 — so ONE factor (boxLeg / rungLeg, clamped at 1) lifts both legs, and every reader
+  // that shows a leg must ride it or the note prints one number beside a line drawn at another.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const grade = ab ? bodyOf(ab, 'double BaseKnotLegGrade(') : null;
+    if (!grade)
+      broken.push('BaseKnotLegGrade is gone - a box taller than its rung keeps its rung\'s leg again (his 6h FTR priced as an H4 box)');
+    else {
+      if (!grade.text.includes('return (g > 1.0 ? g : 1.0);'))
+        broken.push('the grade can return below 1 - the plan\'s pushed leg would be SHRUNK, which is the rule BKCAP-OFF retired');
+      if (!grade.text.includes('boxLegPips / legPips'))
+        broken.push('the grade is not the box-to-rung ratio - a taller box would shrink the leg and a smaller one would grow it');
+      if (!grade.text.includes('boxLegPips <= 0.0 || legPips <= 0.0'))
+        broken.push('the grade lost its absence fence - a cold row would divide by zero or grade a leg nobody pushed');
+    }
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    if (!pair) broken.push('BaseKnotLegPair is gone');
+    else {
+      if (!pair.text.includes('BaseKnotLegGrade(capE, riskPips)'))
+        broken.push('the geometry no longer grades - the drawn entry and stop are the rung\'s, not the box\'');
+      if (!pair.text.includes('if(g > 1.0) { offPips *= g; riskPips *= g; }'))
+        broken.push('the grade no longer lifts BOTH legs under a guard - an unguarded or one-sided write either shrinks the pushed leg or parts the entry from the stop (P-BK-127\'s two rulers)');
+    }
+    const pick = measure ? bodyOf(measure, 'double BaseKnotLegPick(') : null;
+    if (pick && pick.text.includes('BaseKnotLegGrade'))
+      broken.push('the grade moved INSIDE BaseKnotLegPick - the entry would be graded against the Hunt leg and the stop against the Eng leg, i.e. two factors for one box');
+    const clause = measure ? bodyOf(measure, 'string BaseKnotCapClause(') : null;
+    if (!clause || !clause.text.includes('BaseKnotLegGrade(cap, plan) > 1.0'))
+      broken.push('the hover no longer SAYS why a leg grew - a bigger number with no reason is the one thing P-BK-53 forbids on a knot');
+    const risk = nodes ? bodyOf(nodes, 'double BaseKnotRiskPips(') : null;
+    if (!risk || !risk.text.includes('BaseKnotLegGrade(BaseKnotNodeEngPips(top, bot), p)'))
+      broken.push('BaseKnotRiskPips is ungraded - the note would print the rung\'s risk beside a stop line drawn at the box\' own');
+    const tp = nodes ? bodyOf(nodes, 'double BaseKnotPlanTPPips(') : null;
+    if (!tp || !tp.text.includes('riskPips / eng'))
+      broken.push('the targets are ungraded - the ticks would stop at the rung\'s leg while the stop grew, so the R on every tick moves');
+    if (!tp || !tp.text.includes('riskPips > eng'))
+      broken.push('the target grade fires on a box that is not taller than its rung - every ordinary knot would move');
+    const tpl = nodes ? bodyOf(nodes, 'double BaseKnotTPLevel(') : null;
+    if (!tpl || !tpl.text.includes('BaseKnotPlanTPPips(tfMin, k, anchor, riskPips)'))
+      broken.push('BaseKnotTPLevel drops the graded stop - the level and its own pip count would come off two rulers');
+    const legs = note ? bodyOf(note, 'string BaseKnotLegsTag(') : null;
+    if (!legs || !legs.text.includes('BaseKnotEngPips(engTF, anchor)'))
+      broken.push('the card\'s four legs no longer compare the stop it was handed with the rung\'s own EngSL - the grade would be a second number');
+    if (!legs || !legs.text.includes('engPips > rung ? engPips / rung : 1.0'))
+      broken.push('the card\'s four cells no longer derive the factor from the stop it was handed - Trigger / Pricicle / Classic would stay at the rung\'s size under a graded TRex');
+    if (!legs || (legs.text.match(/\* g\)/g) || []).length < 3)
+      broken.push('fewer than three of the card\'s cells ride the grade - Trigger / Pricicle / Classic would stay at the rung\'s size under a graded TRex');
+    // the handed-in stop at every call site, or the tick and its tooltip disagree
+    for (const [file, text, s] of [
+      ['BaseKnot_Plan.mqh', plan, 'BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor, hPips)'],
+      ['BaseKnot_Plan.mqh', plan, 'BaseKnotPlanTPPips(mTF, tk, nd.anchor, hPips)'],
+      ['BaseKnot_Plan.mqh', plan, 'BaseKnotTPLevel(entry, dir, 0, tk, 0, hPips)'],
+      ['BaseKnot_Note.mqh', note, 'BaseKnotTPLevel(entry, dir, tpTF, tk, anchor, hPips)'],
+    ])
+      if (!text || !text.join('\n').includes(s))
+        broken.push(file + ' no longer hands the graded stop to `' + s + '` - the tick would be drawn at one size and described at another');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['P-BK-132 - a box under its rung is untouched',
+                     'P-BK-132 - a box twice its rung doubles BOTH legs',
+                     'P-BK-132 - the note\'s risk IS the drawn stop',
+                     'P-BK-132 - the grade preserves the entry/stop ratio',
+                     'P-BK-132 - the graded pair fills exactly 30/64 of the box (off/risk = 1)',
+                     'P-BK-132 - the product\'s Hunt/Eng fills 55/64 of the box (the ladder\'s own fit)'])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the grade would be arithmetic nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-132: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Note / BaseKnot_Plan / the harness)');
+    else
+      console.log('[PASS] P-BK-132 the box\' own power is the floor of the leg: ONE factor (boxLeg / rungLeg, clamped at 1) lifts the entry and the stop together and grades the three targets and the card\'s four cells with them, so a knot taller than the rung it is priced on (an FTR drifting a short step past its own time) is priced as the box it IS - and a box at or under its rung stays byte-identical');
   }
 
   if (failures.length) {

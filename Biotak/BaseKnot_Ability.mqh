@@ -259,3 +259,35 @@ int BaseKnotBoxHop(const int k)
                       ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
    return BaseKnotLadderHopAt(g_bkBoxes[k].baseTFMin, h, g_bkBoxes[k].storyT);
 }
+// P-BK-132 (2026-10-27) - THE BOX' OWN POWER IS THE FLOOR OF THE LEG.
+//
+// P-BK-126/130/131 made a knot's price a continuous function of its TIME. The user's remaining case
+// is the same question one axis over: an FTR box that has drifted a short step (or a C step) past
+// its own time's ability but has NOT reached the next rung's range. The type ladder still prices it
+// on its own rung, so its entry, its stop and its three targets keep the size of a box it no longer
+// is - the one thing a "knot that is between two rungs" must not do.
+//
+// THE RULE. `boxLegPips` is the leg the BOX itself asks for (its height through the product's own
+// divisor: BaseKnotNodeEngPips for EngSL, BaseKnotNodeHuntPips for HuntSL); `legPips` is the leg the
+// rung pushed. The factor is their ratio, clamped at 1: the plan's pushed leg is never SHRUNK
+// (BKCAP-OFF's rule, kept) and the box only ever LIFTS it.
+//
+// WHY THIS IS THE LOGARITHMIC ANSWER AND NOT A SECOND MODEL. Interpolate the leg in log space
+// between the rung's a_k and the next rung's a_k+1, parameterised by the box' height h:
+//   t = ln(h/a_k) / ln(a_k+1/a_k),   leg = leg_k * (leg_k+1/leg_k)^t
+// Every leg is `a / BK_NODE_POWER_DIV`, so leg = h / BK_NODE_POWER_DIV EXACTLY - the parameter and
+// the curve cancel. The height-graded leg therefore needs no logarithm and no interpolation table:
+// it IS the box' own power, and this factor is its ratio to the rung's leg.
+//
+// ONE FACTOR FOR BOTH LEGS (P-BK-127). The Hunt leg is 8/3 of the EngSL it shares a row with, so
+// one factor keeps that ratio and every R multiple on a tick stays put. The graded pair always
+// fits, and this is arithmetic, not a hope: off + risk = (1 + off/risk) x h x 15/64 - 30/64 of the
+// box when the entry is the TRex (off/risk = 1) and exactly 55/64 when it is the Hunt (8/3), the
+// ladder's own fit constant (BK_AB_FIT_NUM/DEN, P-BK-128), so the deepest pair lands on the same
+// 55/64 the hop test reserves and no height can push a stop out of its own box.
+double BaseKnotLegGrade(const double boxLegPips, const double legPips)
+{
+   if(boxLegPips <= 0.0 || legPips <= 0.0) return 1.0;   // an absence grades nothing
+   double g = boxLegPips / legPips;
+   return (g > 1.0 ? g : 1.0);                           // never below 1: BKCAP-OFF's rule survives
+}

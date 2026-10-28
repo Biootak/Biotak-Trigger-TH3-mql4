@@ -556,9 +556,9 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    // P-BK-50: the targets are the box' own legs — a short, THICK tick at the right edge, drawn only when pushed. P-BK-120: a preview is FTR, so its measure TF IS this chart's. P-BK-122: AND THE WALK IS THE WHOLE RANGE — a leg that stopped being drawn is DELETED, never left behind (the same loop, the same rule, in BaseKnotSync).
    for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
-      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, 0, tk, 0) : 0.0);
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, 0, tk, 0, hPips) : 0.0);
       if(lv <= 0.0) { ObjectDelete(0, tag + "TP" + IntegerToString(tk)); continue; }
-      double tpP = BaseKnotPlanTPPips(0, tk, 0);
+      double tpP = BaseKnotPlanTPPips(0, tk, 0, hPips);
       BaseKnotMakeRay(tag + "TP" + IntegerToString(tk), tLiveTps, tLiveTpe, lv, g_bkTargetColor,
                       BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
                       "BK " + side + " TP" + IntegerToString(tk) + " (sizing): " + DoubleToString(lv, dg) + " (+" +
@@ -1316,9 +1316,9 @@ void BaseKnotSync(const string id)
    // P-BK-122 (2026-10-24): AND THE WALK IS THE WHOLE RANGE. It used to stop at the TP COUNT and `continue` on an absent leg, so a tick drawn by an earlier round was NEVER deleted: the plan went cold (a moved row, a lowered count, a flip) and the old line stayed on the chart at its old price for ever — a level the knot no longer claims. The ink below already reads the same way; now the line does too.
    for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
-      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor) : 0.0);
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, mTF, tk, nd.anchor, hPips) : 0.0);   // P-BK-132: the graded stop, so the tick agrees with the line it measures from
       if(lv <= 0.0) { ObjectDelete(0, BaseKnotTPTickName(pfx, tk)); continue; }
-      double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor);
+      double tpP = BaseKnotPlanTPPips(mTF, tk, nd.anchor, hPips);   // P-BK-132: the same graded stop counts the pips
       BaseKnotMakeRay(BaseKnotTPTickName(pfx, tk), tps, tpe, lv, g_bkTargetColor,
                       BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
                       "BK " + side + " TP" + IntegerToString(tk) + ": " + DoubleToString(lv, dg) + " (+" +
@@ -1463,7 +1463,7 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
       int bit = (tk == 1 ? BK_CH_TP : (tk == 2 ? BK_CH_TP2 : BK_CH_TP3));
       if((s_bkChildMask & bit) == 0) continue;
       double lv = BaseKnotTPLevel(entry, g_bkBoxes[k].dir,
-                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, BaseKnotBoxHop(k)), tk, an);   // P-BK-120: the stop's own rung; P-BK-125: the SAME hop the stop was drawn on
+                                  BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, BaseKnotBoxHop(k)), tk, an, riskPips);   // P-BK-120: the stop's own rung; P-BK-125: the SAME hop the stop was drawn on; P-BK-132: and the SAME graded stop, or every tick jumps at release
       if(lv <= 0.0) continue;
       BaseKnotMoveOne(BaseKnotTPTickName(pfx, tk), tps, lv, tpe, lv);
    }

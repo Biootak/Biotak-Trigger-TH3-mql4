@@ -853,6 +853,12 @@ void BaseKnotLegPair(const double top, const double bot, const int kind, const i
    offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);   // BKCAP-OFF: the pick is the pushed leg itself now (LegCapped answers false)
    riskPips = BaseKnotLegPick(planR, capE);   // BKCAP-OFF: same — the stop's pushed EngSL, uncapped
    double h = BaseKnotToPips(top - bot);
+   // P-BK-132: the type ladder prices this box on `capE`'s rung, and the box may stand taller than
+   // that rung's leg without reaching the next one's range - so ONE factor lifts BOTH legs to the
+   // box' own power. The Hunt ratio carries the same 15/64 (5/8 against 8/3), so the entry and the
+   // stop can never part: one ruler, one grade (P-BK-127).
+   double g = BaseKnotLegGrade(capE, riskPips);
+   if(g > 1.0) { offPips *= g; riskPips *= g; }   // never below 1 - the pushed leg is never shrunk
    if(offPips  <= 0.0) offPips  = (h > 0.0 ? h : 0.0);   // neither source answered — the box'
    if(riskPips <= 0.0) riskPips = (h > 0.0 ? h : 0.0);   //   own height, named by the texts
 }
@@ -891,6 +897,7 @@ string BaseKnotCapClause(const int measureTF, const bool isHunt, const double to
 {
    double plan = (isHunt ? BaseKnotHuntPips(measureTF, anchor) : BaseKnotEngPips(measureTF, anchor));
    double cap  = (isHunt ? BaseKnotNodeHuntPips(top, bot) : BaseKnotNodeEngPips(top, bot));
+   if(BaseKnotLegGrade(cap, plan) > 1.0) return " - the box is TALLER than " + BaseKnotTFHuman(measureTF) + "'s leg, so both legs ride the box' own power (" + DoubleToString(cap, 1) + " pips)";   // P-BK-132: the graded leg SAYS why it grew (the CapClause is already appended to every entry sentence)
    if(!BaseKnotLegCapped(plan, cap)) return "";   // BKCAP-OFF: always "" now — the "CAPPED by …" clause is retired
    return " — CAPPED by " + BaseKnotCapWhy(isHunt) + " = " + DoubleToString(cap, 1) + " pips";
 }

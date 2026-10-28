@@ -1246,14 +1246,22 @@ double BaseKnotHuntPips(const int tfMin, const datetime anchor = 0)
 // `ratio × the stop the box draws`. It used to carry `plan.tp1..3`, which the plan sizes
 // off the STRUCTURE rung — on a CTR box the ticks were sized by Eng(M15) while the stop
 // was Eng(H1). Read it on the STOP's TF, never the base TF.
-double BaseKnotPlanTPPips(const int tfMin, const int k, const datetime anchor = 0)
+double BaseKnotPlanTPPips(const int tfMin, const int k, const datetime anchor = 0,
+                          const double riskPips = 0.0)
 {
    if(k < 1 || k > BK_TP_PLAN_MAX) return 0.0;
    int tf = (tfMin > 0 ? tfMin : Period());
    if(tf <= 0) tf = 1;
    for(int i = 0; i < s_bkEngN; i++)
       if(s_bkEngTF[i] == tf && s_bkEngAnchor[i] == anchor)
-         return (k == 1 ? s_bkEngTP1[i] : (k == 2 ? s_bkEngTP2[i] : s_bkEngTP3[i]));
+      {
+         double leg = (k == 1 ? s_bkEngTP1[i] : (k == 2 ? s_bkEngTP2[i] : s_bkEngTP3[i]));
+         // P-BK-132: a target is the plan's ratio ON the stop the box WILL DRAW (`riskPips`), so a
+         // graded stop grades every tick with it and the R printed on a tick never moves. A caller
+         // that hands no stop (a warm test, a harness) keeps the plan's own leg - grade 1.0.
+         double eng = (leg > 0.0 ? BaseKnotEngPips(tf, anchor) : 0.0);
+         return (eng > 0.0 && riskPips > eng ? leg * (riskPips / eng) : leg);
+      }
    return 0.0;
 }
 bool BaseKnotPlanWarm(const int tfMin, const datetime anchor = 0)
@@ -1273,9 +1281,9 @@ int BaseKnotTPCount()
 // ENTRY line — the line the user sees is the entry, so the target is where THAT
 // line's own plan puts it. 0 = no level (leg absent, or no entry yet).
 double BaseKnotTPLevel(const double entry, const int dir, const int tfMin, const int k,
-                       const datetime anchor = 0)
+                       const datetime anchor = 0, const double riskPips = 0.0)
 {
-   double p = BaseKnotPlanTPPips(tfMin, k, anchor);
+   double p = BaseKnotPlanTPPips(tfMin, k, anchor, riskPips);
    if(p <= 0.0 || entry <= 0.0) return 0.0;
    return (dir >= 0 ? entry + p * BaseKnotPipSize() : entry - p * BaseKnotPipSize());
 }
@@ -1310,8 +1318,8 @@ string BaseKnotTPPlanTip(const int tfMin, const double entry, const int dir, con
    string t = "";
    for(int k = 1; k <= n; k++)
    {
-      double p = BaseKnotPlanTPPips(tfMin, k, anchor);
-      double lv = BaseKnotTPLevel(entry, dir, tfMin, k, anchor);
+      double p = BaseKnotPlanTPPips(tfMin, k, anchor, rPips);
+      double lv = BaseKnotTPLevel(entry, dir, tfMin, k, anchor, rPips);
       if(p <= 0.0 || lv <= 0.0) continue;
       // P-BK-50: BOTH readings are spelled out — pips from the ENTRY and pips from the
       // STOP line plus the R multiple that implies, so a reader can check the tick
@@ -1341,7 +1349,7 @@ string BaseKnotTPPlanTip2(const int tfMin, const double entry2, const int dir, c
 double BaseKnotRiskPips(const int tfMin, const double top, const double bot, const datetime anchor = 0)
 {
    double p = BaseKnotLegPick(BaseKnotEngPips(tfMin, anchor), BaseKnotNodeEngPips(top, bot));   // BKCAP-OFF: the pick is the pushed EngSL itself now
-   if(p > 0.0) return p;
+   if(p > 0.0) return p * BaseKnotLegGrade(BaseKnotNodeEngPips(top, bot), p);   // P-BK-132: the note's risk IS the leg the box draws - grade them in ONE place or the hover prints one number beside a line drawn at another
    return BaseKnotToPips(top - bot);
 }
 // How the risk is NAMED wherever it is shown — the badge's number and every stop /

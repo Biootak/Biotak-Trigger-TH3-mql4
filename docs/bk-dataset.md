@@ -988,3 +988,62 @@ harness (`Biotak_BaseKnot_Lines_Test.mq4` part 8) computes `TradePlanATROfOwnTim
 comparable ladder. Mutations `P-BK-131-a..c` (no scale / inverted ratio / no on-rung guard).
 MEASURED 2026-10-27: **8 killed, 0 survived, 0 stale, tree byte-identical** (the five P-BK-130
 mutations ran in the same pass).
+
+## 23. The box' own power is the floor of the leg - P-BK-132 (2026-10-27)
+
+**The hole §22 left, named by the user.** §22 made the leg a continuous function of the knot's
+TIME. The same question one axis over stayed open: an FTR box that has drifted a short step past
+its own time's ability but has NOT reached the next rung's range keeps the size of a box it no
+longer is - «گاهی بیشتر میشه مثلا به اندازه گام کوتاه ولی به محدوده تایم بالاتر نمیرسیه».
+
+**The rule, and why it needs no logarithm.** Interpolate the leg in log space between the rung's
+`a_k` and the next rung's `a_k+1`, parameterised by the box' height `h`:
+
+```
+t   = ln(h / a_k) / ln(a_k+1 / a_k)
+leg = leg_k * (leg_k+1 / leg_k)^t
+```
+
+Every leg is `a / 4.266666` (`BK_NODE_POWER_DIV`, `TRADEPLAN_ENG_DIVISOR`), so the curve and the
+parameter cancel and `leg = h / 4.266666` EXACTLY. The height-graded leg is therefore ONE factor -
+`boxLeg / rungLeg`, clamped at 1 (`BaseKnotLegGrade`) - and it needs no table and no log.
+
+**One factor, one ruler.** The Hunt leg is `8/3` of the EngSL on the same row, so the factor keeps
+that ratio: entry, stop and every R multiple on a tick stay put (P-BK-127's one ruler). The three
+targets (`BaseKnotPlanTPPips`) and the card's four cells (`BaseKnotLegsTag`) ride the same factor -
+otherwise the note prints one size beside a line drawn at another. The hover says why it grew
+(`BaseKnotCapClause`): a bigger number with no reason is what P-BK-53 forbids on a knot.
+
+**The fit is arithmetic, not a hope.** `off + risk = (1 + off/risk) x h x 15/64`: `30/64` of the box
+when the entry is the TRex (off/risk = 1) and exactly `55/64` when it is the Hunt (8/3) - the same
+`55/64` the hop test reserves (`BK_AB_FIT_NUM/DEN`, P-BK-128). So the pair fills the same fraction
+of the box it filled of the rung, and no height can push a stop out of its own box.
+
+**The numbers, on the labelled box of §18** (`217.3 pips`, H1 `a0 = 135.2`, ETR, hop 0)
+
+| leg | rung (135.2) | grade `g = 50.9 / 31.7 = 1.607` |
+|---|---|---|
+| TRex / EngSL (15/64) | 31.7 | **50.9** |
+| Trigger / HuntSL (8/3 x EngSL) | 84.5 | **135.8** |
+| the pair | 116.2 = 55/64 x 135.2 | 186.7 = 55/64 x 217.3 |
+| TP1 / TP2 / TP3 (7/3, 5, 31/3) | 74 / 158.5 / 327.6 | ~118.9 / ~254.7 / ~526.5 (x 1.607) |
+
+**The fence.** A box AT or UNDER its rung is byte-identical: `g` is clamped at 1, the pushed leg is
+never shrunk (BKCAP-OFF's rule survives), and the harness holds the boundary (`h = 43.4 x 4.2667 =
+185.2 pips`) to the rung's own numbers. The grade also never lives inside `BaseKnotLegPick` - the
+Hunt and Eng bases would give two factors for one box.
+
+**What is still unmeasured.** His 6h box (`h = 373.6`) grades only if the 6h row's EngSL is under
+`373.6 / 4.266666 = 87.6` pips, i.e. only if the H6 composite is under 373.6 - and no `[BK-KNOT]`
+frame has been written by the new ex4 yet (needs a restart / re-add). Until then the 6h ATR is
+whatever the terminal says, never a model: the two candidates would print 397.9 (sqrt-law) or
+418.9 (log-log).
+
+**How it is checked.** `tools/check-regressions.js` (`P-BK-132`) asserts the ratio and its clamp,
+the absence fence, the guarded two-leg write, the un-graded `LegPick`, the graded `BaseKnotRiskPips`,
+the target ratio, the card's factor, the hover clause, and every call site that hands the graded
+stop to a reader. The harness (`Biotak_BaseKnot_Lines_Test.mq4` part 9) executes the boundary, the
+doubling, the note-vs-line equality, the ratio preservation and the `55/64` fill. Mutations
+`P-BK-132-a..g` (no grade / one leg / inverted ratio / ungraded targets / ungraded note risk /
+pinned card factor / no clause). MEASURED 2026-10-27: **7 killed, 0 survived, 0 stale, tree
+byte-identical**.

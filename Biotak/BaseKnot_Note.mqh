@@ -105,10 +105,15 @@ string BaseKnotLegsTag(const int engTF, const double engPips,
                        const datetime anchor = 0)
 {
    if(engPips <= 0.0) return "";
+   // P-BK-132: `engPips` is the TRex the box DRAWS - the three cells under it are that same rung's
+   // pushes, so they ride the SAME factor: the ratio between the stop handed in here and the rung's
+   // own EngSL. 1.0 whenever the box is no taller than its rung, so every other box is unchanged.
+   double rung = BaseKnotEngPips(engTF, anchor);
+   double g    = (rung > 0.0 && engPips > rung ? engPips / rung : 1.0);
    return "TRex " + BaseKnotLegPipsText(engPips) +
-          " | Trigger " + BaseKnotLegPipsText(BaseKnotHuntPips(engTF, anchor)) +
-          " | Pricicle " + BaseKnotLegPipsText(BaseKnotPlanPriciclePips(engTF, anchor)) +
-          " | Classic " + BaseKnotLegPipsText(BaseKnotPlanClassicPips(engTF, anchor));
+          " | Trigger " + BaseKnotLegPipsText(BaseKnotHuntPips(engTF, anchor) * g) +
+          " | Pricicle " + BaseKnotLegPipsText(BaseKnotPlanPriciclePips(engTF, anchor) * g) +
+          " | Classic " + BaseKnotLegPipsText(BaseKnotPlanClassicPips(engTF, anchor) * g);
 }
 //+------------------------------------------------------------------+
 //| P-BK-109 (2026-10-09, user: «اینجا که نیومده هنوز») — THE TYPE'S  |
@@ -701,7 +706,7 @@ void BaseKnotPipInk(const string id, const double entry, const double sl, const 
    for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
    {
       string nm = BaseKnotPipInkName(pfx, 2, tk);
-      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, tpTF, tk, anchor) : 0.0);
+      double lv = (tk <= BaseKnotTPCount() ? BaseKnotTPLevel(entry, dir, tpTF, tk, anchor, hPips) : 0.0);   // P-BK-132: the ink rides the graded stop, so its pips match the tick
       if(lv > 0.0 && ChartTimePriceToXY(0, 0, edge, lv, ax, yy) && !BaseKnotPipClash(yy, used, nu, lineH))
       {
          double pp = BaseKnotToPips(MathAbs(lv - entry));
