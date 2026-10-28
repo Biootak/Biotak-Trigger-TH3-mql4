@@ -291,3 +291,46 @@ double BaseKnotLegGrade(const double boxLegPips, const double legPips)
    double g = boxLegPips / legPips;
    return (g > 1.0 ? g : 1.0);                           // never below 1: BKCAP-OFF's rule survives
 }
+// P-BK-134 (2026-10-28) — "DOES THE ENTRY RIDE THE STOP'S RULER?" IS ONE QUESTION.
+//
+// P-BK-132/133 answered it THREE times, in three spellings: the geometry
+// (`BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE`, BaseKnot_Measure 861),
+// the hover's clause (`isHunt && !BaseKnotIsLadderRung(measureTF)`, Measure 900) and the card's
+// Trigger cell (`!BaseKnotIsLadderRung(engTF)`, BaseKnot_Note 119). Three spellings of one fence is
+// the class P-BK-127 removed from the geometry: the first time one answers differently, the card
+// prints a number over a line drawn at another — a split no gate can see and the user reads as
+// «sometimes works».
+// THE FENCE, in the unit the legs are actually read in: the ENTRY rides the box' power when it is
+// the SAME leg the stop is (an EngSL — FTR, no type yet, or a row whose HuntSL was never pushed),
+// OR when both legs are read on a ladder rung (a rung's Hunt scales with its own ATR). The one case
+// it does NOT ride is an off-ladder knot WITH a HuntSL: that Hunt is the knot's own time's number,
+// and the box' power would relabel it (P-BK-133: 142.5, never 214.6).
+// IT ASKS THE PICK, NOT THE TYPE: `isHunt` is `BaseKnotOffsetIsHunt`'s own answer — the flag the
+// entry was picked with — so the card, the geometry and the hover cannot describe two rulers.
+// (The old kind test is the same answer wherever it was reachable: FTR / no-type are isHunt=false.)
+bool BaseKnotEntryRidesStop(const bool isHunt, const int stopTF)
+{
+   return (BaseKnotIsLadderRung(stopTF) || !isHunt);
+}
+// P-BK-135 (2026-10-28) - THE FACTOR BELONGS TO THE PAIR, NOT TO ONE LEG.
+//
+// MEASURED on his 2h20m ETR box (h 343.3, own ATR 228.0, off the ladder): BaseKnotLegPair graded
+// the STOP (53.4 x 1.506 = 80.5) and left the ENTRY at the knot's own Hunt (142.5), so the pair
+// read 142.5 / 80.5 = 1.77 while the plan's own law is Trigger / TRex = 8/3 = 2.67 - a 34 % short
+// ratio, with the three targets still 5x and 12x the GRADED stop. One factor on one leg is a
+// second ruler: the entry line and every R were read in two regimes.
+//
+// THE RULE. `g` is a property of the PAIR: on a ladder rung (and on every FTR, whose two legs are
+// one EngSL) the box' power lifts BOTH legs; off the ladder, with a HuntSL, it lifts NEITHER -
+// there is no rung above the knot's own time to grade against (P-BK-133), and grading one leg is
+// what counted the growth twice. Same fence `BaseKnotEntryRidesStop` already asks; the answer now
+// multiplies both numbers or neither, so entry / stop is 8/3 (Hunt) or 1 (FTR) for EVERY knot and
+// every leg is `a x g x constant` - one ATR, five constants, no second multiplication.
+// THE READERS: BaseKnotLegPair (the lines), BaseKnotRiskPips (the note's number), the targets and
+// the card all derive their factor from the DRAWN pair, so no reader can spell a ratio of its own.
+double BaseKnotPairGrade(const bool isHunt, const int legTF,
+                         const double boxEngPips, const double legEngPips)
+{
+   if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;   // off-ladder Hunt: the pair rides the knot's own time
+   return BaseKnotLegGrade(boxEngPips, legEngPips);         // a rung (or an FTR): both legs, one factor
+}

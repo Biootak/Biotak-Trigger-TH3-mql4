@@ -9069,8 +9069,8 @@ function main() {
 
     // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
     // beside a v6 row's, whose run the left edge names.
-    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v9"'))
-      broken.push('the formula is no longer v9 - v8 rows still read an off-ladder knot\'s legs on H4 (a 2h20m box entered at 214.6) and must not be scored beside v9\'s');
+    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v10"'))
+      broken.push('the formula is no longer v10 - a v9 row of an off-ladder Hunt box read its stop in two regimes (142.5 / 80.5 = 1.77) and must not be scored beside v10\'s');
 
     if (broken.length)
       failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
@@ -9263,7 +9263,7 @@ function main() {
       broken.push('the committed Sync names the stop on a rung the entry does not share');
     if (!plan || !plan.join('\n').includes('hop);   // P-BK-125: the same hop the stop\'s TF above was named with'))
       broken.push('the geometry call no longer receives the hop the two TFs above were named with');
-    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor)'))
+    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, offIsHunt, nd.anchor)'))
       broken.push('the card\'s four legs left the stop\'s rung or the drawn entry - the Trigger cell would stop being the entry');
     // 4 — and no site may call the entry owner WITHOUT a hop once it knows a box: a bare call is
     //     the name's fixed hop, i.e. the silent 2-rung split this rule removed.
@@ -9623,26 +9623,28 @@ function main() {
     const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
     if (!pair) broken.push('BaseKnotLegPair is gone');
     else {
-      if (!pair.text.includes('BaseKnotLegGrade(capE, riskPips)'))
-        broken.push('the geometry no longer grades - the drawn entry and stop are the rung\'s, not the box\'');
+      if (!pair.text.includes('BaseKnotPairGrade(hunt, stf, capE, riskPips)'))
+        broken.push('the geometry no longer asks the PAIR factor (BaseKnotPairGrade) - the drawn entry and stop are the rung\'s, not the box\'');
       if (!pair.text.includes('if(g > 1.0)') || !pair.text.includes('riskPips *= g;') ||
-          !pair.text.includes('offPips *= g;') ||
-          !pair.text.includes('if(BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE)'))
-        broken.push('the grade no longer lifts the stop under a guard, or a ladder rung/FTR lost the entry that rides it - an unguarded or one-sided write either shrinks the pushed leg or parts the entry from the stop (P-BK-127\'s two rulers); P-BK-133 owns the off-ladder entry');
+          !pair.text.includes('offPips *= g;'))
+        broken.push('the grade no longer lifts BOTH legs under one guard - a one-sided write parts the entry from the stop (P-BK-127\'s two rulers) and a missing guard shrinks the pushed leg');
+      if (pair.text.includes('BaseKnotEntryRidesStop(hunt, stf)'))
+        broken.push('the geometry grades ONE leg again - the 2h20m box would read 142.5 / 80.5 = 1.77 beside the plan\'s 8/3');
     }
     const pick = measure ? bodyOf(measure, 'double BaseKnotLegPick(') : null;
     if (pick && pick.text.includes('BaseKnotLegGrade'))
       broken.push('the grade moved INSIDE BaseKnotLegPick - the entry would be graded against the Hunt leg and the stop against the Eng leg, i.e. two factors for one box');
     const clause = measure ? bodyOf(measure, 'string BaseKnotCapClause(') : null;
-    if (!clause || !clause.text.includes('if(BaseKnotLegGrade(cap, plan) > 1.0) return " - the box is TALLER than "'))
-      broken.push('the hover no longer SAYS why a leg grew - a bigger number with no reason is the one thing P-BK-53 forbids on a knot (P-BK-133\'s own sentence must not stand in for the rung\'s)');
+    if (!clause || !clause.text.includes('bool taller = (BaseKnotLegGrade(cap, plan) > 1.0);') ||
+        !clause.text.includes('if(taller) return " - the box is TALLER than "'))
+      broken.push('the hover no longer SAYS why a leg grew - a bigger number with no reason is the one thing P-BK-53 forbids on a knot');
     const risk = nodes ? bodyOf(nodes, 'double BaseKnotRiskPips(') : null;
-    if (!risk || !risk.text.includes('BaseKnotLegGrade(BaseKnotNodeEngPips(top, bot), p)'))
-      broken.push('BaseKnotRiskPips is ungraded - the note would print the rung\'s risk beside a stop line drawn at the box\' own');
+    if (!risk || !risk.text.includes('BaseKnotPairGrade(hunt, tfMin, BaseKnotNodeEngPips(top, bot), p)'))
+      broken.push('BaseKnotRiskPips does not ask the PAIR factor - the note would print the rung\'s risk beside a stop line drawn at the box\'');
     const tp = nodes ? bodyOf(nodes, 'double BaseKnotPlanTPPips(') : null;
-    if (!tp || !tp.text.includes('riskPips / eng'))
+    if (!tp || !tp.text.includes('BaseKnotLegGrade(riskPips, eng)'))
       broken.push('the targets are ungraded - the ticks would stop at the rung\'s leg while the stop grew, so the R on every tick moves');
-    if (!tp || !tp.text.includes('riskPips > eng'))
+    if (!tp || !tp.text.includes('return (g > 1.0 ? leg * g : leg);'))
       broken.push('the target grade fires on a box that is not taller than its rung - every ordinary knot would move');
     const tpl = nodes ? bodyOf(nodes, 'double BaseKnotTPLevel(') : null;
     if (!tpl || !tpl.text.includes('BaseKnotPlanTPPips(tfMin, k, anchor, riskPips)'))
@@ -9650,7 +9652,7 @@ function main() {
     const legs = note ? bodyOf(note, 'string BaseKnotLegsTag(') : null;
     if (!legs || !legs.text.includes('BaseKnotEngPips(engTF, anchor)'))
       broken.push('the card\'s four legs no longer compare the stop it was handed with the rung\'s own EngSL - the grade would be a second number');
-    if (!legs || !legs.text.includes('engPips > rung ? engPips / rung : 1.0'))
+    if (!legs || !legs.text.includes('BaseKnotLegGrade(engPips, rung)'))
       broken.push('the card\'s four cells no longer derive the factor from the stop it was handed - Trigger / Pricicle / Classic would stay at the rung\'s size under a graded TRex');
     if (!legs || (legs.text.match(/\* g\)/g) || []).length < 3)
       broken.push('fewer than three of the card\'s cells ride the grade - Trigger / Pricicle / Classic would stay at the rung\'s size under a graded TRex');
@@ -9706,29 +9708,29 @@ function main() {
     if (!mTF || !mTF.text.includes('if(!BaseKnotIsLadderRung(r)) return r;'))
       broken.push('the stop\'s rung no longer keeps an off-ladder knot\'s own time - the 2h20m box steps to H4');
     const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
-    if (!pair || !pair.text.includes('if(BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE)'))
-      broken.push('the entry\'s grade lost its fence - an off-ladder entry rides the box\' power (214.6 instead of 142.5) or a rung/FTR lost its own');
+    if (!pair || !pair.text.includes('BaseKnotPairGrade(hunt, stf'))
+      broken.push('the pair lost its fence - an off-ladder entry rides the box\' power (214.6 instead of 142.5) or a rung/FTR lost its own');
     if (!pair || !pair.text.includes('offPips *= g;'))
       broken.push('no path grades the entry - the standard rungs would draw the raw Hunt under a graded stop');
     const legs = note ? bodyOf(note, 'string BaseKnotLegsTag(') : null;
     if (!legs || !legs.text.includes('offPips > 0.0'))
       broken.push('the card no longer receives the drawn entry - its Trigger cell is a second number');
-    if (!legs || !legs.text.includes('!BaseKnotIsLadderRung(engTF)') || !legs.text.includes('BaseKnotLegPipsText(offPips)'))
+    if (!legs || !legs.text.includes('!BaseKnotEntryRidesStop(isHunt, engTF)') || !legs.text.includes('BaseKnotLegPipsText(offPips)'))
       broken.push('the Trigger cell no longer prints the off-ladder entry - 214.6 would sit over a line drawn at 142.5');
-    if (!legs || !legs.text.includes('engPips > rung ? engPips / rung : 1.0'))
+    if (!legs || !legs.text.includes('BaseKnotLegGrade(engPips, rung)'))
       broken.push('the ladder\'s cells lost P-BK-132\'s factor - the four standard names would move');
-    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor)'))
-      broken.push('the committed note is not handed the drawn entry');
+    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, offIsHunt, nd.anchor)'))
+      broken.push('the committed note is not handed the drawn entry (or is handed it without the fence it was drawn under)');
     if (!plan || !plan.join('\n').includes('BaseKnotPairWitness(id, baseTF, mTF, offPips, riskPips);'))
       broken.push('the off-ladder decision has no flushed line - the next report is a screenshot argument again');
     const wit = shot ? bodyOf(shot, 'void BaseKnotPairWitness(') : null;
-    if (!wit || !wit.text.includes('"[P-BK-133]') || !wit.text.includes('fence=own'))
-      broken.push('BaseKnotPairWitness no longer writes its own [P-BK-133] line through DrawStripDiagEmit');
+    if (!wit || !wit.text.includes('"[P-BK-135]') || !wit.text.includes('own=') || !wit.text.includes('r='))
+      broken.push('BaseKnotPairWitness no longer writes its own [P-BK-135] line (own=, off=, risk=, r=) through DrawStripDiagEmit');
     const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
     const hText = harness ? harness.join('\n') : '';
     for (const s of ['P-BK-133 - 2h20m is NOT a ladder rung',
                      'P-BK-133 - the entry IS the knot\'s own HuntSL (142.5)',
-                     'P-BK-133 - the stop IS the box\' own power (80.5)',
+                     'P-BK-133 - the stop IS the knot\'s own EngSL (53.4)',
                      'P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)',
                      'P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)',
                      'P-BK-133 - the note\'s Trigger IS the entry (142.5)'])
@@ -9737,7 +9739,110 @@ function main() {
     if (broken.length)
       failures.push('P-BK-133: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Measure / BaseKnot_Note / BaseKnot_Plan / BaseKnot_Shot / the harness)');
     else
-      console.log('[PASS] P-BK-133 an off-ladder knot\'s own time is its rung: BaseKnotIsLadderRung walks the ONE ladder, BaseKnotMeasureTFMin keeps a time that is not a rung (his 2h20m box reads 2h20m, not H4), the entry is the own-time HuntSL (142.5 - the 138 he expected) while the box\' power grades the stop (80.5) and the targets, the card\'s Trigger cell prints the drawn entry, and every ladder rung / FTR keeps P-BK-132 byte-identically');
+      console.log('[PASS] P-BK-133 an off-ladder knot\'s own time is its rung: BaseKnotIsLadderRung walks the ONE ladder, BaseKnotMeasureTFMin keeps a time that is not a rung (his 2h20m box reads 2h20m, not H4), the pair is the own-time HuntSL/EngSL (142.5 / 53.4 - the 138 he expected) so the ratio stays 8/3, the card\'s Trigger cell prints the drawn entry, and every ladder rung / FTR keeps P-BK-132 byte-identically');
+  }
+
+  // P-BK-134 (2026-10-28) — ONE FENCE, ONE CLAMP: THE QUESTION ASKED THREE TIMES.
+  //
+  // P-BK-132/133 answered "does the entry ride the stop's ruler?" in three spellings — the geometry's
+  // kind test (Measure 861), the hover's `isHunt && !rung` (Measure 900) and the card's `!rung` on a
+  // different TF argument (Note 119) — and wrote the same factor three times (Note's own ratio,
+  // Nodes' own ratio, plus `BaseKnotLegGrade`). Three spellings of one rule is P-BK-127's split
+  // waiting for its first disagreement: the card prints a number over a line drawn at another, and
+  // no gate can see it. So the fence is ONE function (`BaseKnotEntryRidesStop`) every reader asks,
+  // and the factor is ONE clamp (`BaseKnotLegGrade`) nobody re-writes.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const fence = ab ? bodyOf(ab, 'bool BaseKnotEntryRidesStop(') : null;
+    if (!fence)
+      broken.push('BaseKnotEntryRidesStop is gone - the fence is written at each caller again, so the first one to disagree prints a number over a line drawn at another');
+    else if (!fence.text.includes('BaseKnotIsLadderRung(stopTF) || !isHunt'))
+      broken.push('the fence is no longer "a ladder rung, or the same EngSL the stop uses" - an off-ladder knot with a HuntSL rides the box\' power again (214.6) or an FTR stops riding its own stop');
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    if (!pair || !pair.text.includes('BaseKnotPairGrade(hunt, stf'))
+      broken.push('the geometry no longer asks the fence - the drawn entry can ride a ruler no other reader knows about');
+    const clause = measure ? bodyOf(measure, 'string BaseKnotCapClause(') : null;
+    if (!clause || !clause.text.includes('!BaseKnotEntryRidesStop(isHunt, measureTF)'))
+      broken.push('the hover\'s clause asks a second fence - it would explain a grade the geometry did not apply');
+    const legs = note ? bodyOf(note, 'string BaseKnotLegsTag(') : null;
+    if (!legs || !legs.text.includes('!BaseKnotEntryRidesStop(isHunt, engTF)'))
+      broken.push('the card asks a second fence - its Trigger cell is a number the line may not draw');
+    for (const [file, text] of [['BaseKnot_Measure.mqh', measure], ['BaseKnot_Nodes.mqh', nodes], ['BaseKnot_Note.mqh', note]]) {
+      const t = text ? text.join('\n') : '';
+      if (t.includes('engPips / rung') || t.includes('riskPips / eng'))
+        broken.push(file + ' spells the factor a second time - ONE clamp (BaseKnotLegGrade) and no other ratio');
+    }
+    if (pair && pair.text.includes('BK_NODE_FTR || kind == BK_NODE_NONE'))
+      broken.push('BaseKnot_Measure.mqh fences the ENTRY\'S GRADE by the KIND again - the fence is "which leg did I read" (a rung, or an EngSL), not "which type am I"');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['P-BK-134 - a ladder rung rides the fence',
+                     'P-BK-134 - an off-ladder Hunt keeps its own ruler',
+                     'P-BK-134 - an FTR rides its own stop off the ladder'])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fence would be a rule nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-134: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Note / the harness)');
+    else
+      console.log('[PASS] P-BK-134 one fence, one clamp: BaseKnotEntryRidesStop answers "does the entry ride the stop\'s ruler" for the geometry, the hover and the card, and every graded leg rides BaseKnotLegGrade - so no reader can print a number over a line drawn at another');
+  }
+
+  // P-BK-135 (2026-10-28) — THE FACTOR BELONGS TO THE PAIR, NOT TO ONE LEG.
+  //
+  // MEASURED on his 2h20m ETR box (h 343.3, own ATR 228.0, off the ladder): the geometry wrote the
+  // box' factor onto the STOP only (53.4 x 1.506 = 80.5) and left the ENTRY at the own-time Hunt
+  // (142.5), so the pair read 1.77 beside the plan's 8/3 = 2.67 and the three targets were still
+  // 5x / 12x the GRADED stop. One factor on one leg is a second ruler. The law: `g` is the PAIR's
+  // — on a rung (and on every FTR) both legs ride it, off the ladder with a HuntSL neither does —
+  // so every leg is `a x g x constant` and the ratio is structural.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const pairG = ab ? bodyOf(ab, 'double BaseKnotPairGrade(') : null;
+    if (!pairG)
+      broken.push('BaseKnotPairGrade is gone - the factor is written per leg again, and the 2h20m box reads 1.77');
+    else {
+      if (!pairG.text.includes('if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;'))
+        broken.push('the pair factor lost its fence - an off-ladder Hunt rides the box\' power (214.6) or a rung stops riding it');
+      if (!pairG.text.includes('return BaseKnotLegGrade(boxEngPips, legEngPips);'))
+        broken.push('the pair factor is not BaseKnotLegGrade - a second ratio is back');
+    }
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    if (!pair || !pair.text.includes('double g = BaseKnotPairGrade(hunt, stf, capE, riskPips);'))
+      broken.push('the geometry does not ask the pair factor once');
+    if (pair && pair.text.includes('BaseKnotLegGrade('))
+      broken.push('the geometry spells a factor of its own beside BaseKnotPairGrade');
+    const risk = nodes ? bodyOf(nodes, 'double BaseKnotRiskPips(') : null;
+    if (!risk || !risk.text.includes('BaseKnotPairGrade(hunt, tfMin, BaseKnotNodeEngPips(top, bot), p)'))
+      broken.push('the note\'s risk does not ask the pair factor - 80.5 would print over a 53.4 line');
+    if (!risk || !risk.text.includes('BaseKnotOffsetIsHunt(kind, tfMin, anchor)'))
+      broken.push('the note\'s risk cannot name the entry\'s leg - the fence would answer for the wrong type');
+    const tp = nodes ? bodyOf(nodes, 'double BaseKnotPlanTPPips(') : null;
+    if (!tp || !tp.text.includes('BaseKnotLegGrade(riskPips, eng)'))
+      broken.push('the targets no longer ride the DRAWN stop - a graded TRex would sit over ungraded ticks');
+    const wit = shot ? bodyOf(shot, 'void BaseKnotPairWitness(') : null;
+    if (!wit || !wit.text.includes('"[P-BK-135]') || !wit.text.includes('" r="'))
+      broken.push('the pair witness no longer prints the ratio on the flushed channel');
+    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v10"'))
+      broken.push('the formula stamp is not v10 - a v9 row (stop read in two regimes) would be scored beside this one');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['P-BK-135 - the pair ratio is the plan\'s 8/3',
+                     'P-BK-135 - the card\'s four cells are one ATR (Pricicle 267)',
+                     'P-BK-135 - Classic is 12x the same stop (640.8)'])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the ratio would be a claim nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-135: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Shot / the harness)');
+    else
+      console.log('[PASS] P-BK-135 the factor belongs to the pair: BaseKnotPairGrade is the ONE answer (a rung or an FTR rides the box, an off-ladder Hunt does not), the geometry multiplies BOTH legs or neither, the note\'s risk and the card\'s cells ask the same factor - so every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) and the 2h20m box reads 142.5 / 53.4, not 142.5 / 80.5 = 1.77');
   }
 
   if (failures.length) {

@@ -729,6 +729,18 @@ One function over the ceiling stays whole and never grows.
   Trigger cell is handed the drawn entry (`BaseKnotLegsTag(..., offPips, ...)`). An FTR grades
   both legs either way (its two legs are one EngSL). The `[P-BK-133]` flushed line names the
   box, the chosen time, `fence=own`, `off` and `risk`. Gate: `P-BK-133`, mutations `-a..-e`.
+- **The factor belongs to the pair, never to one leg.** MEASURED on his 2h20m ETR box: the
+  geometry wrote the box' factor onto the STOP only (`53.4 x 1.506 = 80.5`) and left the ENTRY
+  at the knot's own Hunt (`142.5`), so the pair read `1.77` beside the plan's `8/3 = 2.67` and
+  the three targets were still `5x` / `12x` the graded stop. ONE answer, `BaseKnotPairGrade`:
+  on a rung (and on every FTR, whose two legs are one EngSL) both legs ride the box' power;
+  off the ladder with a HuntSL neither does, because there is no rung to grade against. Every
+  leg is then `a x g x constant`, so `entry / stop = 8/3` (Hunt) or `1` (FTR) on EVERY knot,
+  and the note's risk, the targets and the card's four cells derive their factor from the DRAWN
+  stop — no reader spells a second ratio. The `[P-BK-135]` flushed line prints `off`, `risk` and
+  `r=` per box, so the ratio is read off a frame instead of argued from code; the formula stamp
+  is `v10` (a `v9` row of an off-ladder Hunt box read its stop in two regimes and is not scored
+  beside it). Gate: `P-BK-135`, mutations `-a..-c`.
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 

@@ -102,21 +102,27 @@ string BaseKnotLegPipsText(const double v)
    return DoubleToString(v, 1);
 }
 string BaseKnotLegsTag(const int engTF, const double engPips,
-                       const double offPips, const datetime anchor = 0)
+                       const double offPips, const bool isHunt, const datetime anchor = 0)
 {
    if(engPips <= 0.0) return "";
    // P-BK-132: `engPips` is the TRex the box DRAWS - the three cells under it are that same rung's
    // pushes, so they ride the SAME factor: the ratio between the stop handed in here and the rung's
    // own EngSL. 1.0 whenever the box is no taller than its rung, so every other box is unchanged.
+   // P-BK-134: and that ratio IS `BaseKnotLegGrade` - the ONE clamp (BaseKnot_Ability), not a
+   // second spelling of it here. Two spellings of one factor is the class this file has already
+   // been fixed for once (P-BK-127); a hand-written ratio is how it comes back.
    double rung = BaseKnotEngPips(engTF, anchor);
-   double g    = (rung > 0.0 && engPips > rung ? engPips / rung : 1.0);
+   double g    = BaseKnotLegGrade(engPips, rung);
    // P-BK-133 (2026-10-28) — THE TRIGGER CELL IS THE DRAWN ENTRY, ALWAYS. On a ladder rung that is
    // the rung's Hunt x g (P-BK-132); OFF the ladder the entry is the knot's own time's Hunt and the
    // box' power never touched it (BaseKnotLegPair) — so multiplying it here too would print 214.6
    // over a line drawn at 142.5, the very split P-BK-127 removed. `offPips` is the entry the
    // geometry produced, handed in so the cell and the line are ONE number.
+   // P-BK-134: WHICH of the two it is, is `BaseKnotEntryRidesStop`'s answer — the same fence the
+   // geometry multiplied under, asked with the same flag (`isHunt`). A kind test here could answer
+   // differently from the line and print a number the box does not draw.
    string trig;
-   if(!BaseKnotIsLadderRung(engTF) && offPips > 0.0 && MathAbs(offPips - engPips) > 0.05)
+   if(!BaseKnotEntryRidesStop(isHunt, engTF) && offPips > 0.0 && MathAbs(offPips - engPips) > 0.05)
       trig = BaseKnotLegPipsText(offPips);
    else
       trig = BaseKnotLegPipsText(BaseKnotHuntPips(engTF, anchor) * g);

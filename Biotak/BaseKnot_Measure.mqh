@@ -853,12 +853,11 @@ void BaseKnotLegPair(const double top, const double bot, const int kind, const i
    offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);   // BKCAP-OFF: the pick is the pushed leg itself now (LegCapped answers false)
    riskPips = BaseKnotLegPick(planR, capE);   // BKCAP-OFF: same — the stop's pushed EngSL, uncapped
    double h = BaseKnotToPips(top - bot);
-   // P-BK-132: the type ladder prices this box on `capE`'s rung, and the box may stand taller than
-   // that rung's leg without reaching the next one's range - so ONE factor lifts BOTH legs to the
-   // box' own power. The Hunt ratio carries the same 15/64 (5/8 against 8/3), so the entry and the
-   // stop can never part: one ruler, one grade (P-BK-127).
-   double g = BaseKnotLegGrade(capE, riskPips);
-   if(g > 1.0) { riskPips *= g; if(BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE) offPips *= g; }   // P-BK-132 both legs on a rung; P-BK-133 the own-time entry off it (his 214.6 -> 142.5)
+   // P-BK-132/135: ONE factor, asked once (BaseKnotPairGrade), lifts BOTH legs or neither - a rung
+   // or an FTR rides the box' own power, an off-ladder Hunt keeps its own time, and every leg is
+   // `a x g x constant`, so entry/stop is 8/3 (Hunt) or 1 (FTR) on every knot.
+   double g = BaseKnotPairGrade(hunt, stf, capE, riskPips);
+   if(g > 1.0) { offPips *= g; riskPips *= g; }   // P-BK-135: one factor, both legs
    if(offPips  <= 0.0) offPips  = (h > 0.0 ? h : 0.0);   // neither source answered — the box'
    if(riskPips <= 0.0) riskPips = (h > 0.0 ? h : 0.0);   //   own height, named by the texts
 }
@@ -897,8 +896,9 @@ string BaseKnotCapClause(const int measureTF, const bool isHunt, const double to
 {
    double plan = (isHunt ? BaseKnotHuntPips(measureTF, anchor) : BaseKnotEngPips(measureTF, anchor));
    double cap  = (isHunt ? BaseKnotNodeHuntPips(top, bot) : BaseKnotNodeEngPips(top, bot));
-   if(BaseKnotLegGrade(cap, plan) > 1.0 && isHunt && !BaseKnotIsLadderRung(measureTF)) return " - the box is TALLER than " + BaseKnotTFHuman(measureTF) + "'s legs, so the stop rides the box' own power (" + DoubleToString(BaseKnotNodeEngPips(top, bot), 1) + " pips) while the entry stays the knot's own " + BaseKnotEntryOffsetTag(true) + " (" + DoubleToString(plan, 1) + " pips)";   // P-BK-133
-   if(BaseKnotLegGrade(cap, plan) > 1.0) return " - the box is TALLER than " + BaseKnotTFHuman(measureTF) + "'s leg, so both legs ride the box' own power (" + DoubleToString(cap, 1) + " pips)";   // P-BK-132: the graded leg SAYS why it grew (the CapClause is already appended to every entry sentence)
+   bool taller = (BaseKnotLegGrade(cap, plan) > 1.0);
+   if(taller && !BaseKnotEntryRidesStop(isHunt, measureTF)) return " - the box is TALLER than " + BaseKnotTFHuman(measureTF) + "'s legs (" + DoubleToString(plan, 1) + " pips), so the WHOLE trade stays on the knot's own time: " + BaseKnotEntryOffsetTag(true) + " " + DoubleToString(plan, 1) + " / TRex " + DoubleToString(BaseKnotEngPips(measureTF, anchor), 1) + " - the height names the type, it does not size the trade";   // P-BK-135: the pair is never graded off the ladder, so the sentence names both legs
+   if(taller) return " - the box is TALLER than " + BaseKnotTFHuman(measureTF) + "'s leg, so both legs ride the box' own power (" + DoubleToString(cap, 1) + " pips)";   // P-BK-132: the graded pair SAYS why it grew (the CapClause is already appended to every entry sentence)
    if(!BaseKnotLegCapped(plan, cap)) return "";   // BKCAP-OFF: always "" now — the "CAPPED by …" clause is retired
    return " — CAPPED by " + BaseKnotCapWhy(isHunt) + " = " + DoubleToString(cap, 1) + " pips";
 }

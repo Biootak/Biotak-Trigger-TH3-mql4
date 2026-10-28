@@ -525,7 +525,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
      double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs, published beside the levels
      BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, offPips, riskPips, 0);
     string riskTag   = BaseKnotRiskTag(liveTF, liveTF, top, bot, 0);   // P-BK-52: named with the number the pick drew
-     double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0);
+    double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0, BK_NODE_NONE);   // P-BK-135: no type yet — the Eng leg, as before
      // P-BK-104: the sizing preview is the FTR case — ONE EngSL sizes BOTH legs on the SAME TF,
      // so BaseKnotEntryTag answers "" and the face keeps the shape it has always had.
      string entryTag = BaseKnotEntryTag(false, offPips, liveTF, liveTF, riskTag);
@@ -1257,7 +1257,7 @@ void BaseKnotSync(const string id)
     if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
     int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF, hop);     // P-BK-127: ... and the ENTRY's, on the SAME rung (one ruler)
     string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
-    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
+    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor, nd.kind);   // P-BK-135: the note's risk asks the pair factor with the SAME type the geometry used
     bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the rung both legs use
     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs BaseKnotCalcLevels PRODUCED — published beside the levels, so the note and its hover name the very numbers the lines were drawn with (never a second read)
      BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor,
@@ -1338,7 +1338,7 @@ void BaseKnotSync(const string id)
    {
         BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
                           sp, nd, tfMask, riskTag, tradeTip, entryTag, atCorner, tfMin,
-                          BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor));   // P-BK-133: the entry the lines were drawn with, so the Trigger cell is the entry
+                          BaseKnotLegsTag(mTF, hPips, offPips, offIsHunt, nd.anchor));   // P-BK-133: the entry the lines were drawn with, so the Trigger cell is the entry; P-BK-134: under the SAME fence the geometry used (`offIsHunt`)
       if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
    }
    else

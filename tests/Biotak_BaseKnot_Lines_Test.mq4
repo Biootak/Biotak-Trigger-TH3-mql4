@@ -433,6 +433,9 @@ int OnStart()
 
    BkCheck("P-BK-133 - 2h20m is NOT a ladder rung", !BaseKnotIsLadderRung(140), 0, 0);
    BkCheck("P-BK-133 - H4 IS a ladder rung", BaseKnotIsLadderRung(240), 1, 1);
+   BkCheck("P-BK-134 - a ladder rung rides the fence", BaseKnotEntryRidesStop(true, 240), 1, 1);
+   BkCheck("P-BK-134 - an off-ladder Hunt keeps its own ruler", !BaseKnotEntryRidesStop(true, 140), 0, 0);
+   BkCheck("P-BK-134 - an FTR rides its own stop off the ladder", BaseKnotEntryRidesStop(false, 140), 1, 1);
    BkCheck("P-BK-133 - the stop's rung is the knot's own time (140)", BaseKnotMeasureTFMin(BK_NODE_ETR, 140) == 140, BaseKnotMeasureTFMin(BK_NODE_ETR, 140), 140);
    BkCheck("P-BK-133 - the entry's rung follows it (140)", BaseKnotEntryTFMin(BK_NODE_ETR, 140) == 140, BaseKnotEntryTFMin(BK_NODE_ETR, 140), 140);
 
@@ -441,15 +444,17 @@ int OnStart()
    BaseKnotCalcLevels(tO, bO, +1, BK_NODE_ETR, 140, eO, sO, oO, rO, an2);
    BkCheck("P-BK-133 - the entry IS the knot's own HuntSL (142.5)", BkNear(oO, 142.5), oO, 142.5);
    BkCheck("P-BK-133 - and NOT the H4 leg graded up (214.6)", !BkNear(oO, 214.6), oO, 214.6);
-   BkCheck("P-BK-133 - the stop IS the box' own power (80.5)", BkNear(rO, hO / BK_NODE_POWER_DIV), rO, hO / BK_NODE_POWER_DIV);
-   BkCheck("P-BK-133 - the stop is NOT the raw own-time EngSL (53.4)", !BkNear(rO, 53.4), rO, 53.4);
+   BkCheck("P-BK-133 - the stop IS the knot's own EngSL (53.4)", BkNear(rO, oeng[0]), rO, oeng[0]);
+   BkCheck("P-BK-133 - the stop is NOT the box' own power (80.5)", !BkNear(rO, hO / BK_NODE_POWER_DIV), rO, hO / BK_NODE_POWER_DIV);
+   BkCheck("P-BK-135 - the pair ratio is the plan's 8/3", BkNear(oO / rO, 8.0 / 3.0), oO / rO, 8.0 / 3.0);
    BkCheck("P-BK-133 - the entry line is at top - 142.5", BkNear(eO, tO - 142.5 * g_bkPip), eO, tO - 142.5 * g_bkPip);
-   BkCheck("P-BK-133 - the stop line is 80.5 behind the entry", BkNear(sO, eO - rO * g_bkPip), sO, eO - rO * g_bkPip);
-   BkCheck("P-BK-133 - the note's risk IS the drawn stop", BkNear(BaseKnotRiskPips(140, tO, bO, an2), rO), BaseKnotRiskPips(140, tO, bO, an2), rO);
-   string tagO = BaseKnotLegsTag(140, rO, oO, an2);
+   BkCheck("P-BK-133 - the stop line is 53.4 behind the entry", BkNear(sO, eO - rO * g_bkPip), sO, eO - rO * g_bkPip);
+   BkCheck("P-BK-133 - the note's risk IS the drawn stop", BkNear(BaseKnotRiskPips(140, tO, bO, an2, BK_NODE_ETR), rO), BaseKnotRiskPips(140, tO, bO, an2, BK_NODE_ETR), rO);
+   string tagO = BaseKnotLegsTag(140, rO, oO, BaseKnotOffsetIsHunt(BK_NODE_ETR, 140, an2), an2);
    BkCheckHas("P-BK-133 - the note's Trigger IS the entry (142.5)", tagO, "Trigger 142.5", true);
    BkCheckHas("P-BK-133 - and not the H4-graded 214.6", tagO, "214.6", false);
-   BkCheckHas("P-BK-133 - the four cells are the own time's", tagO, "Pricicle 402", true);
+   BkCheckHas("P-BK-135 - the card's four cells are one ATR (Pricicle 267)", tagO, "Pricicle 267", true);
+   BkCheckHas("P-BK-135 - Classic is 12x the same stop (640.8)", tagO, "Classic 640.8", true);
    Print("[BKLINES] P-BK-133 note: ", tagO);
 
    // the ladder rung is untouched: the same box on H4 keeps P-BK-132's both-legs grade
@@ -458,7 +463,7 @@ int OnStart()
    BaseKnotCalcLevels(tS, bS, +1, BK_NODE_ETR, 240, eS, sS, oS, rS, an2);
    double wantS = 194.4 * (hS / BK_NODE_POWER_DIV) / 72.9;
    BkCheck("P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)", BkNear(oS, wantS), oS, wantS);
-   string tagS = BaseKnotLegsTag(240, rS, oS, an2);
+   string tagS = BaseKnotLegsTag(240, rS, oS, BaseKnotOffsetIsHunt(BK_NODE_ETR, 240, an2), an2);
    BkCheckHas("P-BK-133 - a rung's Trigger is still the entry", tagS, "Trigger " + BaseKnotLegPipsText(oS), true);
 
    // the off-ladder FTR keeps P-BK-132's BOTH legs: its entry and stop are one EngSL

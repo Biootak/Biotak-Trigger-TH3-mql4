@@ -93,7 +93,12 @@
 //--- H4-graded 214.6), while the stop and the targets keep the box' power grade. v8 rows of an
 //--- off-ladder box were read on H4, so their entry/stop/target outcomes must not be scored
 //--- beside v9's; a ladder rung and every FTR are byte-identical to v8.
-#define BK_FORMULA_VERSION "v9"
+//--- v10 (2026-10-28, P-BK-135): THE FACTOR IS THE PAIR'S. An off-ladder Hunt knot no longer
+//--- grades its stop against the box: his 2h20m box reads stop 53.4 (not 80.5) and the three
+//--- targets 5x / 12x THAT stop, so entry/stop = 8/3 on every knot. A v9 row of such a box has a
+//--- stop and a target set read in two regimes (142.5 / 80.5 = 1.77) and must not be scored
+//--- beside a v10 row; a ladder rung and every FTR are byte-identical to v9.
+#define BK_FORMULA_VERSION "v10"
 
 //--- P-BK-126f (2026-10-27) — THE KNOT'S OWN DERIVATION, ON THE FLUSHED CHANNEL.
 //--- The user, after two drag rounds: «روش که مطمعن باشه رو پیدا کن» — a method that leaves
@@ -190,11 +195,14 @@ void BaseKnotKnotWitness(const string id,
 //| `[BK-KNOT]` names the knot's TIME and the type; it cannot show    |
 //| which ruler the two LEGS were read on, and the user's report was  |
 //| exactly that gap: a 2h20m box whose entry was drawn on H4. This   |
-//| line answers the pair the geometry produced — the entry (`off`)   |
-//| and the stop (`risk`) — plus the fence it was read under.         |
+//| line answers the pair the geometry produced — the entry (`off`),  |
+//| the stop (`risk`) and the ratio between them — so the law          |
+//| `entry / stop = 8/3 (Hunt) or 1 (FTR)` is readable off a frame    |
+//| instead of argued from code. P-BK-135: EVERY knot writes it (a    |
+//| rung included — that is where the rule is easiest to break), and  |
+//| `own=1` says the legs were read on the knot's own time.            |
 //| Emit-on-change, four seats reused by id (P-BK-107c's law: a full  |
-//| table is SILENT, never a stolen seat), and a box ON a rung writes |
-//| nothing at all: `[BK-KNOT]` already describes it completely.      |
+//| table is SILENT, never a stolen seat).                             |
 //+------------------------------------------------------------------+
 #define BK_PAIR_SLOTS 4
 void BaseKnotPairWitness(const string id, const int nodeTF, const int legTF,
@@ -211,17 +219,17 @@ void BaseKnotPairWitness(const string id, const int nodeTF, const int legTF,
       if(wid[i] == id) { slot = i; break; }           // this box' own memo
    }
    if(slot < 0) return;                               // full of live boxes: bounded silence
-   bool offLadder = !BaseKnotIsLadderRung(legTF);
    if(wused[slot] && wid[slot] == id && wnode[slot] == nodeTF && wleg[slot] == legTF &&
       MathAbs(woff[slot] - offPips) < 0.05 && MathAbs(wrisk[slot] - riskPips) < 0.05) return;
    wused[slot] = true; wid[slot] = id; wnode[slot] = nodeTF; wleg[slot] = legTF;
    woff[slot] = offPips; wrisk[slot] = riskPips;
-   if(!offLadder) return;                             // a rung is already fully described by [BK-KNOT]
-   DrawStripDiagEmit("[P-BK-133] box=" + id +
+   DrawStripDiagEmit("[P-BK-135] box=" + id +
                      " node=" + BaseKnotTFName(nodeTF) +
-                     " leg=" + BaseKnotTFName(legTF) + " fence=own" +
+                     " leg=" + BaseKnotTFName(legTF) +
+                     " own=" + (legTF == nodeTF ? "1" : "0") +
                      " off=" + DoubleToString(offPips, 1) +
-                     " risk=" + DoubleToString(riskPips, 1));
+                     " risk=" + DoubleToString(riskPips, 1) +
+                     " r=" + DoubleToString(riskPips > 0.0 ? offPips / riskPips : 0.0, 2));
 }
 
 static datetime s_bkShotFlashDue = 0;

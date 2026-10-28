@@ -1278,7 +1278,8 @@ double BaseKnotPlanTPPips(const int tfMin, const int k, const datetime anchor = 
          // graded stop grades every tick with it and the R printed on a tick never moves. A caller
          // that hands no stop (a warm test, a harness) keeps the plan's own leg - grade 1.0.
          double eng = (leg > 0.0 ? BaseKnotEngPips(tf, anchor) : 0.0);
-         return (eng > 0.0 && riskPips > eng ? leg * (riskPips / eng) : leg);
+         double g   = BaseKnotLegGrade(riskPips, eng);   // P-BK-134: the ONE clamp (BaseKnot_Ability), never a third ratio written here
+         return (g > 1.0 ? leg * g : leg);
       }
    return 0.0;
 }
@@ -1364,10 +1365,18 @@ string BaseKnotTPPlanTip2(const int tfMin, const double entry2, const int dir, c
 // Never <= 0 for a real box, the SAME BaseKnotLegPick rule the geometry is drawn
 // with (one owner), and the caller ALWAYS shows which of the two it got
 // (BaseKnotRiskTag / BaseKnotStopWhy).
-double BaseKnotRiskPips(const int tfMin, const double top, const double bot, const datetime anchor = 0)
+double BaseKnotRiskPips(const int tfMin, const double top, const double bot, const datetime anchor = 0,
+                        const int kind = BK_NODE_NONE)
 {
    double p = BaseKnotLegPick(BaseKnotEngPips(tfMin, anchor), BaseKnotNodeEngPips(top, bot));   // BKCAP-OFF: the pick is the pushed EngSL itself now
-   if(p > 0.0) return p * BaseKnotLegGrade(BaseKnotNodeEngPips(top, bot), p);   // P-BK-132: the note's risk IS the leg the box draws - grade them in ONE place or the hover prints one number beside a line drawn at another
+   if(p > 0.0)
+   {
+      // P-BK-135: the note's risk IS the leg the box draws, so it asks the SAME pair factor the
+      // geometry multiplied by. It used to grade unconditionally, which printed 80.5 over a stop
+      // drawn at 53.4 on an off-ladder knot. `kind` decides whether the entry is the Hunt leg.
+      bool hunt = BaseKnotOffsetIsHunt(kind, tfMin, anchor);
+      return p * BaseKnotPairGrade(hunt, tfMin, BaseKnotNodeEngPips(top, bot), p);
+   }
    return BaseKnotToPips(top - bot);
 }
 // How the risk is NAMED wherever it is shown — the badge's number and every stop /

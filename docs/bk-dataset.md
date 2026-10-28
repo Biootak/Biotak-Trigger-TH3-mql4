@@ -1137,5 +1137,64 @@ drawn at 214.6 (P-BK-127's defect, one level down). The hover names which leg th
 walk, the measure's fence, the pair's guard, the card's `offPips` branch, the committed call and
 the `[P-BK-133]` flushed witness; the harness (`Biotak_BaseKnot_Lines_Test.mq4` part 10) executes
 the 2h20m pair (142.5 / 80.5), its note text, the H4 fence (214.6) and the off-ladder FTR (both
-legs). Mutations `P-BK-133-a..e` (no fence / every entry graded / cell ignores the entry / no rung
+legs).Mutations
+`P-BK-133-a..e` (no fence / every entry graded / cell ignores the entry / no rung
 matches / the stop fed as the Trigger).
+
+## 25. The factor belongs to the pair - P-BK-135 (2026-10-28)
+
+**The hole §24 left, in its own table.** §24 fixed the ENTRY of an off-ladder knot and left its
+STOP graded by the box' own power. On the same 2h20m ETR box (`h = 343.3`, own ATR `228.0`) the
+pair therefore read:
+
+| leg | value | ratio to the other |
+|---|---|---|
+| entry (own-time Hunt) | 142.5 | `142.5 / 80.5 = 1.77` |
+| stop (box' power) | 80.5 | — |
+| the plan's law | `Trigger / TRex` | `8/3 = 2.67` |
+| TP1 / TP2 / TP3 | `402.3 / 966 / 1931` on the graded stop | `5x` / `12x` |
+
+One factor on one leg is a second ruler: the entry line, the note's risk and every R were read
+in two regimes, and the card's four cells could not all be true. The user's question — «هر گرهی
+بود نسبتها رعایت بشه» — is that 34 % short ratio.
+
+**The rule, and it is one function.** `BaseKnotPairGrade(isHunt, legTF, boxEng, legEng)` returns
+`1.0` when the leg is off the ladder AND the entry is the Hunt leg, and `BaseKnotLegGrade` otherwise.
+The geometry multiplies BOTH legs by it or neither:
+
+```
+g = BaseKnotPairGrade(hunt, stf, capE, riskPips);
+if(g > 1.0) { offPips *= g; riskPips *= g; }
+```
+
+Everything else follows from the drawn pair: `BaseKnotRiskPips` asks the same function (it takes
+`kind` now, so it can name the entry's leg), `BaseKnotPlanTPPips` derives its factor from the
+stop it is handed, and `BaseKnotLegsTag` derives its three cells from the TRex it is handed. No
+reader spells a ratio of its own.
+
+**The numbers on his own box**
+
+| leg | v9 (two rulers) | v10 (one pair) |
+|---|---|---|
+| entry | 142.5 | 142.5 |
+| stop | 80.5 | **53.4** |
+| entry / stop | 1.77 | **2.67** |
+| Pricicle (5 x stop) | 402.3 | **267.2** |
+| Classic (12 x stop) | 965.5 | **640.8** |
+| the pair inside 343.3 | 223.0 = 65 % | 195.9 = 57 % |
+
+A box on a rung and every FTR are byte-identical to v9: the fence says both legs ride the box'
+power there (P-BK-132), and an FTR's two legs are one EngSL, so its ratio is 1 either way.
+
+**What it costs.** The stop and the three targets of an off-ladder Hunt knot shrink by the factor
+the box used to add (`80.5 / 53.4 = 1.506` on his box). That is the price of the ratio: the same
+factor cannot lift the stop and leave the entry where his own 138 put it. The formula stamp is
+`v10`; a v9 row of such a box was read in two regimes and must not be scored beside a v10 row.
+
+**How it is checked.** `tools/check-regressions.js` (`P-BK-135`) asserts the one function, the
+both-legs write under one guard, the note's risk and the target/card derivations, the `[P-BK-135]`
+flushed witness (`own=`, `off=`, `risk=`, `r=`) and the v10 stamp; the harness
+(`Biotak_BaseKnot_Lines_Test.mq4` part 10) executes the 2h20m pair (142.5 / 53.4), its 8/3 ratio,
+the card's `Pricicle 267` / `Classic 641` and the note's risk. Mutations `P-BK-135-a..c` (the
+note's risk graded / the witness loses `r=` / the stamp goes back to v9). MEASURED 2026-10-28:
+the build's own numbers are in the report; no live frame of the new ex4 has been captured yet.
