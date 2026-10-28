@@ -9069,8 +9069,8 @@ function main() {
 
     // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
     // beside a v6 row's, whose run the left edge names.
-    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v8"'))
-      broken.push('the formula is no longer v8 - v7 rows do not include the box-height grade applied to entry, stop and targets');
+    if (!shot || !shot.join('\n').includes('#define BK_FORMULA_VERSION "v9"'))
+      broken.push('the formula is no longer v9 - v8 rows still read an off-ladder knot\'s legs on H4 (a 2h20m box entered at 214.6) and must not be scored beside v9\'s');
 
     if (broken.length)
       failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
@@ -9263,8 +9263,8 @@ function main() {
       broken.push('the committed Sync names the stop on a rung the entry does not share');
     if (!plan || !plan.join('\n').includes('hop);   // P-BK-125: the same hop the stop\'s TF above was named with'))
       broken.push('the geometry call no longer receives the hop the two TFs above were named with');
-    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, nd.anchor)'))
-      broken.push('the card\'s four legs left the stop\'s rung - the Trigger cell would stop being the entry');
+    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor)'))
+      broken.push('the card\'s four legs left the stop\'s rung or the drawn entry - the Trigger cell would stop being the entry');
     // 4 — and no site may call the entry owner WITHOUT a hop once it knows a box: a bare call is
     //     the name's fixed hop, i.e. the silent 2-rung split this rule removed.
     for (const [file, text] of [['BaseKnot_Measure.mqh', measure], ['BaseKnot_Nodes.mqh', nodes], ['BaseKnot_Plan.mqh', plan]]) {
@@ -9625,15 +9625,17 @@ function main() {
     else {
       if (!pair.text.includes('BaseKnotLegGrade(capE, riskPips)'))
         broken.push('the geometry no longer grades - the drawn entry and stop are the rung\'s, not the box\'');
-      if (!pair.text.includes('if(g > 1.0) { offPips *= g; riskPips *= g; }'))
-        broken.push('the grade no longer lifts BOTH legs under a guard - an unguarded or one-sided write either shrinks the pushed leg or parts the entry from the stop (P-BK-127\'s two rulers)');
+      if (!pair.text.includes('if(g > 1.0)') || !pair.text.includes('riskPips *= g;') ||
+          !pair.text.includes('offPips *= g;') ||
+          !pair.text.includes('if(BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE)'))
+        broken.push('the grade no longer lifts the stop under a guard, or a ladder rung/FTR lost the entry that rides it - an unguarded or one-sided write either shrinks the pushed leg or parts the entry from the stop (P-BK-127\'s two rulers); P-BK-133 owns the off-ladder entry');
     }
     const pick = measure ? bodyOf(measure, 'double BaseKnotLegPick(') : null;
     if (pick && pick.text.includes('BaseKnotLegGrade'))
       broken.push('the grade moved INSIDE BaseKnotLegPick - the entry would be graded against the Hunt leg and the stop against the Eng leg, i.e. two factors for one box');
     const clause = measure ? bodyOf(measure, 'string BaseKnotCapClause(') : null;
-    if (!clause || !clause.text.includes('BaseKnotLegGrade(cap, plan) > 1.0'))
-      broken.push('the hover no longer SAYS why a leg grew - a bigger number with no reason is the one thing P-BK-53 forbids on a knot');
+    if (!clause || !clause.text.includes('if(BaseKnotLegGrade(cap, plan) > 1.0) return " - the box is TALLER than "'))
+      broken.push('the hover no longer SAYS why a leg grew - a bigger number with no reason is the one thing P-BK-53 forbids on a knot (P-BK-133\'s own sentence must not stand in for the rung\'s)');
     const risk = nodes ? bodyOf(nodes, 'double BaseKnotRiskPips(') : null;
     if (!risk || !risk.text.includes('BaseKnotLegGrade(BaseKnotNodeEngPips(top, bot), p)'))
       broken.push('BaseKnotRiskPips is ungraded - the note would print the rung\'s risk beside a stop line drawn at the box\' own');
@@ -9675,6 +9677,67 @@ function main() {
       failures.push('P-BK-132: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Note / BaseKnot_Plan / the harness)');
     else
       console.log('[PASS] P-BK-132 the box\' own power is the floor of the leg: ONE factor (boxLeg / rungLeg, clamped at 1) lifts the entry and the stop together and grades the three targets and the card\'s four cells with them, so a knot taller than the rung it is priced on (an FTR drifting a short step past its own time) is priced as the box it IS - and a box at or under its rung stays byte-identical');
+  }
+
+  // P-BK-133 (2026-10-28) — AN OFF-LADDER KNOT'S OWN TIME IS ITS RUNG.
+  //
+  // His 2h20m box: the type ladder stepped an ETR one rung up onto H4 and drew the H4 Hunt (214.6)
+  // on a box whose own 2h20m ATR says 142.5 — «از نقطه ورود هم جا موندیم تقریبا نقطه ورود 138 پیپ
+  // بود». A time that is not a ladder rung is its OWN ruler (the fence is the ladder's own table,
+  // never a threshold), so its entry is the own-time Hunt while the box' power grades the stop and
+  // the targets; the four standard rungs keep P-BK-132's both-legs grade byte-identically.
+  {
+    const broken = [];
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+    const isRung = nodes ? bodyOf(nodes, 'bool BaseKnotIsLadderRung(') : null;
+    if (!isRung)
+      broken.push('BaseKnotIsLadderRung is gone - a nonstandard knot time is stepped onto a rung again (his 2h20m box priced on H4)');
+    else {
+      if (!isRung.text.includes('BaseKnotNextTFMin(r)'))
+        broken.push('the membership test walks a SECOND ladder - the rungs and the type would drift apart');
+      if (!isRung.text.includes('if(r == tfMin) return true;'))
+        broken.push('the membership test never answers true - every knot would read as off the ladder');
+    }
+    const mTF = measure ? bodyOf(measure, 'int BaseKnotMeasureTFMin(') : null;
+    if (!mTF || !mTF.text.includes('if(!BaseKnotIsLadderRung(r)) return r;'))
+      broken.push('the stop\'s rung no longer keeps an off-ladder knot\'s own time - the 2h20m box steps to H4');
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    if (!pair || !pair.text.includes('if(BaseKnotIsLadderRung(stf) || kind == BK_NODE_FTR || kind == BK_NODE_NONE)'))
+      broken.push('the entry\'s grade lost its fence - an off-ladder entry rides the box\' power (214.6 instead of 142.5) or a rung/FTR lost its own');
+    if (!pair || !pair.text.includes('offPips *= g;'))
+      broken.push('no path grades the entry - the standard rungs would draw the raw Hunt under a graded stop');
+    const legs = note ? bodyOf(note, 'string BaseKnotLegsTag(') : null;
+    if (!legs || !legs.text.includes('offPips > 0.0'))
+      broken.push('the card no longer receives the drawn entry - its Trigger cell is a second number');
+    if (!legs || !legs.text.includes('!BaseKnotIsLadderRung(engTF)') || !legs.text.includes('BaseKnotLegPipsText(offPips)'))
+      broken.push('the Trigger cell no longer prints the off-ladder entry - 214.6 would sit over a line drawn at 142.5');
+    if (!legs || !legs.text.includes('engPips > rung ? engPips / rung : 1.0'))
+      broken.push('the ladder\'s cells lost P-BK-132\'s factor - the four standard names would move');
+    if (!plan || !plan.join('\n').includes('BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor)'))
+      broken.push('the committed note is not handed the drawn entry');
+    if (!plan || !plan.join('\n').includes('BaseKnotPairWitness(id, baseTF, mTF, offPips, riskPips);'))
+      broken.push('the off-ladder decision has no flushed line - the next report is a screenshot argument again');
+    const wit = shot ? bodyOf(shot, 'void BaseKnotPairWitness(') : null;
+    if (!wit || !wit.text.includes('"[P-BK-133]') || !wit.text.includes('fence=own'))
+      broken.push('BaseKnotPairWitness no longer writes its own [P-BK-133] line through DrawStripDiagEmit');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['P-BK-133 - 2h20m is NOT a ladder rung',
+                     'P-BK-133 - the entry IS the knot\'s own HuntSL (142.5)',
+                     'P-BK-133 - the stop IS the box\' own power (80.5)',
+                     'P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)',
+                     'P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)',
+                     'P-BK-133 - the note\'s Trigger IS the entry (142.5)'])
+      if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fix would be arithmetic nobody executes');
+
+    if (broken.length)
+      failures.push('P-BK-133: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Measure / BaseKnot_Note / BaseKnot_Plan / BaseKnot_Shot / the harness)');
+    else
+      console.log('[PASS] P-BK-133 an off-ladder knot\'s own time is its rung: BaseKnotIsLadderRung walks the ONE ladder, BaseKnotMeasureTFMin keeps a time that is not a rung (his 2h20m box reads 2h20m, not H4), the entry is the own-time HuntSL (142.5 - the 138 he expected) while the box\' power grades the stop (80.5) and the targets, the card\'s Trigger cell prints the drawn entry, and every ladder rung / FTR keeps P-BK-132 byte-identically');
   }
 
   if (failures.length) {

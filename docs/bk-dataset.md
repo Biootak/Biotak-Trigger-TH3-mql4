@@ -1095,3 +1095,47 @@ doubling, the note-vs-line equality, the ratio preservation and the `55/64` fill
 `P-BK-132-a..g` (no grade / one leg / inverted ratio / ungraded targets / ungraded note risk /
 pinned card factor / no clause). MEASURED 2026-10-27: **7 killed, 0 survived, 0 stale, tree
 byte-identical**.
+
+## 24. An off-ladder knot's own time is its rung - P-BK-133 (2026-10-28)
+
+**The hole §23 left, in his own numbers.** The box is a **2h20m base**, an ETR, `h = 343.3` pips,
+its own ATR **228.0**, H4 **311.0**. Because 140 minutes is not on the ladder, the type's "one
+rung above" stepped the legs onto **H4**: the note printed `TRex 80.5 | Trigger 214.6 | Pricicle
+401.8 | Classic 965.8` and the entry line sat 214.6 pips inside the edge - «از نقطه ورود هم جا
+موندیم تقریبا نقطه ورود 138 پیپ بود». The knot's own time says `EngSL 53.4 / HuntSL 142.5`.
+
+**Why the H4 read is wrong.** The type names the MEASURE (FTR = EngSL, ETR/CTR/OTR = HuntSL);
+the ladder names the RUNG. A time the ladder does not carry has no rung above it to borrow: H4 is
+not "near" 2h20m, it is a different market. Stepping there and then grading the result by the
+box' power counted the growth twice - the H4 Hunt (194.4) x 1.104 = 214.6, while the own-time
+Hunt is 142.5.
+
+**The rule (one law, no threshold).** `BaseKnotIsLadderRung` asks the ladder's own table
+(`BaseKnotNextTFMin`) whether a time is a rung. If it is, nothing changes: P-BK-132's one factor
+lifts entry, stop, targets and the card's four cells (the four standard names are byte-identical).
+If it is not, **the knot's own time IS the rung**:
+
+| leg | before (H4) | after (2h20m) |
+|---|---|---|
+| TRex / EngSL (15/64) | 72.9 x 1.104 = 80.5 | 53.4 x 1.506 = **80.5** (the box' power, unchanged) |
+| Trigger / HuntSL | 194.4 x 1.104 = 214.6 | **142.5** (the own-time Hunt, ungraded) |
+| Pricicle (5 x EngSL) | 401.8 | **402.3** (5 x 80.46) |
+| Classic (12 x EngSL) | 965.8 | **965.5** (12 x 80.46) |
+| entry line | top - 214.6 | **top - 142.5** (his ~138) |
+
+The stop and the three targets do not move - the box' own power already graded them; only the
+entry and its Trigger cell were borrowed from H4. That is why the fix is ONE branch in
+`BaseKnotLegPair` (the stop still rides the grade, the entry does not) and one fence in
+`BaseKnotMeasureTFMin` - not a second model and not a per-type table.
+
+**The fence.** A ladder rung grades BOTH legs (P-BK-132, `-a..-g`); an FTR grades both even off the
+ladder, because its entry and stop are the SAME EngSL. The card's Trigger cell is handed the drawn
+entry (`BaseKnotLegsTag(mTF, hPips, offPips, anchor)`), so `Trigger 142.5` cannot sit over a line
+drawn at 214.6 (P-BK-127's defect, one level down). The hover names which leg the grade moved.
+
+**How it is checked.** `tools/check-regressions.js` (`P-BK-133`) asserts the ladder membership
+walk, the measure's fence, the pair's guard, the card's `offPips` branch, the committed call and
+the `[P-BK-133]` flushed witness; the harness (`Biotak_BaseKnot_Lines_Test.mq4` part 10) executes
+the 2h20m pair (142.5 / 80.5), its note text, the H4 fence (214.6) and the off-ladder FTR (both
+legs). Mutations `P-BK-133-a..e` (no fence / every entry graded / cell ignores the entry / no rung
+matches / the stop fed as the Trigger).

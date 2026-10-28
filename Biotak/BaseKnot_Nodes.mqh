@@ -158,6 +158,24 @@ int BaseKnotNextTFMin(const int tfMin)
    if(tfMin < 43200) return 43200;
    return 0;
 }
+// P-BK-133 (2026-10-28) — IS THIS TIME A RUNG, OR IS IT THE KNOT'S OWN?
+// The user's 2h20m box: its legs were read on H4 because an ETR is "one rung above" — but 2h20m
+// is not the M15->H1->H4 ladder at all, it is the time the user drew, and its own 228.0 ATR says
+// TRex 53.4 / Trigger 142.5 (the entry he expected, ~138) while the H4 read drew 214.6. ONE answer:
+// a ladder rung is a rung, and a time that is not one IS its own. The walk below asks
+// BaseKnotNextTFMin, so the ladder still has ONE owner and no second table can drift from it.
+bool BaseKnotIsLadderRung(const int tfMin)
+{
+   if(tfMin <= 0) return false;
+   int r = 0;
+   for(int i = 0; i < 9; i++)
+   {
+      r = BaseKnotNextTFMin(r);   // the ONE owner of the ladder's steps
+      if(r <= 0) break;
+      if(r == tfMin) return true;
+   }
+   return false;
+}
 //+------------------------------------------------------------------+
 //| P-BK-106 (2026-10-09) — THE LADDER'S OWN SCALE, STATED ONCE.     |
 //|                                                                  |

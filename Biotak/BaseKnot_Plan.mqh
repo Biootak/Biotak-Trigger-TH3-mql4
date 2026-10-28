@@ -1263,7 +1263,7 @@ void BaseKnotSync(const string id)
      BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor,
                         hop);   // P-BK-125: the same hop the stop's TF above was named with — P-BK-127: and the entry's
      // P-BK-104: the ENTRY's own leg, named and sized, ready for the note's face.
-     string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag);
+     string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag); BaseKnotPairWitness(id, baseTF, mTF, offPips, riskPips);   // P-BK-133: the off-ladder decision goes to the FLUSHED channel (P-LOG-3), never the journal
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.
     ObjectDelete(0, BaseKnotEntry2Name(pfx));
     ObjectDelete(0, BaseKnotSL2Name(pfx));
@@ -1338,7 +1338,7 @@ void BaseKnotSync(const string id)
    {
         BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
                           sp, nd, tfMask, riskTag, tradeTip, entryTag, atCorner, tfMin,
-                          BaseKnotLegsTag(mTF, hPips, nd.anchor));
+                          BaseKnotLegsTag(mTF, hPips, offPips, nd.anchor));   // P-BK-133: the entry the lines were drawn with, so the Trigger cell is the entry
       if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
    }
    else

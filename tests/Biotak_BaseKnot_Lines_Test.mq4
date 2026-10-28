@@ -137,6 +137,14 @@ void BkCheckS(const string what, const string got, const string want)
    if(got == want) { g_bkPass++; Print("[BKLINES] PASS  ", what, "  got=", got, "  want=", want); }
    else            { g_bkFail++; Print("[BKLINES] FAIL  ", what, "  got=", got, "  want=", want); }
 }
+// P-BK-133: a cell's own text is the claim - a number-only check cannot see `Trigger 214.6`
+// printed over a line drawn at `142.5` (P-BK-127's exact defect).
+void BkCheckHas(const string what, const string hay, const string needle, const bool want)
+{
+   bool has = (StringFind(hay, needle) >= 0);
+   if(has == want) { g_bkPass++; Print("[BKLINES] PASS  ", what, "  ", (want ? "has" : "lacks"), " `", needle, "`"); }
+   else            { g_bkFail++; Print("[BKLINES] FAIL  ", what, "  text=", hay); }
+}
 
 void BkPushRows(const datetime an)
 {
@@ -397,6 +405,72 @@ int OnStart()
               BkNear(BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1)),
               BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1));
    }
+
+   //---- 10. P-BK-133: AN OFF-LADDER KNOT'S OWN TIME IS ITS RUNG. His 2h20m box (h = 343.3 pips,
+   //---- own ATR 228.0, H4 ATR 311.0) is an ETR whose base time is not on the ladder, so the type's
+   //---- "one rung up" stepped it onto H4 and drew the H4 Hunt (214.6) while its own 2h20m ATR says
+   //---- TRex 53.4 / Trigger 142.5 - the entry he expected (~138). The fence is the ladder's OWN
+   //---- membership, not a threshold: a rung keeps P-BK-132 (both legs graded), an off-ladder time
+   //---- is its own rung (entry = its own Hunt, stop/targets = the box' power). FTR stays both.
+   Print("[BKLINES] ============ P-BK-133: an off-ladder knot's own time is its rung");
+   datetime an2 = D'2026.10.23 12:00';
+   BaseKnotAbilityReset();
+   BaseKnotAbilityPush(140, an2, 228.0 * g_bkPip, 8.3 * g_bkPip);
+   BaseKnotAbilityPush(240, an2, 311.0 * g_bkPip, 8.3 * g_bkPip);
+   BaseKnotAbilityPush(1440, an2, 975.1 * g_bkPip, 8.3 * g_bkPip);
+   int      otfs[3] = {140, 240, 1440};
+   datetime oans[3];
+   double   oeng[3], ohunt[3], ot1[3], ot2[3], ot3[3];
+   oeng[0] = 53.4;  ohunt[0] = 142.5; ot1[0] = 124.6;  ot2[0] = 267.0;  ot3[0] = 640.8;
+   oeng[1] = 72.9;  ohunt[1] = 194.4; ot1[1] = 170.1;  ot2[1] = 364.5;  ot3[1] = 874.8;
+   oeng[2] = 975.1; ohunt[2] = 2600.3; ot1[2] = 2275.2; ot2[2] = 4875.5; ot3[2] = 11701.2;
+   for(int oi = 0; oi < 3; oi++) oans[oi] = an2;
+   BaseKnotEngPush(otfs, oans, oeng, ohunt, ot1, ot2, ot3, 3);
+   int      ptfs[2] = {140, 240};
+   datetime pans[2]; pans[0] = an2; pans[1] = an2;
+   double   pric[2] = {267.0, 364.5}, clas[2] = {640.8, 874.8};
+   BaseKnotPlanLegsPush(ptfs, pans, pric, clas, 2);
+
+   BkCheck("P-BK-133 - 2h20m is NOT a ladder rung", !BaseKnotIsLadderRung(140), 0, 0);
+   BkCheck("P-BK-133 - H4 IS a ladder rung", BaseKnotIsLadderRung(240), 1, 1);
+   BkCheck("P-BK-133 - the stop's rung is the knot's own time (140)", BaseKnotMeasureTFMin(BK_NODE_ETR, 140) == 140, BaseKnotMeasureTFMin(BK_NODE_ETR, 140), 140);
+   BkCheck("P-BK-133 - the entry's rung follows it (140)", BaseKnotEntryTFMin(BK_NODE_ETR, 140) == 140, BaseKnotEntryTFMin(BK_NODE_ETR, 140), 140);
+
+   double hO = 343.3, tO = 4000.0 + hO * g_bkPip, bO = 4000.0;
+   double eO = 0.0, sO = 0.0, oO = 0.0, rO = 0.0;
+   BaseKnotCalcLevels(tO, bO, +1, BK_NODE_ETR, 140, eO, sO, oO, rO, an2);
+   BkCheck("P-BK-133 - the entry IS the knot's own HuntSL (142.5)", BkNear(oO, 142.5), oO, 142.5);
+   BkCheck("P-BK-133 - and NOT the H4 leg graded up (214.6)", !BkNear(oO, 214.6), oO, 214.6);
+   BkCheck("P-BK-133 - the stop IS the box' own power (80.5)", BkNear(rO, hO / BK_NODE_POWER_DIV), rO, hO / BK_NODE_POWER_DIV);
+   BkCheck("P-BK-133 - the stop is NOT the raw own-time EngSL (53.4)", !BkNear(rO, 53.4), rO, 53.4);
+   BkCheck("P-BK-133 - the entry line is at top - 142.5", BkNear(eO, tO - 142.5 * g_bkPip), eO, tO - 142.5 * g_bkPip);
+   BkCheck("P-BK-133 - the stop line is 80.5 behind the entry", BkNear(sO, eO - rO * g_bkPip), sO, eO - rO * g_bkPip);
+   BkCheck("P-BK-133 - the note's risk IS the drawn stop", BkNear(BaseKnotRiskPips(140, tO, bO, an2), rO), BaseKnotRiskPips(140, tO, bO, an2), rO);
+   string tagO = BaseKnotLegsTag(140, rO, oO, an2);
+   BkCheckHas("P-BK-133 - the note's Trigger IS the entry (142.5)", tagO, "Trigger 142.5", true);
+   BkCheckHas("P-BK-133 - and not the H4-graded 214.6", tagO, "214.6", false);
+   BkCheckHas("P-BK-133 - the four cells are the own time's", tagO, "Pricicle 402", true);
+   Print("[BKLINES] P-BK-133 note: ", tagO);
+
+   // the ladder rung is untouched: the same box on H4 keeps P-BK-132's both-legs grade
+   double hS = 343.3, tS = 5000.0 + hS * g_bkPip, bS = 5000.0;
+   double eS = 0.0, sS = 0.0, oS = 0.0, rS = 0.0;
+   BaseKnotCalcLevels(tS, bS, +1, BK_NODE_ETR, 240, eS, sS, oS, rS, an2);
+   double wantS = 194.4 * (hS / BK_NODE_POWER_DIV) / 72.9;
+   BkCheck("P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)", BkNear(oS, wantS), oS, wantS);
+   string tagS = BaseKnotLegsTag(240, rS, oS, an2);
+   BkCheckHas("P-BK-133 - a rung's Trigger is still the entry", tagS, "Trigger " + BaseKnotLegPipsText(oS), true);
+
+   // the off-ladder FTR keeps P-BK-132's BOTH legs: its entry and stop are one EngSL
+   BaseKnotAbilityPush(360, an2, 324.9 * g_bkPip, 8.3 * g_bkPip);
+   int      fts[1] = {360};
+   datetime fans[1]; fans[0] = an2;
+   double   feng[1] = {87.6}, fhunt[1] = {233.6}, ft1[1] = {204.4}, ft2[1] = {438.0}, ft3[1] = {1051.2};
+   BaseKnotEngPush(fts, fans, feng, fhunt, ft1, ft2, ft3, 1);
+   double hF = 2.0 * 87.6 * BK_NODE_POWER_DIV, tF = 6000.0 + hF * g_bkPip, bF = 6000.0;
+   double eF = 0.0, sF = 0.0, oF = 0.0, rF = 0.0;
+   BaseKnotCalcLevels(tF, bF, +1, BK_NODE_FTR, 360, eF, sF, oF, rF, an2);
+   BkCheck("P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)", BkNear(oF, rF) && BkNear(oF, 2.0 * 87.6), oF, rF);
 
    Print("[BKLINES] DONE pass=", g_bkPass, " fail=", g_bkFail);
    return (g_bkFail == 0 ? 0 : 1);

@@ -719,6 +719,16 @@ One function over the ceiling stays whole and never grows.
   pushed leg is never shrunk, BKCAP-OFF's rule), and the graded pair fills `30/64` of the box
   (`195/512` when the entry is the Hunt) - always inside the ladder's own `55/64` fit. Gate:
   `P-BK-132`, mutations `-a..-g`.
+- **A time the ladder does not carry is its OWN rung.** The type names the MEASURE (EngSL for
+  FTR, HuntSL for ETR/CTR/OTR); the ladder names the RUNG. Stepping an off-ladder knot onto the
+  next standard rung and then grading it by the box' power counted the growth twice: his 2h20m
+  ETR box (h 343.3, own ATR 228.0) read `Trigger 214.6` on H4 while its own time says 142.5 (the
+  ~138 he expected), and the entry line sat 72 pips too deep. `BaseKnotIsLadderRung` asks the
+  ladder's own table; a rung keeps P-BK-132 byte-identically, an off-ladder time keeps its own
+  Hunt as the entry while the box' power still grades the stop and the targets, and the note's
+  Trigger cell is handed the drawn entry (`BaseKnotLegsTag(..., offPips, ...)`). An FTR grades
+  both legs either way (its two legs are one EngSL). The `[P-BK-133]` flushed line names the
+  box, the chosen time, `fence=own`, `off` and `risk`. Gate: `P-BK-133`, mutations `-a..-e`.
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 
