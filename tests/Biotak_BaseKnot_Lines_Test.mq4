@@ -371,6 +371,33 @@ int OnStart()
    BkCheck("P-BK-132 - the product's Hunt/Eng fills 55/64 of the box (the ladder's own fit)",
            BkNear((1.0 + 8.0 / 3.0) * (15.0 / 64.0), 55.0 / 64.0), (1.0 + 8.0 / 3.0) * (15.0 / 64.0), 55.0 / 64.0);
 
+   // P-BK-132: the SAME production geometry serves all four names. For each type, make a box
+   // whose own Eng leg is twice that type's pushed stop rung; entry, stop, target and note must
+   // all read x2. This checks the four callers' type-specific rung choice, not four formulas.
+   Print("[BKLINES] ============ P-BK-132: the same grade across FTR / ETR / CTR / OTR");
+   int gradeKinds[4] = {BK_NODE_FTR, BK_NODE_ETR, BK_NODE_CTR, BK_NODE_OTR};
+   for(int gi = 0; gi < 4; gi++)
+   {
+      int kind = gradeKinds[gi];
+      int tf = BkStopTF(kind);
+      double eng = BkRowEng(tf);
+      double hh = 2.0 * eng * BK_NODE_POWER_DIV;
+      double top = 3000.0 + hh * g_bkPip, bot = 3000.0;
+      double en = 0.0, st = 0.0, off = 0.0, risk = 0.0;
+      BaseKnotCalcLevels(top, bot, +1, kind, 5, en, st, off, risk, an);
+      string typeName = BaseKnotNodeShort(kind);
+      double wantOff = 2.0 * (kind == BK_NODE_FTR ? eng : BkRowHunt(tf));
+      BkCheck("P-BK-132 " + typeName + " - entry follows the shared grade",
+              BkNear(off, wantOff), off, wantOff);
+      BkCheck("P-BK-132 " + typeName + " - stop follows the shared grade",
+              BkNear(risk, 2.0 * eng), risk, 2.0 * eng);
+      BkCheck("P-BK-132 " + typeName + " - note risk matches the drawn stop",
+              BkNear(BaseKnotRiskPips(tf, top, bot, an), risk), BaseKnotRiskPips(tf, top, bot, an), risk);
+      BkCheck("P-BK-132 " + typeName + " - TP1 follows the same grade",
+              BkNear(BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1)),
+              BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1));
+   }
+
    Print("[BKLINES] DONE pass=", g_bkPass, " fail=", g_bkFail);
    return (g_bkFail == 0 ? 0 : 1);
 }

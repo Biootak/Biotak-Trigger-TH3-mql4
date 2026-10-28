@@ -85,14 +85,17 @@
 //--- the same version (BaseKnotLadderHopAt: the deepest package that FITS, not round(u)) and the
 //--- `U` column is now the same ratio coordinate, so a v7 row's Type/U/Stop are not comparable
 //--- with a v6 row's — the three numbers were cut at different places.
-#define BK_FORMULA_VERSION "v7"
+//--- v8 (2026-10-28, P-BK-132): a box taller than the EngSL of its chosen rung grades the entry,
+//--- stop and targets by one shared box-to-rung factor, clamped at 1. v7 rows do not contain that
+//--- adjustment, so entry/stop/target outcomes must not be scored together across versions.
+#define BK_FORMULA_VERSION "v8"
 
 //--- P-BK-126f (2026-10-27) — THE KNOT'S OWN DERIVATION, ON THE FLUSHED CHANNEL.
 //--- The user, after two drag rounds: «روش که مطمعن باشه رو پیدا کن» — a method that leaves
 //--- nothing arguable. A screenshot argues about which candle and which edge; a LINE does not.
 //--- So the count, the unit it was counted on and the answer it produced are ONE line, and two
 //--- drags are compared by reading their own numbers:
-//---   [BK-KNOT] formula=v7 box=5_22269312 chart=M5 band=3999.52..4012.14 dg=2
+//---   [BK-KNOT] formula=v8 box=5_22269312 chart=M5 band=3999.52..4012.14 dg=2
 //---             boxT=08:45..10:00 still=12 bars=12 readTF=M5 nodeTF=20m cap=1440
 //---             h=217.3 type=ETR hop=0 entry=08:55 last=09:50 exit=09:55
 //--- (`h`/`type`/`hop` are P-BK-128's: the height the type was cut at, the name it got and the
