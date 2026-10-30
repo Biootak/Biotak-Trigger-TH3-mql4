@@ -234,7 +234,13 @@ int RingFeature(const int ringIdx)
 //| SECOND circle — bigger radius, smaller discs — instead of        |
 //| squeezing the whole ring. The taper survives ONLY on the TRAIN   |
 //| (the near-edge degrade), which keeps P-UI-166's law: the ladder  |
-//| ends on the 35 floor and the train seats CIRC_SEAT_CAP (12).     |
+//| ends on the 35 floor at CIRC_SEAT_CAP (12) seats, and its        |
+//| capacity is read from the RUN, never from that count (P-UI-218). |
+//|                                                                  |
+//| P-UI-218 (2026-10-30): the ring SHRINKS to the tighter of the    |
+//| two circles' fits before the shape is refused — the train seats  |
+//| fewer seats than the ring, so degrading to it lost three starred |
+//| items on a release near an edge.                                 |
 //|                                                                  |
 //| FIRST circle: seats 0..min(RingCount(),9)-1 — the first nine       |
 //| SEATS in catalog order (eight stars + the door are still nine),    |
@@ -252,8 +258,16 @@ int RingFeature(const int ringIdx)
 //| the ring is drawn; where it does not, the train is the degrade   |
 //| (P-UI-13: the previous surface, never a stack).                  |
 //+------------------------------------------------------------------+
-#define CIRC_SEAT_CAP 12             // P-UI-166: the TRAIN's cap (twelve seats on a line)
+//--- P-UI-218 (2026-10-30): NO LONGER A CAPACITY. Twelve is the count from which the
+//--- train's taper sits on its 35 floor (CircBtnSizeForN) — the run is what decides how
+//--- many seats the row holds. MEASURED before: a 15-seat ring released at y=716 became a
+//--- 12-seat train while the row had room for all fifteen, so three starred items vanished
+//--- on release («چرا تعدادش کم میشه»).
+#define CIRC_SEAT_CAP 12             // P-UI-166: the count at which the train reaches its 35 floor
 #define CIRC_RING2_REACH (CIRC_RING2_BTN_SIZE / 2 + CIRC_BADGE_FLOAT + CIRC_BADGE_SIZE / 2)  // outermost badge pixel of an outer seat
+//--- P-UI-218: the second circle's radius MINUS the first's — ONE owner, because the shrink
+//--- cap in CircRadius() subtracts exactly this and CircRing2Radius() adds it.
+#define CIRC_RING2_GAP (CIRC_BTN_SIZE / 2 + CIRC_GAP + CIRC_RING2_BTN_SIZE / 2)
 
 //--- P-UI-195: the two circles' own counts. The FIRST circle is the shipped
 //--- nine SEATS (P-UI-166's number, measured byte-identical: eight stars + the
@@ -360,7 +374,7 @@ double CircRing2Radius()
 {
    int n2 = CircRing2Count();
    if(n2 <= 0) return 0.0;
-   double r = CircRadius() + CIRC_BTN_SIZE / 2.0 + CIRC_GAP + CIRC_RING2_BTN_SIZE / 2.0;
+   double r = CircRadius() + CIRC_RING2_GAP;   // P-UI-218: the same number CircRadius's cap subtracts
    if(n2 > 1)
    {
       double chord = (CIRC_RING2_BTN_SIZE + CIRC_GAP) / (2.0 * MathSin(M_PI / n2));
@@ -464,6 +478,14 @@ bool CircRingFits()
    // own (nine seats at most now, so the answer is the shipped 80 whenever the
    // bounds allow it); the second circle's radius must sit inside its own reach.
    double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
+   //--- P-UI-218: the same tighter cap CircRadius() shrinks to. The ring is refused only
+   //--- when the SHRUNK circle would still overlap its own seats — never merely because the
+   //--- design radius (80) does not fit, which is what sent all fifteen seats to a train.
+   if(CircRing2Count() > 0)
+   {
+      double r2cap = CircFitLimitOuter() - CIRC_RING2_GAP;
+      if(r2cap < fit) fit = r2cap;
+   }
    int n1 = CircRing1Count();
    if(n1 > 1 && CircChordRadiusForN(n1) > fit) return false;
    if(CircRing2Count() > 0 && CircRing2Radius() > CircFitLimitOuter()) return false;
@@ -537,10 +559,11 @@ int CircRailCapacity(const int n, const bool vertical, const int dir)
 
 //--- How many seats the DRAWN layout really shows. P-UI-164: the shape decides
 //--- first — on the train the walk is CircRailCapacity (the edge's free run),
-//--- on the ring it is the P-UI-161 walk capped at CIRC_SEAT_CAP (nine or
-//--- fewer: all of them; more: the largest count up to twelve whose chord
-//--- radius still fits; when even nine cannot, nine — the excess stays in the
-//--- Tools menu with its star ON, P-UI-166).
+//--- on the ring it is every placed seat — P-UI-195's two circles with P-UI-218's
+//--- shrink keep all of them, and where even the shrunk ring cannot fit the SHAPE
+//--- becomes the train, whose capacity is its own RUN (never a count cap). The
+//--- excess only stays in the Tools menu with its star ON when that run is too
+//--- short for it (P-UI-166/218).
 //--- (CircPlacedCountLive is the unfrozen half; the FROZEN half,
 //--- CircPlacedCount, stays with the built-seat state in BiotakMenu_B.)
 //--- P-PERF-16: cached on (seat count, cw, ch, ox, oy) — the release, the
@@ -553,6 +576,16 @@ int CircRailCapacity(const int n, const bool vertical, const int dir)
 double CircRadius()
 {
    double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
+   //--- P-UI-218 (2026-10-30) — THE RING SHRINKS BEFORE IT GIVES UP. The SECOND circle
+   //--- is what runs out of room first (it sits a fixed 44px outside the first, plus its
+   //--- own 36px badge reach), so the cap is the TIGHTER of the two fits. Before this the
+   //--- first circle kept r=80 and the outer one overran the box, CircRingFits() refused,
+   //--- and the layout degraded to the TRAIN — which seats fewer seats than the ring.
+   if(CircRing2Count() > 0)
+   {
+      double r2cap = CircFitLimitOuter() - CIRC_RING2_GAP;
+      if(r2cap < fit) fit = r2cap;
+   }
    double r = CircRadiusForN(CircRing1Count());
    if(r > fit) r = fit;                 // the fit cap (reachable for k <= 9's squeeze)
    if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
@@ -576,7 +609,7 @@ int CircPlacedCountLive()
    int  dir;
    if(CircRailShape(vertical, dir))
    {
-      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too
+      s_liveR = CircRailCapacity(n, vertical, dir);   // P-UI-218: the RUN decides, not the old twelve
    }
    else
    {

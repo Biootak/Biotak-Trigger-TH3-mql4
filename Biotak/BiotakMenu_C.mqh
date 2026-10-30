@@ -632,9 +632,14 @@ void CircApplyMenuPosition()
 
    if(g_UI.menuVisible)
    {
-      for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: exactly the built set (frozen mid-drag)
-         CircMoveItem(i);
-      if(g_ToolsOpen)
+      // P-UI-217: the ring's family does not exist while the fan is open — CreateToolsMenu's
+      // sweep took it and five writers gate on g_ToolsOpen. Walking it here moved DELETED
+      // seats, CircMoveItem's P-UI-202 heal re-created every missing bg, and the bare plates
+      // landed ON TOP of the panel (born later = painted above, P-LOG-10).
+      if(!g_ToolsOpen)
+         for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: exactly the built set (frozen mid-drag)
+            CircMoveItem(i);
+      else
       {
          SubChromeMove();   // panel + header + pager translate with the orb
          for(int t = 0; t < CAT_COUNT; t++) ToolsMoveItem(t);
@@ -1185,23 +1190,14 @@ void CircShowBadge(const int i, const bool show)
 
 void UpdateCircularItemStates()
 {
-   // P-UI-163c (MEASURED 2026-10-17, the 17:07 frame): the ring is HIDDEN while the
-   // Tools fan is open (CreateToolsMenu's own sweep) — so this pass must not rebuild
-   // it. A state change while open used to run the loop below, CircUpdateItemState
-   // re-created every missing icon (13 × `[P-UI-163] icon heal`) while the bg stayed
-   // deleted — the bare-glyph ring in the user's screenshot. Every other ring writer
-   // carries the guard (CreateMenu C:356, CircRelayoutIfNeeded C:482,
-   // ToggleMenuVisibility D:533, CircHealRingStep D:16); this loop was the odd one
-   // out. Cost: one bool test.
-   // P-UI-167 (MEASURED 2026-10-19, the USDJPY frame 134362571361933145): the SAME
-   // resurrection one state over — the MENU IS CLOSED. DeleteRing() took the whole
-   // seat family (glyph AND disc), the drain still ran, and CircUpdateItemState
-   // re-created every glyph ALONE: three bursts of 12 × `[P-UI-163] icon heal seat=`
-   // in one frame, each right after a chart press — «منو بسته هستش» plus a column of
-   // icons with no disc under them. The ring is built only while the menu is OPEN and
-   // the fan SHUT (CreateMenu, ToggleMenuVisibility's show branch, CircRelayoutIfNeeded,
-   // CircHealRingStep, the click tail all assume it), so the loop reads the pair.
-   // Cost: one bool read — it replaces a 12-seat glyph burst per drain while down.
+   // P-UI-163c (2026-10-17) + P-UI-167 (2026-10-19): the ring does not exist while the fan
+   // is open (CreateToolsMenu's sweep) and is GONE while the menu is shut (DeleteRing); this
+   // pass rebuilt it in both states — every missing icon while open (13 × `[P-UI-163] icon
+   // heal`, the bare-glyph ring), every glyph ALONE while closed (three bursts of 12 in one
+   // frame — «منو بسته هستش» plus icons with no disc under them). The ring is built only while
+   // the menu is OPEN and the fan SHUT (CreateMenu, ToggleMenuVisibility, CircRebuildRing via
+   // CircRelayoutIfNeeded, CircHealRingStep, CircApplyMenuPosition — P-UI-217), so the loop
+   // reads the pair. Cost: one bool read.
    if(g_UI.menuVisible && !g_ToolsOpen)
       for(int i = 0; i < CircPlacedCount(); i++)
          CircUpdateItemState(i);

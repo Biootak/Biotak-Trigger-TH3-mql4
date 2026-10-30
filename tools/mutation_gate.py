@@ -2639,8 +2639,8 @@ MUTATIONS = [
         "rule": "the capacity asks the DRAWN shape (CircRailShape) before it counts",
         "what": "CircPlacedCountLive answers the ring's fit walk on the train too — the release rebuilds a fitting 13-seat train as 9 and the tail (door included) vanishes (the reported defect)",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   if(CircRailShape(vertical, dir))\n   {\n      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too\n   }",
-        "replace": "   if(false)   // MUTATION: the capacity answers the ring's fit walk where the train draws\n   {\n      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);\n   }",
+        "find": "   if(CircRailShape(vertical, dir))\n   {\n      s_liveR = CircRailCapacity(n, vertical, dir);   // P-UI-218: the RUN decides, not the old twelve\n   }",
+        "replace": "   if(false)   // MUTATION: the capacity answers the ring's fit walk where the train draws\n   {\n      s_liveR = CircRailCapacity(n, vertical, dir);\n   }",
         "expect": "P-UI-164",
     },
     {
@@ -2667,7 +2667,7 @@ MUTATIONS = [
         "id": "P-UI-164d",
         "gate": "regression",
         "rule": "the ring is drawn only where BOTH circles fit (the first circle's chord AND the outer circle's own reach)",
-        "what": "CircRingFits stops testing the outer circle's reach — the second circle draws past the chart edge, and the shape gate and the paint disagree again",
+        "what": "CircRingFits stops testing the outer circle's reach — CircRadius's cap bounds the first circle only, so the outer CHORD floor (n2 > 12) still overruns the edge and the shape gate and the paint disagree again (P-UI-218's cap does not cover it)",
         "file": "Biotak/BiotakMenu_Ring.mqh",
         "find": "   if(CircRing2Count() > 0 && CircRing2Radius() > CircFitLimitOuter()) return false;",
         "replace": "   if(false) return false;   // MUTATION: the outer circle's reach is not tested",
@@ -2777,7 +2777,7 @@ MUTATIONS = [
         "rule": "the outer circle clears the inner discs (gap + both half-sides)",
         "what": "CircRing2Radius drops the inner-disc clearance — the two circles overlap and their skins draw on one pixel",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   double r = CircRadius() + CIRC_BTN_SIZE / 2.0 + CIRC_GAP + CIRC_RING2_BTN_SIZE / 2.0;",
+        "find": "   double r = CircRadius() + CIRC_RING2_GAP;   // P-UI-218: the same number CircRadius's cap subtracts",
         "replace": "   double r = CircRadius();   // MUTATION: the circles overlap",
         "expect": "P-UI-195",
     },
@@ -2794,11 +2794,11 @@ MUTATIONS = [
     {
         "id": "P-UI-195f",
         "gate": "regression",
-        "rule": "the train honours the seat cap (a drag to an edge never seats a thirteenth tail)",
-        "what": "CircRailCapacity walks from RingCount() again — the edge seats tail stars the ring would not",
+        "rule": "the train seats what its RUN allows, never a count cap (P-UI-218)",
+        "what": "CircRailCapacity walks from MathMin(n, CIRC_SEAT_CAP) again — releasing near an edge drops the seats the row still had room for (the measured 15 -> 12)",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too",
-        "replace": "      s_liveR = CircRailCapacity(n, vertical, dir);   // MUTATION: the train is uncapped",
+        "find": "      s_liveR = CircRailCapacity(n, vertical, dir);   // P-UI-218: the RUN decides, not the old twelve",
+        "replace": "      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // MUTATION: the count cap is back",
         "expect": "P-UI-195",
     },
     {
@@ -2814,7 +2814,7 @@ MUTATIONS = [
     {
         "id": "P-UI-195h",
         "gate": "regression",
-        "rule": "CIRC_SEAT_CAP is 12 (the train's cap, P-UI-166)",
+        "rule": "CIRC_SEAT_CAP is 12 (the count at which the train's taper reaches its 35 floor, P-UI-166/P-UI-218)",
         "what": "the cap is raised out of the design — twelve becomes whatever a future edit says",
         "file": "Biotak/BiotakMenu_Ring.mqh",
         "find": "#define CIRC_SEAT_CAP 12",
@@ -2830,6 +2830,30 @@ MUTATIONS = [
         "find": "   int k = n1 - n2;                                 // the LAST n2 gaps of the row",
         "replace": "   int k = 0;   // MUTATION: the row starts at the first gap",
         "expect": "P-UI-195",
+    },
+    #--- P-UI-218 (2026-10-30) — THE RING SHRINKS, IT DOES NOT BECOME A TRAIN.
+    #--- MEASURED 11:17: [P-UI-206] orb release built=15 live=15, then [P-UI-168]
+    #--- ring relayout built=15 live=12 on the same release. Each inverse must fail
+    #--- the gate naming P-UI-218.
+    {
+        "id": "P-UI-218a",
+        "gate": "regression",
+        "rule": "CircRadius shrinks to the SECOND circle's fit (the ring is never refused while it can shrink)",
+        "what": "CircRadius stops subtracting CIRC_RING2_GAP — r stays 80, the outer circle overruns the box, CircRingFits refuses, and the layout degrades to a train that seats fewer seats",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "      double r2cap = CircFitLimitOuter() - CIRC_RING2_GAP;\n      if(r2cap < fit) fit = r2cap;\n   }\n   double r = CircRadiusForN(CircRing1Count());",
+        "replace": "      double r2cap = fit;   // MUTATION: the ring no longer shrinks to the second circle\n   }\n   double r = CircRadiusForN(CircRing1Count());",
+        "expect": "P-UI-218",
+    },
+    {
+        "id": "P-UI-218b",
+        "gate": "regression",
+        "rule": "CircRingFits measures the SHRUNK radius, not the design one",
+        "what": "the shape gate loses the same cap — a ring that could shrink is refused as a train (the reported 15 -> 12 on release)",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "      double r2cap = CircFitLimitOuter() - CIRC_RING2_GAP;\n      if(r2cap < fit) fit = r2cap;\n   }\n   int n1 = CircRing1Count();",
+        "replace": "      double r2cap = fit;   // MUTATION: the shape gate measures the design radius again\n   }\n   int n1 = CircRing1Count();",
+        "expect": "P-UI-218",
     },
     {
         "id": "P-UI-195j",
@@ -3287,6 +3311,16 @@ MUTATIONS = [
         "find": "   for(int i = n; i < RING_MAX_SEATS; i++)",
         "replace": "   for(int i = n; i < n; i++)   // MUTATION: no tail sweep",
         "expect": "P-UI-203",
+    },
+    {
+        "id": "P-UI-217a",
+        "gate": "regression",
+        "rule": "the apply does not walk a ring that is not there (P-UI-217)",
+        "what": "CircApplyMenuPosition drops the g_ToolsOpen guard — with the fan open it walks the DELETED seat set, CircMoveItem's P-UI-202 heal re-creates every bg, and the bare plates paint on top of the panel (the user's 10:01 screenshot)",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      if(!g_ToolsOpen)\n         for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: exactly the built set (frozen mid-drag)\n            CircMoveItem(i);",
+        "replace": "      if(true)   // MUTATION: the fan-open guard is gone\n         for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: exactly the built set (frozen mid-drag)\n            CircMoveItem(i);",
+        "expect": "P-UI-217",
     },
     {
         "id": "P-UI-201a",

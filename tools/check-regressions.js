@@ -5632,7 +5632,7 @@ function main() {
     if (broken.length) {
       failures.push('P-UI-161: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/B/C/D.mqh + BiotakMenu_Ring.mqh + ConstantsAndEnums.mqh + tools/gen-th3-icons.js)');
     } else {
-      console.log('[PASS] P-UI-161 the ring membership: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the two-circle ring (P-UI-195) seats every starred item with the door last, the near-edge train still tapers to 35 and caps at twelve (P-UI-166) with the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
+      console.log('[PASS] P-UI-161 the ring membership: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the two-circle ring (P-UI-195) seats every starred item with the door last, the near-edge train still tapers to 35 and seats what its run allows (P-UI-166/P-UI-218) with the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
     }
   }
 
@@ -6470,7 +6470,12 @@ function main() {
       if (!start || !start.text.includes('-90.0') || !start.text.includes('n1 - n2') || !start.text.includes('180.0 / n1'))
         broken.push('CircRing2StartDeg lost the row-gap law — the outer seats no longer take the LAST n2 gaps before 12 o\'clock (the user\'s drawing: the three gap slots at 170/210/250)');
       const r2 = bodyOf(ringLines195, 'double CircRing2Radius()');
-      if (!r2 || !r2.text.includes('CIRC_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_RING2_BTN_SIZE / 2.0') || !r2.text.includes('CIRC_GAP'))
+      // P-UI-218: the clearance sum is ONE owner now (CIRC_RING2_GAP), because CircRadius's
+      // shrink cap subtracts the same number the paint adds. Either spelling satisfies the
+      // clearance law; what may not happen is the offset being written a third time.
+      const r2Clear = r2 && (r2.text.includes('CIRC_RING2_GAP') ||
+        (r2.text.includes('CIRC_BTN_SIZE / 2.0') && r2.text.includes('CIRC_RING2_BTN_SIZE / 2.0') && r2.text.includes('CIRC_GAP')));
+      if (!r2 || !r2Clear)
         broken.push('CircRing2Radius lost the inner-disc clearance or the chord floor — the outer circle cuts into the first (two discs on one pixel)');
       const fitOuter = bodyOf(ringLines195, 'double CircFitLimitOuter()');
       if (!fitOuter || !fitOuter.text.includes('CircRing2StepDeg()') || !fitOuter.text.includes('CircRing2StartDeg()'))
@@ -6483,9 +6488,9 @@ function main() {
         broken.push('CircPlacedCountLive no longer seats every starred item on the two circles — the tail (door included) drops again');
       const cap195 = Number((codeOf(ringLines195).match(/#define\s+CIRC_SEAT_CAP\s+(\d+)/) || [])[1]);
       if (cap195 !== 12)
-        broken.push(`CIRC_SEAT_CAP is ${cap195 || 'missing'}, not 12 — the TRAIN's cap (P-UI-166) must survive the two-circle law`);
-      if (!live195 || !live195.text.includes('CircRailCapacity(MathMin(n, CIRC_SEAT_CAP)'))
-        broken.push('the train walk stopped honouring the twelve-seat cap — a drag to an edge seats a thirteenth tail');
+        broken.push(`CIRC_SEAT_CAP is ${cap195 || 'missing'}, not 12 — it is the count at which the train's taper reaches its 35 floor (P-UI-166/P-UI-218)`);
+      if (!live195 || !live195.text.includes('CircRailCapacity(n, vertical, dir)'))
+        broken.push('the train walk is back on a count cap instead of its own run — a drag near an edge loses the seats the row still had room for (P-UI-218)');
       const minDef195 = Number((aCode195.match(/#define\s+CIRC_BTN_MIN\s+(\d+)/) || [])[1]);
       if (!(minDef195 >= 35))
         broken.push(`CIRC_BTN_MIN is ${minDef195 || '?'} — the train's taper floor (P-UI-166) is below 35`);
@@ -6503,11 +6508,49 @@ function main() {
     if (broken.length) {
       failures.push('P-UI-195: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_RING1_SEATS/CIRC_RING2_BTN_SIZE + BiotakMenu_Ring.mqh CircRing1Count/CircSeatOuter/CircRing2StartDeg/CircRing2StepDeg/CircRing2Radius/CircFitLimitOuter/CircSeatSize + BiotakMenu_B.mqh CircLayout + BiotakMenu_C.mqh CircCreateItem)');
     } else {
-      console.log('[PASS] P-UI-195 two circles: the first is the shipped nine at 44px/r80, the rest + the door ride a 32px outer ring on a bigger radius, seated in the LAST n2 gaps of the row at the inner pitch (ending before 12 o\'clock), and the train keeps its twelve/35 law');
+      console.log('[PASS] P-UI-195 two circles: the first is the shipped nine at 44px/r80, the rest + the door ride a 32px outer ring on a bigger radius, seated in the LAST n2 gaps of the row at the inner pitch (ending before 12 o\'clock), and the train keeps its 35 taper floor with its capacity read from the RUN, not a count cap (P-UI-218)');
     }
   }
 
-  // -- 58. P-DRAGF3 (2026-10-17): the gesture belongs to the terminal ----------------
+  // -- 57b. P-UI-218 (2026-10-30): THE RING SHRINKS, IT DOES NOT BECOME A TRAIN --------
+  // «اینو که رها میکنم چرا تعدادش کم میشه» — MEASURED (biotak_diag_XAUUSD_
+  // 134362571361933137.txt, 2026-10-30 11:17): [P-UI-206] orb release built=15 live=15,
+  // the hand let go at 495,716, then [P-UI-168] ring relayout built=15 live=12 and
+  // [P-UI-195] seats=12. The SECOND circle needs 124 + 36 + 10 = 170px of clearance; the
+  // release was inside it, CircRingFits() refused the ring, and the layout degraded to the
+  // TRAIN — whose capacity was still capped at CIRC_SEAT_CAP (12) while the row had room
+  // for all fifteen. So the count dropped by three on RELEASE, with no other change.
+  // The law now: the radius SHRINKS to the tightest of the two circles' fits (one owner,
+  // CIRC_RING2_GAP, the same number CircRing2Radius adds), the ring is refused only when
+  // the shrunk circle would overlap its own seats, and the train's capacity is its RUN.
+  {
+    const broken = [];
+    const ring218 = linesOf(MENU_RING);
+    if (!ring218) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the shrink law has no owner');
+    else {
+      const code218 = codeOf(ring218);
+      if (!/#define\s+CIRC_RING2_GAP\b/.test(code218))
+        broken.push('CIRC_RING2_GAP is gone — the shrink cap subtracts one number and CircRing2Radius adds another');
+      const rad218 = bodyOf(ring218, 'double CircRadius()');
+      if (!rad218 || !rad218.text.includes('CircFitLimitOuter() - CIRC_RING2_GAP'))
+        broken.push('CircRadius no longer caps on the SECOND circle\'s fit — the outer one overruns the box, the ring is refused, and the layout falls back to a train (P-UI-218)');
+      const r2r218 = bodyOf(ring218, 'double CircRing2Radius()');
+      if (!r2r218 || !r2r218.text.includes('CircRadius() + CIRC_RING2_GAP'))
+        broken.push('CircRing2Radius grew its own offset again — the cap subtracts a different number than the paint adds');
+      const fits218 = bodyOf(ring218, 'bool CircRingFits()');
+      if (!fits218 || !fits218.text.includes('CircFitLimitOuter() - CIRC_RING2_GAP'))
+        broken.push('CircRingFits still measures the DESIGN radius — a ring that could shrink is refused as a train (P-UI-218)');
+      const live218 = bodyOf(ring218, 'int CircPlacedCountLive()');
+      if (live218 && live218.text.includes('CIRC_SEAT_CAP'))
+        broken.push('the train walk caps on a count again — releasing near an edge drops the seats the row still had room for (P-UI-218)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-218: ' + broken.join('; ') + ' (Biotak/BiotakMenu_Ring.mqh CIRC_RING2_GAP/CircRadius/CircRing2Radius/CircRingFits/CircPlacedCountLive)');
+    } else {
+      console.log('[PASS] P-UI-218 the ring shrinks before it gives up: the radius is capped by the SECOND circle\'s own fit (one CIRC_RING2_GAP for both the cap and the paint), a ring is refused only when its shrunk seats would overlap, and the train seats what its RUN allows instead of a count cap');
+    }
+  }
+
   // Report: a patterned thick fibo still reads one frame behind during a drag. The
   // numbers were already in hand (P-DRAGF2): OBJECT_DRAG fires ~1-2/s while the
   // hand's moves arrive ~60-100/s, and the demoted master's children are re-seated
@@ -8450,6 +8493,49 @@ function main() {
       failures.push('P-PERF-56: ' + broken.join('; ') + ' (Biotak/DrawStrip_Router.mqh)');
     } else {
       console.log('[PASS] P-PERF-56 a left-down move with neither grip live returns before the two ChartGetInteger reads');
+    }
+  }
+
+  // -- 86b. P-UI-217 (2026-10-30): THE APPLY DOES NOT WALK A RING THAT IS NOT THERE
+  // User's screenshot (XAUUSD 10:01, biotak_diag_XAUUSD_134362571361933137.txt):
+  // the TOOLS panel open with a column of BARE DISC seats painted ON TOP of it.
+  // The frame names the writer — `[P-UI-168] fan open=1 cells=16` took the seat
+  // family with CreateToolsMenu's sweep, then a press at 418,335 (the orb, mid-drag)
+  // printed FOURTEEN `[P-UI-202] bg heal seat=0..13` with no `[P-UI-163] icon heal`
+  // and no `[P-UI-195] seats=` beside them. Only CircEnsureBg prints that line, and
+  // of its three callers only CircMoveItem reaches it without the seat's own create:
+  // `CircApplyMenuPosition` walked the DELETED seat set, the P-UI-202 heal re-created
+  // one plate per missing bg, and because the plate was BORN after the panel it
+  // painted above it (P-LOG-10) and stole the panel's own cells' pixels. The ring is
+  // built only while the menu is OPEN and the fan SHUT (P-UI-163c/167), so the apply
+  // reads that pair like the other five writers — and the fan's own half keeps
+  // moving the panel and its cells.
+  {
+    const broken = [];
+    const menuC217 = linesOf(MENU_C);
+    if (!menuC217) broken.push('Biotak/BiotakMenu_C.mqh is gone — the apply has no owner');
+    else {
+      const apply217 = bodyOf(menuC217, 'void CircApplyMenuPosition()');
+      if (!apply217) broken.push('CircApplyMenuPosition is gone — nothing translates the family with the orb');
+      else {
+        const guardAt = apply217.text.search(/if\(\s*!g_ToolsOpen\s*\)/);
+        const moveAt = apply217.text.indexOf('CircMoveItem(i)');
+        if (guardAt < 0)
+          broken.push('the ring walk is unguarded again — a drag (or a chart change) re-creates every deleted seat bg through CircMoveItem\'s P-UI-202 heal, and the bare plates land ON TOP of the open panel (the reported screenshot)');
+        else if (moveAt < 0)
+          broken.push('CircMoveItem(i) is gone — the ring no longer follows the orb at all');
+        else if (guardAt > moveAt)
+          broken.push('the g_ToolsOpen test sits AFTER the ring walk — the guard must decide whether the walk runs');
+        if (!apply217.text.includes('ToolsMoveItem(t)'))
+          broken.push('the fan\'s own half stopped moving its cells — the panel would stay where it was while the orb moved');
+        if (!apply217.text.includes('SubChromeMove()'))
+          broken.push('SubChromeMove() is gone — the panel plate would not follow its cells');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-217: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh)');
+    } else {
+      console.log('[PASS] P-UI-217 the apply does not walk a ring that is not there: CircApplyMenuPosition runs the seat walk only while the fan is SHUT, and the fan\'s own half still moves the plate and its cells (the bare-plate-over-panel screenshot)');
     }
   }
 

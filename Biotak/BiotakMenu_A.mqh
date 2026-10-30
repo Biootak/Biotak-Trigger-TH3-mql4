@@ -129,8 +129,8 @@
 #define CIRC_EDGE_TRIGGER 90
 #define CIRC_MIN_RADIUS  40
 //--- P-UI-161/166 — the TRAIN's taper (the near-edge degrade, never the ring): the
-//--- side holds 44 through nine, floors at 35, radius by the chord law capped at
-//--- CIRC_SEAT_CAP (12). The ring itself is TWO circles (P-UI-195), no stack (P-UI-13).
+//--- side holds 44 through nine and floors at 35 from CIRC_SEAT_CAP (12) on. The ring is
+//--- TWO circles (P-UI-195) that SHRINK to fit instead of becoming a train (P-UI-218).
 #define CIRC_BTN_MIN     35
 //--- the membership STAR on every Tools cell — same canvas as the badge, so the
 //--- corner seat below is one number (star_off/star_on.bmp, baked by the generator).
@@ -139,7 +139,7 @@
 //--- (extra stars, then the door, still LAST) at 32px on an outer circle IN THE ROW'S
 //--- GAPS — the last n2 gaps before 12 at the inner pitch (P-UI-195b).
 #define CIRC_RING1_SEATS    9
-#define CIRC_RING2_BTN_SIZE 44
+#define CIRC_RING2_BTN_SIZE 32
 //--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the
 //--- hand really drag?» and «has the orb moved far enough to be worth saving?» — so a short
 //--- but deliberate drag moved nothing and stored nothing, and the next repaint put the orb

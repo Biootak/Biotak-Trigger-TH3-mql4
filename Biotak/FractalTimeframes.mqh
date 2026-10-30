@@ -144,20 +144,34 @@ double GetLowerTimeframeTH(const string currentTimeframe, int offset) {
         DEBUG_PRINTF("GetLowerTimeframeTH - Error: No matching timeframe found for: ", currentTimeframe);
         return EMPTY_VALUE;
     }
-    int targetIndex = matchIndex - offset;
-    if(targetIndex < 0 || targetIndex >= arraySize) {
-        DEBUG_PRINTF3("GetLowerTimeframeTH - Error: Invalid target index. Index: ", IntegerToString(targetIndex),
-              ", TF: " + currentTimeframe, ", Offset: " + IntegerToString(offset));
+    //--- P-TH-20 (2026-10-30) - PATTERN AND TRIGGER ARE HALF AND A QUARTER ON
+    // EVERY TIMEFRAME, BY CONSTRUCTION.
+    //
+    // This used to return the table value at `matchIndex - offset`: the rung one
+    // (or two) below the chart's own. That is exactly half/quarter only while the
+    // chain doubles, which it does from M1 up to H4 (minutes x4, pct x2). The step
+    // H4 -> the day is x5.625 in minutes (P-TH-19: the day is 1440, the rung under
+    // it is 256), so on a D1 chart pattern/trigger came out at 0.42 / 0.21 of
+    // structure, on W1 at 0.53 / 0.38 and on MN1 at 0.48 / 0.26. The DRAWN ladder
+    // never had this problem (EventHandlers builds it with CalculateFractalValues,
+    // structure x 0.5 and x 0.25); only this resolver did, and that is what
+    // FactorMode's PATTERN basis reads. Two owners of one rule is the defect, and
+    // the rule wins here too:
+    //
+    //     pattern = structure / 2        trigger = structure / 4
+    //
+    // i.e. structure / 2^offset - the same law CalculateFractalValues states, on
+    // every timeframe including the ones above the break. `offset` stays a rung
+    // count (0 = structure, 1 = pattern, 2 = trigger) so callers do not change,
+    // and the answer no longer needs a rung BELOW the chart: the M1 chart used to
+    // return EMPTY_VALUE here, which sent FactorMode to its x4 fallback.
+    double basePct = FractalPercentScaled(matchIndex);
+    if(basePct <= 0.0) {
+        DEBUG_PRINTF("GetLowerTimeframeTH - Warning: Zero or negative percentage at index ", matchIndex);
         return EMPTY_VALUE;
     }
-    // Pattern/Trigger: the two rungs the half/quarter rule is about.
-    // `FractalPercentScaled` keeps them at exactly half and a quarter of
-    // the Structure step (the retired knob kept it so too, at any ratio).
-    double result = FractalPercentScaled(targetIndex);
-    if(result <= 0.0) {
-        DEBUG_PRINTF("GetLowerTimeframeTH - Warning: Zero or negative percentage at index ", targetIndex);
-    }
-    // Debug: Print("GetLowerTimeframeTH - Found at index ", matchIndex, " returning value: ", result);
+    double result = basePct / MathPow(2.0, (double)offset);
+    // Debug: Print("GetLowerTimeframeTH - Found at index ", matchIndex, " offset ", offset, " returning value: ", result);
     return result;
 }
 

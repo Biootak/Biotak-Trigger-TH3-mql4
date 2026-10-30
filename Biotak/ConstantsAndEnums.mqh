@@ -343,18 +343,53 @@ const string FRACTAL_SHORT_NAMES[] = {
     "M1", "M4", "M16", "H1.4", "H4.16", "H17.4",
     "D2.20.16", "D11.9.4", "D45.12.16"
 };
-// Adjusted by factor 1.0415625 so H17+M4 (1024min) = 66.66% instead of 64%
-// These percentages MUST match MotiveWave Constants.java FRACTAL_PERCENTAGES
+//--- P-TH-18 (2026-10-29) — ONE LADDER, ONE LAW: THE DAY.
+//
+// ONE law, no exceptions, for the nine rungs and for the eight columns of the
+// standard strip:
+//
+//     pct(min) = 66.66 x sqrt(min / 1440)
+//
+// 66.66 is the professor's DAILY ability (APR), so the DAY (1440 min) is the
+// anchor. Consequence: for ANY two rungs, pct(a)/pct(b) = sqrt(min(a)/min(b)).
+// "The abilities double" is therefore NOT a second rule to satisfy — it is the
+// min x4 case of this one (sqrt(4) = 2), which is exactly the professor's rung
+// lattice 1, 4, 16, 64, 256 (a rung is 4x the one below).
+//
+//--- P-TH-19 (2026-10-29) — WHY THE DAY CANNOT ALSO BE A DOUBLING STEP.
+// The document's table (1%, 4%, 8%, 16%, 32%, 64%, 128%, 256%, 512%) is this same
+// law with 66.66 parked on the 1024-minute rung (H17+M4 = 17h04m). A day is 1440
+// minutes, so pinning 66.66 to the day scales every other rung by
+// sqrt(1024/1440) = 0.8433 — the numbers below are those document numbers x 0.8433
+// (1 -> 0.84 ... 64 -> 53.97 at the 1024 rung, and the day itself at 66.66).
+// There is no third option: "every rung = 2 x the one below THROUGH 66.66 at
+// 1440" would need 360 min for the rung under the day, i.e. H4 = 33.33% and
+// H1 = 16.66%; against the master's own strip on XAUUSD H1 (M1 7, M5 16, M15 27,
+// H1 55, H4 109, D1 268, W1 709, MN1 1468) that draws H1 at 67 pips, 22% wide.
+// So H4 -> D1 stays x5.625 in minutes (x2.372 in pct) instead of x4: the ONE
+// non-quadrupling step, and it is sqrt(5.625), not a mistake.
+//
+// Every adjacent ratio, checked against the law (none is a fit, all are sqrt):
+//     3.5133 /  1.7566 = 2.0000 = sqrt(4)      66.6600 / 28.1063 = 2.3717 = sqrt(5.625)
+//     7.0266 /  3.5133 = 2.0000 = sqrt(4)      94.2715 / 66.6600 = 1.4142 = sqrt(2)
+//    14.0532 /  7.0266 = 2.0000 = sqrt(4)     176.3658 / 94.2715 = 1.8708 = sqrt(3.5)
+//    28.1063 / 14.0532 = 2.0000 = sqrt(4)     365.1119 /176.3658 = 2.0701 = sqrt(30/7)
+//
+// MINUTES each value is computed from. The last three NAMES are legacy 4^k labels
+// (D2+H20+M16 = 4096, D11+H9+M4 = 16384, D45+H12+M16 = 65536 minutes); their
+// VALUES are the calendar rows, because a week is 7 days and a month is 30, not
+// 11.4 and 45.5 — which is what the master's own strip prints (W1 = 709 =
+// 2.646 x D1 = sqrt(7), MN1 = 1468 = 5.477 x D1 = sqrt(30)).
 const double MODIFIED_FRACTAL_PERCENTAGES[] = {
-    0.0208,   // M1: 2.08%
-    0.0417,   // M4: 4.17%
-    0.0833,   // M16: 8.33%
-    0.1666,   // H1+M4: 16.66%
-    0.3333,   // H4+M16: 33.33%
-    0.6666,   // H17+M4: 66.66%  
-    1.3332,   // D2+H20+M16: 133.32%
-    2.6664,   // D11+H9+M4: 266.64%
-    5.3328    // D45+H12+M16: 533.28%
+    0.017566,   // M1:           1.7566%   (     1 min)
+    0.035133,   // M4:           3.5133%   (     4 min)  x2
+    0.070266,   // M16:          7.0266%   (    16 min)  x2
+    0.140532,   // H1+M4:       14.0532%   (    64 min)  x2
+    0.281063,   // H4+M16:      28.1063%   (   256 min)  x2
+    0.666600,   // H17+M4:      66.6600%   (  1440 min - THE DAY, the anchor)
+    0.942715,   // D2+H20+M16:  94.2715%   (  2880 min - 2 days)
+    1.763658,   // D11+H9+M4:  176.3658%   ( 10080 min - 7 days)
+    3.651119    // D45+H12+M16:365.1119%  ( 43200 min - 30 days)
 };
 
 //==============================================================================

@@ -13,7 +13,22 @@ double CalculateStandardPercentage(const int timeInMinutes) {
         if(s_cachedMinutes[c] == timeInMinutes) return s_cachedResults[c];
     }
     int baseTimeMinutes = 1;
-    double basePercentage = 2.083;  // Adjusted so 1024min = 66.66%
+    //--- P-TH-17 (2026-10-29) — THE 66.66 BELONGS TO THE DAY, NOT TO THE 1024-MINUTE RUNG.
+    //
+    // This ladder is a sqrt law of the timeframe's minutes (2^(log4(min)) IS
+    // sqrt(min)), and 66.66 is the professor's DAILY number — the APR table's
+    // 66.66 is the day's ability, every other row is its fraction. The seed used
+    // to be 2.083, picked so the value reached 66.66 at 1024 minutes, which is
+    // the H17+M4 fractal rung and NOT a day: a day is 1440 minutes. Every
+    // standard column therefore came out sqrt(1440/1024) = 1.1858x too large, so
+    // the strip disagreed with the ladder drawn on the chart of the SAME
+    // timeframe (D1 read 318.2 pips where the ladder's own step was 268).
+    //
+    // Measured against the master's strip on one XAUUSD H1 chart, one anchor
+    // price, eight columns: M1 7, M5 16, M15 27, H1 55, H4 109, D1 268, W1 709,
+    // MN1 1468. All eight sit on 66.66 x sqrt(min/1440) to within a pip, and this
+    // seed reproduces them: 66.66 / sqrt(1440) = 1.756646.
+    double basePercentage = 1.756646;  // 66.66% at 1440 min (the day)
     double result;
     if(timeInMinutes <= baseTimeMinutes) {
         result = basePercentage / 100.0;
