@@ -15,6 +15,22 @@
 //|  A==0 decodes to the factory preset: a chart that never touched a  |
 //|  slot IS the preset — no init pass, no migration stamp.            |
 //|                                                                  |
+//|  P-SESS-13 — THE FRAME BOUNDARY (2026-10-30). MEASURED on a GMT+2   |
+//|  broker (AMarkets, XAUUSD M15, 30 Oct 11:04 server): the LDN box    |
+//|  was painted 08:00-17:00 CHART time where 10:00-19:00 is right, and |
+//|  TYO/NY were the same 2 h early — the whole family sat exactly      |
+//|  `server - UTC` to the left. The engine resolved the right UTC      |
+//|  instant and this module handed it straight to ObjectMove, whose    |
+//|  time axis IS the broker's clock (TimeCurrent/Time[]), so a UTC     |
+//|  clock reading became a server wall time. Every instant this module |
+//|  HANDS OUT is now the chart's own frame and every instant it TAKES  |
+//|  is that same frame. Since P-SESS-20 that frame is the LEARNED      |
+//|  broker delta (SessModelLiveDeltaMin, snapped to 30 min and held    |
+//|  while the feed is frozen), spent through SessChartFrameOf /        |
+//|  SessUtcFrameOf — never the raw (TimeCurrent - TimeGMT) pair, which |
+//|  decays one second per second on a dead feed. The raw pair is read  |
+//|  in exactly one place: the learn's own probe.                       |
+//|                                                                   |
 //|  DEPENDENCIES (all included BEFORE this file in both entries):     |
 //|    Sessions_Time.mqh  — the pure DST engine (P-SESS-01/02/03)      |
 //|    Runtime_A.mqh      — g_sess* mirrors + SESS_SLOTS/SESS_* bounds |
@@ -107,13 +123,27 @@ void SessSlotFactory(const int idx, SessSlot &s)
 {
    s.zone = SZ_AUTO_SERVER; s.customMin = 0;
    s.startMin = 480; s.endMin = 1020; s.days = SESS_DAYS_WEEKDAYS;
-   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;   // P-SESS-05: hollow ships — some builds slab a rectangle whatever FILL/BGCOLOR say (ZoneFactory.mqh:143)
+   // P-SESS-24 (2026-10-30): FILLED ships. MEASURED on the reporting chart's own
+   // saved objects (profiles\default\chart01.chr, 16:53): 367 SESS_ objects for 72
+   // windows, 4 of every 5 being one border SEGMENT (`_BET/_BEB/_BEL/_BER`) plus the
+   // tag — a hairline mesh 23 days deep. A filled body is ONE rectangle (border +
+   // wash, the build-proof P-SESS-05 body) so the same chart carries 145. Hollow is
+   // still a style the editor can pick; it is no longer the shipped stamp.
+   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;
    switch(idx)
    {
-      case 0: s.zone = SZ_TOKYO;     s.startMin = 540; s.endMin = 1080; s.col = 0; s.enabled = true;  break;
-      case 1: s.zone = SZ_LONDON;    s.startMin = 480; s.endMin = 1020; s.col = 1; s.enabled = true;  break;
-      case 2: s.zone = SZ_NEWYORK;   s.startMin = 480; s.endMin = 1020; s.col = 2; s.enabled = true;  break;
-      case 3: s.zone = SZ_SYDNEY;    s.startMin = 420; s.endMin = 960;  s.col = 3; break;
+      // P-SESS-16 (2026-10-30): THE FOUR SHIPPED PRESETS ARE THE CLASSIC TABLE, so a
+      // fresh chart draws the same four windows a session chart everywhere draws:
+      // Tokyo 00-09Z, London 07-16Z, New York 13-22Z, Sydney 21-06Z. With ZONE LAW
+      // OFF each preset's local hours resolve to exactly those instants (Tokyo +9,
+      // London +0, New York -5, Sydney +10) - measured: 09-18 / 07-16 / 08-17 / 07-16
+      // local. THE LOOK rides the same four: magenta (Tokyo), blue (London), coral
+      // (New York), amber (Sydney) - nearest ink in the 8-table to the palette the
+      // reference chart wears, and still four different chips.
+      case 0: s.zone = SZ_TOKYO;     s.startMin = 540; s.endMin = 1080; s.col = 6; s.enabled = true;  break;
+      case 1: s.zone = SZ_LONDON;    s.startMin = 420; s.endMin = 960;  s.col = 0; s.enabled = true;  break;
+      case 2: s.zone = SZ_NEWYORK;   s.startMin = 480; s.endMin = 1020; s.col = 4; s.enabled = true;  break;
+      case 3: s.zone = SZ_SYDNEY;    s.startMin = 420; s.endMin = 960;  s.col = 1; s.enabled = true;  break;   // P-SESS-14: Sydney ships ON (the user's ask - 07:00-16:00 Sydney)
       case 4: s.zone = SZ_FRANKFURT; s.startMin = 480; s.endMin = 1020; s.col = 4; break;
       case 5: s.zone = SZ_DUBAI;     s.startMin = 540; s.endMin = 1080; s.col = 5; break;
       case 6: s.zone = SZ_CHICAGO;   s.startMin = 480; s.endMin = 1020; s.col = 6; break;
@@ -174,6 +204,83 @@ void SessSlotSet(const int idx, const SessSlot &s)
    g_sessSlot[i] = (double)SessSlotPack(s);
 }
 
+//--- P-UI-RESET-ALL (2026-10-30): every slot back to the factory table.
+//--- 0 IS the preset (SessSlotGet falls through to SessSlotFactory), so this
+//--- is the ONE writer that says "no slot has been edited" — the same state a
+//--- chart that never opened the sessions card is in. It is NOT a loop of
+//--- SessSlotSet(preset): that would stamp today's factory values into the
+//--- store, and a later preset change could no longer reach those charts.
+void SessSlotsResetToFactory()
+{
+   for(int i = 0; i < SESS_SLOTS; i++) g_sessSlot[i] = 0.0;
+   g_sessSlotsEdit = 0;
+}
+
+//+------------------------------------------------------------------+
+//| P-SESS-16 (2026-10-30): A LEGACY PRESET IS NOT A CHOICE.           |
+//| A saved slot that still carries the hours the OLD factory wrote    |
+//| was never edited - it is the shipped default wearing a stamp, and  |
+//| it keeps a chart on a table the build no longer ships. Those adopt |
+//| the current preset once, at the first tick; any OTHER hours are    |
+//| the user's and are left exactly as they are.                      |
+//+------------------------------------------------------------------+
+bool SessSlotIsLegacyPreset(const int idx, const SessSlot &s)
+{
+   if(idx > 3 || !s.enabled) return false;
+   bool zoneOk = (idx == 0 && s.zone == SZ_TOKYO)  || (idx == 1 && s.zone == SZ_LONDON) ||
+                 (idx == 2 && s.zone == SZ_NEWYORK) || (idx == 3 && s.zone == SZ_SYDNEY);
+   if(!zoneOk) return false;
+   SessSlot cur; SessSlotFactory(idx, cur);
+   if(s.startMin == cur.startMin && s.endMin == cur.endMin) return false;   // already current
+   if(idx == 0) return (s.startMin == 540 && s.endMin == 1080);             // the old Tokyo pair
+   return (s.startMin == 480 && s.endMin == 1020);                          // the old 08-17 pair
+}
+
+//+------------------------------------------------------------------+
+//| P-SESS-24 (2026-10-30): THE STYLE STAMP IS NOT A CHOICE.           |
+//| A slot whose every field is the CURRENT factory's except a style   |
+//| that equals the OLD factory's (OUTLINE) was never edited — it is   |
+//| the shipped default wearing the old code. MEASURED on the          |
+//| reporting chart: slot 0 packed 1,007,087,707,368,710 — zone 6,     |
+//| 09:00-18:00, weekdays, colour 6, enabled: the current preset to    |
+//| the field, hollow only because the old build stamped it so. It     |
+//| adopts the factory style once, so all four windows are one body.   |
+//| Any OTHER difference (hours, colour, days, zone, custom offset) is |
+//| the user's and is left exactly as it is.                           |
+//+------------------------------------------------------------------+
+bool SessSlotIsStyleStamp(const int idx, const SessSlot &s)
+{
+   if(idx > 3 || s.style != SESS_STYLE_OUTLINE) return false;
+   SessSlot cur; SessSlotFactory(idx, cur);
+   return (s.zone      == cur.zone   && s.customMin == cur.customMin &&
+           s.startMin  == cur.startMin && s.endMin == cur.endMin    &&
+           s.days      == cur.days   && s.col       == cur.col      &&
+           s.enabled   == cur.enabled);
+}
+
+bool SessSlotsMigrateLegacy(double &slots[])
+{
+   bool changed = false;
+   for(int i = 0; i < ArraySize(slots); i++)
+   {
+      long L = (long)slots[i];
+      if(L == 0) continue;                       // 0 IS the preset already (SessSlotGet)
+      SessSlot s; SessSlotUnpack(L, s);
+      if(SessSlotIsStyleStamp(i, s))             // P-SESS-24: the old hollow stamp
+      {
+         SessSlot f; SessSlotFactory(i, f);
+         slots[i] = (double)SessSlotPack(f);
+         changed = true;
+         continue;
+      }
+      if(!SessSlotIsLegacyPreset(i, s)) continue;
+      SessSlot f; SessSlotFactory(i, f);
+      slots[i] = (double)SessSlotPack(f);
+      changed = true;
+   }
+   return changed;
+}
+
 int SessEnabledCount()
 {
    int n = 0;
@@ -191,14 +298,134 @@ int SessEnabledCount()
 //| (ConvertServerToGMT — the same relay the level engine uses).      |
 //| Offline attach (TimeGMT()==0) answers 0: UTC is the honest        |
 //| stand-in for a frozen chart.                                      |
+//|                                                                   |
+//| P-SESS-17 (2026-10-30). MEASURED on the user's chart: bkr=55       |
+//| minutes while the broker is GMT+2, so every box edge landed at    |
+//| :54 instead of on the hour and the start of every session read    |
+//| wrong. The frame is `TimeCurrent() - TimeGMT()`: TimeGMT() is the |
+//| PC's UTC and keeps running, while TimeCurrent() is the SERVER's   |
+//| last tick and FREEZES the moment the terminal loses the feed — the|
+//| terminal's own log carries the instant:                           |
+//|   14:37:16  '1973395': connect failed [Invalid account]           |
+//| so from 14:37 local on, (srv - gmt) decayed one minute per minute |
+//| (120 -> 55 by 15:43) and every session edge slid with it.         |
+//| The delta is now LEARNED WHILE THE FEED IS LIVE (TimeCurrent       |
+//| advancing) and HELD verbatim while it is frozen, and it is       |
+//| snapped to the only grid a broker clock can sit on (30 minutes:   |
+//| +2:00, +5:30, +9:30 ...), so a first read taken mid-outage lands  |
+//| on :00 instead of :54 and never drifts again. The PC clock is NOT |
+//| the suspect: measured 0 s skew against the internet's own clock   |
+//| (2026-10-30 12:23 UTC).                                           |
 //+------------------------------------------------------------------+
+static int      s_sessDeltaMin = 0;        // the learned frame, minutes east of UTC
+static bool     s_sessDeltaOk  = false;   // false until a LIVE read has landed
+static datetime s_sessDeltaSeen = 0;      // the TimeCurrent() that read was taken on
+static int      s_sessDeltaHeld = 0;      // consecutive paints answered from the hold
+//--- P-SESS-21 (2026-10-30): THE LEARNED HOUR SURVIVES A RESTART.
+//--- MEASURED 16:29: a build attached while the feed was dead learned the OUTAGE'S
+//--- OWN DECAY (raw=449 s on a GMT+2 broker -> snapped 0) and held it forever, so
+//--- every box painted two hours early and the next restart learned garbage again.
+//--- The frame is now stored once, only when a LIVE read changed it, and adopted at
+//--- attach as an UNVERIFIED frame: it is spent until a real tick lands, then the
+//--- learn overwrites it. Key: <settings prefix>OV_SSBD (minutes east of UTC).
+static bool     s_sessDeltaStoreRead = false;
+static int      s_sessDeltaStored    = -999999;   // what the store already holds
+
+//--- P-SESS-23: the frame's own answer for the witness — one short word that says
+//--- WHICH door produced bkr, so "the boxes are 2 h early" is decidable from the log
+//--- instead of argued: pin / store / live / hold / none.
+static string   s_sessDeltaWhy = "none";
+
 int SessModelLiveDeltaMin()
 {
-   if(TimeGMT() <= 0) return 0;
+   //--- P-SESS-23 (2026-10-30): A PINNED HOUR OUTRANKS EVERY PROBE.
+   //--- Card 15's BROKER UTC row is -13 = AUTO (learn) and -12..+14 = hours east of
+   //--- UTC. MEASURED 16:53: the terminal lost its account at 14:37:09 and TimeCurrent()
+   //--- froze at 13:07:09 while TimeGMT() walked on, so no probe on this machine can
+   //--- see the true +2 before a login — and the user reads every box as an hour wrong.
+   //--- The pin is the one door that does not need a live feed.
+   if(g_sessSrvUtc >= -12 && g_sessSrvUtc <= 14)
+   {
+      s_sessDeltaHeld = 0;
+      s_sessDeltaWhy  = "pin";
+      return g_sessSrvUtc * 60;
+   }
+   if(TimeGMT() <= 0)
+   {
+      s_sessDeltaWhy = s_sessDeltaOk ? "store" : "none";
+      return s_sessDeltaOk ? s_sessDeltaMin : 0;
+   }
    datetime srv = TimeCurrent();
-   datetime gmt = ConvertServerToGMT(srv);
-   return (int)((srv - gmt) / 60);
+   //--- P-SESS-21: the store is consulted ONCE per attach, and only when nothing
+   //--- has been learned yet. Adopting it also marks the read as SEEN, so the very
+   //--- next call cannot mistake "no tick yet" for a live read and re-learn the
+   //--- outage's decay over a good stored hour.
+   if(!s_sessDeltaStoreRead)
+   {
+      s_sessDeltaStoreRead = true;
+      string k0 = g_settingsGVPrefix + "OV_SSBD";
+      if(!s_sessDeltaOk && GlobalVariableCheck(k0))
+      {
+         int v0 = (int)GlobalVariableGet(k0);
+         if(v0 >= -12 * 60 && v0 <= 14 * 60)
+         {
+            s_sessDeltaMin  = v0;
+            s_sessDeltaOk   = true;
+            s_sessDeltaSeen = srv;       // stored is NOT seen: wait for a real tick
+            s_sessDeltaStored = v0;
+         }
+      }
+   }
+   //--- P-SESS-25 (2026-10-30): A BROKER CLOCK IS A MULTIPLE OF 30 MINUTES.
+   //--- The old rule accepted any plausible pair, so a DEAD feed — whose
+   //--- TimeCurrent() stops while TimeGMT() keeps walking — handed the learn its own
+   //--- outage decay and snapped it onto the grid: MEASURED 16:52, raw=-894 s on a
+   //--- GMT+2 broker snapped to 0, and every window painted two hours early. A live
+   //--- pair sits ON the grid (a broker's clock is exact to the second, NTP aside);
+   //--- a frozen one drifts off it by the outage's own age. So the learn now asks
+   //--- three questions and writes nothing unless all three answer: the terminal is
+   //--- CONNECTED, the pair is ON the grid (|raw - nearest30| <= 2 min), and the
+   //--- server clock ADVANCED since the last read. Anything else holds the store.
+   datetime gmt = ConvertServerToGMT(srv);  // the project's one owner pair
+   int d = (int)((srv - gmt) / 60);
+   int nearest = (d >= 0) ? ((d + 15) / 30) * 30 : -(((-d) + 15) / 30) * 30;
+   bool onGrid   = (MathAbs(d - nearest) <= 2);
+   bool advanced = (srv > s_sessDeltaSeen);
+   bool liveRead = (IsConnected() && onGrid && advanced);
+   if(liveRead)
+   {
+      s_sessDeltaMin  = nearest;
+      s_sessDeltaOk   = true;
+      s_sessDeltaHeld = 0;
+      s_sessDeltaWhy  = "live";
+      //--- written only when a LIVE read CHANGED it: one compare, never a write
+      //--- per frame, so a still chart still costs zero syscalls here.
+      if(nearest != s_sessDeltaStored)
+      {
+         GlobalVariableSet(g_settingsGVPrefix + "OV_SSBD", (double)nearest);
+         s_sessDeltaStored = nearest;
+      }
+   }
+   else if(s_sessDeltaOk)
+   {
+      s_sessDeltaHeld++;                      // answered from the store, not from a probe
+      s_sessDeltaWhy = "hold";
+   }
+   else
+   {
+      s_sessDeltaWhy = "none";                // never learned and nothing stored
+   }
+   s_sessDeltaSeen = srv;
+   return s_sessDeltaOk ? s_sessDeltaMin : 0;
 }
+
+//--- the frame's own state, for the flushed witness (P-SESS-17): `held` counts
+//--- the paints answered from the frozen-feed snapshot, so a box that sits at
+//--- the wrong hour can be told from a box that is merely held still.
+int  SessModelDeltaHeldCount() { return s_sessDeltaHeld; }
+
+//--- P-SESS-23: which door answered `bkr` this frame: pin / store / live / hold / none.
+string SessModelDeltaWhy() { return s_sessDeltaWhy; }
 
 //--- the server-calendar anchors: noon is the day's stable probe (a
 //--- window can never straddle it: every offered zone sits within
@@ -225,6 +452,54 @@ int SessServerDayStamp()
 //| DST transition keeps its true length. Returns false when the zone |
 //| day is not masked.                                                |
 //+------------------------------------------------------------------+
+//--- P-SESS-15 (2026-10-30): WHICH OFFSET THE WINDOW IS MEASURED IN.
+//--- Two conventions ship side by side, and the user picks one:
+//---   g_sessDst ON  = the CITY's own clock (London 08:00-17:00 local, so
+//---                   07:00-16:00Z while Europe is on BST).
+//---   g_sessDst OFF = STANDARD time year-round, i.e. the classic FX table
+//---                   (Tokyo 00-09Z, London 08-17Z, NY 13-22Z, Sydney
+//---                   21-06Z) — what every session chart quotes.
+//--- The engine stays PURE: "no DST" is spelled SZ_CUSTOM carrying the
+//--- zone's own base offset, so its DST term is simply never asked for and
+//--- the golden vectors (tests/Biotak_Sessions_Time_Test.mq4) are untouched.
+int SessEffZone(const SessSlot &s, int &effCustom)
+{
+   effCustom = s.customMin;
+   if(g_sessDst) return s.zone;                                  // the city's own clock
+   if(s.zone == SZ_AUTO_SERVER || s.zone == SZ_UTC || s.zone == SZ_CUSTOM)
+      return s.zone;                                             // a clock or an explicit offset: nothing to strip
+   effCustom = SessZoneBaseMin(s.zone);                          // STANDARD time — no DST term
+   return SZ_CUSTOM;
+}
+
+//+------------------------------------------------------------------+
+//| P-SESS-20 (2026-10-30): THE CHART FRAME CANNOT DECAY.             |
+//|                                                                   |
+//| MEASURED 16:29 today: `[P-SESS] paint bkr=0 … srv=13:07:09         |
+//| gmt=12:59:40 raw=449 held=1` and every Tokyo edge read `:07`. The  |
+//| feed had been frozen since 14:37, so (TimeCurrent - TimeGMT) grew  |
+//| one second per second while TimeCurrent stood still, and           |
+//| ConvertGMTToServer() added that decay to every edge: the learned   |
+//| frame (SessModelLiveDeltaMin, P-SESS-17) was held correctly and    |
+//| then spent on top of a second, decaying copy of itself.            |
+//|                                                                   |
+//| These two are the only arithmetic the frame doors use. On a LIVE   |
+//| feed they are identical to the owner pair (a broker clock is a     |
+//| multiple of 30 minutes — the grid the learn snaps to), so nothing  |
+//| moves on a healthy terminal; on a frozen one the last learned hour |
+//| is kept instead of sliding. The RAW pair is read in exactly one    |
+//| place, SessModelLiveDeltaMin's own probe, and nowhere else.        |
+//+------------------------------------------------------------------+
+datetime SessChartFrameOf(const datetime utc, const int bkrDeltaMin)
+{
+   return (datetime)((long)utc + (long)bkrDeltaMin * 60);
+}
+
+datetime SessUtcFrameOf(const datetime chart, const int bkrDeltaMin)
+{
+   return (datetime)((long)chart - (long)bkrDeltaMin * 60);
+}
+
 bool SessSlotWindowForZoneDay(const SessSlot &s, const datetime zoneDayTs, const int bkrDeltaMin,
                               int &stamp, datetime &sU, datetime &eU)
 {
@@ -236,8 +511,15 @@ bool SessSlotWindowForZoneDay(const SessSlot &s, const datetime zoneDayTs, const
    int wEnd   = (int)zoneDayTs + s.endMin   * SESS_MIN_SEC;
    if(s.endMin <= s.startMin) wEnd += SESS_DAY_SEC;   // overnight window
    stamp = d.year * 10000 + d.mon * 100 + d.day;
-   sU = SessWallTsToUtc((datetime)wStart, s.zone, s.customMin, true, 0, SDST_NONE, bkrDeltaMin);
-   eU = SessWallTsToUtc((datetime)wEnd,   s.zone, s.customMin, true, 0, SDST_NONE, bkrDeltaMin);
+   int zOff = 0;
+   int zZone = SessEffZone(s, zOff);                  // P-SESS-15
+   sU = SessWallTsToUtc((datetime)wStart, zZone, zOff, true, 0, SDST_NONE, bkrDeltaMin);
+   eU = SessWallTsToUtc((datetime)wEnd,   zZone, zOff, true, 0, SDST_NONE, bkrDeltaMin);
+   //--- P-SESS-13: the edges leave this module in the CHART's frame (the
+   //--- frame ObjectMove/iBarShift/TimeCurrent all speak). The stamp above
+   //--- stays the ZONE day — it is the object-name key, not a coordinate.
+   sU = SessChartFrameOf(sU, bkrDeltaMin);            // P-SESS-20: the LEARNED frame, never the raw pair
+   eU = SessChartFrameOf(eU, bkrDeltaMin);
    return true;
 }
 
@@ -267,7 +549,9 @@ void SessCollectSlot(const int slot, const SessSlot &s, const int kFrom, const i
    for(int k = kFrom; k <= kTo; k++)
    {
       datetime ref = serverNoon + k * SESS_DAY_SEC;
-      datetime zoneWall = SessUtcToWallTs(ref, s.zone, s.customMin, true, 0, SDST_NONE, bkrDeltaMin);
+      int zOff2 = 0;                                  // P-SESS-15: the day is taken in the SAME offset as the window
+      int zZone2 = SessEffZone(s, zOff2);
+      datetime zoneWall = SessUtcToWallTs(ref, zZone2, zOff2, true, 0, SDST_NONE, bkrDeltaMin);
       MqlDateTime d;
       TimeToStruct(zoneWall, d);
       datetime zoneDay = SessUtcMake(d.year, d.mon, d.day, 0, 0);
@@ -279,12 +563,34 @@ void SessCollectSlot(const int slot, const SessSlot &s, const int kFrom, const i
 
 //+------------------------------------------------------------------+
 //| The next boundary of one slot (engine door, the countdown's one   |
-//| question): open or close, whichever comes first after `utc`.      |
+//| question): open or close, whichever comes first after `nowServer`.|
+//| P-SESS-13: chart frame in, chart frame out — the engine is asked  |
+//| in UTC, so the one conversion pair is spent here and nowhere else.|
 //+------------------------------------------------------------------+
-datetime SessSlotNextBoundary(const SessSlot &s, const datetime utc, const int bkrDeltaMin, bool &isOpen)
+datetime SessSlotNextBoundary(const SessSlot &s, const datetime nowServer, const int bkrDeltaMin, bool &isOpen)
 {
-   return SessNextBoundaryUtc(utc, s.startMin, s.endMin, s.days, s.zone, s.customMin,
-                              true, 0, SDST_NONE, bkrDeltaMin, isOpen);
+   int zOff = 0;                                      // P-SESS-15
+   int zZone = SessEffZone(s, zOff);
+   datetime b = SessNextBoundaryUtc(SessUtcFrameOf(nowServer, bkrDeltaMin), s.startMin, s.endMin, s.days,
+                                    zZone, zOff, true, 0, SDST_NONE, bkrDeltaMin, isOpen);
+   if(b <= 0) return b;
+   return SessChartFrameOf(b, bkrDeltaMin);           // P-SESS-20
+}
+
+//+------------------------------------------------------------------+
+//| Is one slot open NOW, asked in the chart's frame (P-SESS-13).     |
+//| The alert flip in SessionsTick used to hand TimeCurrent() to a    |
+//| UTC query, so a slot flipped `server - UTC` early. The frame now  |
+//| belongs to this module: the caller never converts anything.       |
+//+------------------------------------------------------------------+
+bool SessSlotIsOpenNow(const SessSlot &s, const datetime nowServer, const int bkrDeltaMin)
+{
+   if(!s.enabled) return false;
+   int ds; datetime sU, eU;
+   int zOff = 0;                                      // P-SESS-15
+   int zZone = SessEffZone(s, zOff);
+   return SessWindowAt(SessUtcFrameOf(nowServer, bkrDeltaMin), s.startMin, s.endMin, s.days, zZone, zOff,
+                       true, 0, SDST_NONE, bkrDeltaMin, ds, sU, eU);   // P-SESS-20
 }
 
 //--- window state against `now`

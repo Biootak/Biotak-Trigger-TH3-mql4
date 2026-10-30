@@ -354,15 +354,17 @@ string PnlFormat(const int item,const int row,const double v)
    // this function's `row` is a DISPLAY row and 16/17/4 are ADDRESSES, which is exactly
    // why the first cut of this guard never fired and the two chips kept reading "-1%".
    // A slider parked at its own left end would otherwise read as a deliberate 0% —
-   // the one thing it is not.
-   if(v < 0 && minV < 0) return "AUTO";
+   // the one thing it is not. P-SESS-23: the LEFT END only (`v <= minV`), because a
+   // BROKER UTC row's own range runs through negative hours (-12..+14) and -12 IS a
+   // real answer, not AUTO.
+   if(v < 0 && minV < 0 && v <= minV + 0.0001) return "AUTO";
    if(PnlIsStyleRow(item,row)) return StyleName((int)MathRound(v));
    if(unit=="%") return IntegerToString((int)MathRound(v))+"%";
    if(unit=="x") return DoubleToStr(v,1);
    // P-UI-26: unit-suffixed chips (COUNT SIZE 12pt, COUNT GAP 6px, MAGNET
    // SENS 50p) — the chip is 46px, longest live value "100%"
    // is 4 chars, so suffixed values always fit; bare numbers hid the unit.
-   if(unit=="pt" || unit=="px" || unit=="p" || unit=="R")
+   if(unit=="pt" || unit=="px" || unit=="p" || unit=="R" || unit=="h")
       return IntegerToString((int)MathRound(v))+unit;
    return IntegerToString((int)MathRound(v));
 }

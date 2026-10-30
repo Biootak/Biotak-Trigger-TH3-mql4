@@ -122,7 +122,8 @@ void OnDeinitHandler(const int reason) {
     ResetHideAllState();
     BumpTfEpoch();
 #ifndef BUILD_LITE
-    TH3PivotMarkersClear();     // P-TH3-P6: our chart namespace leaves with us (UI half — P-BUILD-01)
+    TH3PivotMarkersClear();     // P-TH3-P6: our chart namespace leaves with us (UI half - P-BUILD-01)
+    ObjectsDeleteAll(0, "LM_prev_");   // P-MT4-LEGPREVIEW: a FIXED name, outside inpObjectPrefix AND TH3_LEG_PREFIX (the sweep below) — a cancelled draw (TF switch / params / chart close) left the dashed line for good; MT5 twin = P-MT5-LEGPREVIEW
 #endif
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
     HRayOnDeinit(reason); PathOnDeinit(reason);   // P-HR-01 / P-UI-136: never leave a stuck arm behind

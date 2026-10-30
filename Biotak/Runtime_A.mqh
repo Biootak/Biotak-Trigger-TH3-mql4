@@ -220,6 +220,7 @@ static ENUM_COMBO_STEP_TYPE g_comboComp2Step = COMBO_STEP_TH;     // [05] inpCom
 #define SESS_SLOTS      8
 #define SESS_HIST_MAX   40     // boxes: 0..40 zone days back
 #define SESS_FUT_MAX    5      // ghosts: 0..5 upcoming sessions
+#define SESS_FILL_MAX   100    // P-SESS-14: the filled body's ink kept (%) - 0 = no fill ink
 static bool   g_sessMaster = false;      // [15] master (ring cell + card 15 row 0)
 static int    g_sessHistDays = 5;        // [15] days that get a box
 static int    g_sessFutDays = 1;         // [15] upcoming-session ghosts
@@ -230,6 +231,9 @@ static bool   g_sessPrior = false;       // [15] prior session H/L (dashed)
 static bool   g_sessOverlap = true;      // [15] overlap rectangles (today)
 static bool   g_sessCountdown = true;    // [15] next-boundary countdown text
 static bool   g_sessAlerts = false;      // [15] open/close alerts
+static int    g_sessFill = 14;           // [15] LOOK (P-SESS-14): filled body's ink kept in % (14 == the shipped tint)
+static bool   g_sessDst = false;         // [15] ZONE (P-SESS-15): true = the city's own clock (DST), false = standard time year-round
+static int    g_sessTv = 0; static bool g_sessStrip = true; static int g_sessSrvUtc = -13;   // [15] TV LEVELS (P-SESS-18: 0=off 1=mid 2=mean 3=vwap 4=trend 5=all — OFF is TradingView's own default: Range only) + STRIP (P-SESS-19: the bottom divider) + BROKER UTC (P-SESS-23: -13 = AUTO learn, -12..+14 = hours east of UTC PINNED — the one door that needs no feed)
 static int    g_sessSlotsEdit = 0;       // [15] editor's picked slot (view only)
 static double g_sessSlot[SESS_SLOTS];    // [15] packed slot configs (0 = factory preset)
 
@@ -1186,6 +1190,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "SSOL", g_sessOverlap ? 1 : 0);
    RSSetNext(p + "SSCD", g_sessCountdown ? 1 : 0);
    RSSetNext(p + "SSAL", g_sessAlerts ? 1 : 0);
+   RSSetNext(p + "SSFA", g_sessFill); RSSetNext(p + "SSDZ", g_sessDst ? 1 : 0); RSSetNext(p + "SSTV", g_sessTv); RSSetNext(p + "SSTS", g_sessStrip ? 1 : 0); RSSetNext(p + "SSBU", g_sessSrvUtc);   // P-SESS-14/15/18/19/23 (one line: the 1500 ceiling)
    for(int ss = 0; ss < SESS_SLOTS; ss++)
       RSSetNext(p + "SS" + IntegerToString(ss), g_sessSlot[ss]);
    RSShadowCommit();
@@ -1413,6 +1418,7 @@ void RuntimeSettingsLoadOverrides()
     if(GlobalVariableCheck(p + "SSOL")) g_sessOverlap  = (GlobalVariableGet(p + "SSOL") > 0.5);
     if(GlobalVariableCheck(p + "SSCD")) g_sessCountdown = (GlobalVariableGet(p + "SSCD") > 0.5);
     if(GlobalVariableCheck(p + "SSAL")) g_sessAlerts   = (GlobalVariableGet(p + "SSAL") > 0.5);
+    if(GlobalVariableCheck(p + "SSFA")) g_sessFill  = ClampSettingInt((int)GlobalVariableGet(p + "SSFA"), 0, SESS_FILL_MAX); if(GlobalVariableCheck(p + "SSDZ")) g_sessDst = (GlobalVariableGet(p + "SSDZ") > 0.5); if(GlobalVariableCheck(p + "SSTV")) g_sessTv = ClampSettingInt((int)GlobalVariableGet(p + "SSTV"), 0, 5); if(GlobalVariableCheck(p + "SSTS")) g_sessStrip = (GlobalVariableGet(p + "SSTS") > 0.5); if(GlobalVariableCheck(p + "SSBU")) g_sessSrvUtc = ClampSettingInt((int)GlobalVariableGet(p + "SSBU"), -13, 14);   // P-SESS-14/15/18/19/23
     for(int ss = 0; ss < SESS_SLOTS; ss++)
        if(GlobalVariableCheck(p + "SS" + IntegerToString(ss)))
           g_sessSlot[ss] = GlobalVariableGet(p + "SS" + IntegerToString(ss));

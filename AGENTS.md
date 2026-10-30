@@ -430,13 +430,14 @@ capture FAILS the build (`[FAIL] real pixels gate (strict)`). MEASURED 2026-10-0
 it was added: `fresh 0 · stale 0 · missing 25`. `tools/before-after.html` prints the same
 verdict on the shot itself (which build's pixels, and how old).
 
-**Deploy is a restart, and it is opt-in.** MT4 runs what it loaded at attach; a
-fresh ex4 is a file until the terminal restarts or the indicator is removed and
-re-added per chart. `-RestartTerminal` closes MT4 (gracefully first, forced after
-25 s) and relaunches each instance with its own path and flags, so every chart
-reloads from the new ex4 in one step. It runs only on full success, only when
-asked — killing the terminal also stops anything else it hosts. Without the flag,
-a build ends with `NEXT: remove and re-add the indicator in MT4.`
+**Deploy is a restart, and it is NOT optional any more.** MT4 runs what it loaded at
+attach; a fresh ex4 is a file until the terminal restarts or the indicator is removed
+and re-added per chart. The user's standing instruction (2026-10-30): *«ریستارت ترمینال
+براش بزن همیشه»* — so `build-logs\.restart-pref` is pinned `on` and every successful
+build closes MT4 (gracefully first, forced after 25 s) and relaunches each instance with
+its own path and flags, so every chart reloads from the new ex4 in one step. Flip it only
+with `-NoRestart`; `-Restart` writes the preference back on. A build that ends with
+`NEXT: remove and re-add` is now a FAILED deploy, not a normal one.
 
 **Both entries are built, always.** `-Project all` is the Main entry only (its
 "installed" leg is the same file through the junction, so it is one build, not

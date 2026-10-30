@@ -1035,6 +1035,17 @@ bool PnlSkinButtonAct(const int mx,const int my)
    const int item = g_PnlOpen;
    if(item < 0 || item == 13) return false;   // the strip owns its own buttons
    // ── the footer pair ──
+   // P-UI-RESET-ALL (2026-10-30): the GENERAL card's third pill. Read back from
+   // the button it was painted on (P-UI-79), never re-derived — and answered
+   // BEFORE `rst`, because on this one card the two pills sit in the same row.
+   if(item == 14 && PnlCtrlRectHit(PnlHead(item,"ral"),mx,my,PNL_BTN_PAD))
+   {
+      UIPressAct("ral");
+      const int fa = PnlResetAll();
+      _LOG_GATE_W Print("[UI] panel reset ALL from item=", item, " flags=", fa);
+      RefreshDisplay(fa);
+      return true;
+   }
    if(PnlCtrlRectHit(PnlHead(item,"rst"),mx,my,PNL_BTN_PAD))
    {
       UIPressAct("rst");

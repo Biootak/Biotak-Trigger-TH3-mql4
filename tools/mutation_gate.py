@@ -2933,11 +2933,11 @@ MUTATIONS = [
     {
         "id": "P-SESS-g",
         "gate": "regression",
-        "rule": "P-SESS-05: the factory session box ships OUTLINE — some MT4 builds slab a rectangle whatever FILL/BGCOLOR say (ZoneFactory.mqh:143)",
-        "what": "the factory style flips back to FILLED — a fresh chart paints solid slabs again (shipped twice: the 14:58 and 16:31 reports)",
+        "rule": "P-SESS-24: the factory session box ships FILLED — ONE rectangle per window (145 objects on the reporting chart) instead of the four-edge mesh (367)",
+        "what": "the factory style flips back to the mesh — a fresh chart paints four border segments per window again",
         "file": "Biotak/Sessions_Model.mqh",
-        "find": "   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;",
-        "replace": "   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;   // MUTATION",
+        "find": "   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;",
+        "replace": "   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;   // MUTATION",
         "expect": "P-SESS",
     },
     {
@@ -3023,8 +3023,10 @@ MUTATIONS = [
         "rule": "P-SESS-10: the bar scan ends at t2 - 1 — the bar opening at the window end is the next window's first bar",
         "what": "the end-bar exclusion is gone — every past window counts the next window's first bar",
         "file": "Biotak/Sessions_Draw.mqh",
-        "find": "   int i2 = iBarShift(NULL, 0, t2 - 1, false);",
-        "replace": "   int i2 = iBarShift(NULL, 0, t2, false);   // MUTATION: end bar counted",
+        "find": "   int i2 = iBarShift(NULL, 0, t2 - 1, false);\n"
+                "   if(i1 < 0 || i2 < 0) return false;",
+        "replace": "   int i2 = iBarShift(NULL, 0, t2, false);\n"
+                   "   if(i1 < 0 || i2 < 0) return false;   // MUTATION: end bar counted",
         "expect": "P-SESS",
     },
     #--- P-SESS-11 (2026-10-20) — A CLOSED BAR IS NOT RE-COMPARED. The extend only
@@ -3055,6 +3057,22 @@ MUTATIONS = [
         "find": "   if(iBars(NULL, 0) <= 0) return;",
         "replace": "   // MUTATION: a zero-bar rebuild wipes",
         "expect": "P-SESS",
+    },
+    #--- P-SESS-13 (2026-10-30) — THE FRAME BOUNDARY. MEASURED on a GMT+2 broker
+    #--- (AMarkets, XAUUSD M15, 30 Oct 11:04 server): LDN was painted 08:00-17:00
+    #--- chart time where 10:00-19:00 is the session, TYO/NY the same 2 h early —
+    #--- a UTC instant went straight into ObjectMove, whose axis is the broker's
+    #--- clock. The model now converts once; the inverse must fail 52h naming
+    #--- P-SESS-13.
+    {
+        "id": "P-SESS-q",
+        "gate": "regression",
+        "rule": "P-SESS-13: a window edge leaves the model in the CHART frame (the learned delta, spent once; no caller converts)",
+        "what": "the edge keeps the UTC reading — every box is painted server-minus-UTC to the left (the 2026-10-30 measurement)",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "   sU = SessChartFrameOf(sU, bkrDeltaMin);",
+        "replace": "   sU = sU;   // MUTATION: the edge leaves in UTC",
+        "expect": "a window edge leaves the model in UTC",
     },
     #--- P-UI-162 (2026-10-17) — THE RING'S ART IS THE BOX'S SIZE. MT4 blits a
     #--- bitmap 1:1 from the object's top-left and clips at XSIZE x YSIZE, so the
@@ -5735,6 +5753,319 @@ MUTATIONS = [
         "find": "      else\n         s_bkOwnKeyId = \"\";   // P-BK-123:",
         "replace": "      else\n         { }   // MUTATION: the miss is never retried\n         // P-BK-123:",
         "expect": "P-BK-121/122/123",
+    },
+
+    #--- P-PATH-BUG-6/7/9 — A PATH'S CHILDREN ARE SWEPT BY NAME (2026-10-30). The report:
+    #--- five blue dots in a row, no line under them, after the path was deleted. The dots
+    #--- are `_M<k>` discs (path_mid_dot.bmp, 11x11 RoyalBlue #4169E1), and every route
+    #--- that drops children used to walk 0..PathSegCount(id) — a count that answers 0 the
+    #--- moment the legs are gone, which is when every delete route runs. Each mutation puts
+    #--- one of those doors back; `P-PATH-BUG-6/7/9` in `tools/check-regressions.js` owns it.
+    {
+        "id": "P-PATH-BUG-9a",
+        "gate": "regression",
+        "rule": "a path's children are swept by NAME, never by the parent's count, and the delete prints its own `left=` proof (P-PATH-BUG-6/7/9)",
+        "what": "PathMidDrop walks the count again - the count is read after the legs died, so it answers 0 and every 50 % disc stays on the chart (the five blue dots)",
+        "file": "Biotak/PathTool.mqh",
+        "find": "   return PathChildrenDrop(id, \"_M\");",
+        "replace": "   int cn = PathSegCount(id);   // MUTATION: the count, read after the legs are gone\n   for(int ck = 0; ck < cn; ck++) ObjectDelete(0, PathMidName(id, ck));\n   return 0;",
+        "expect": "P-PATH-BUG-6",
+    },
+    {
+        "id": "P-PATH-BUG-6a",
+        "gate": "regression",
+        "rule": "a path's children are swept by NAME, never by the parent's count, and the delete prints its own `left=` proof (P-PATH-BUG-6/7/9)",
+        "what": "the child parse accepts a handle only again - an orphan `_M` disc is invisible to the attach heal, which is exactly the class the screenshot carries",
+        "file": "Biotak/PathTool.mqh",
+        "find": "   if(head != 72 && head != 77) return false;",
+        "replace": "   if(head != 72) return false;   // MUTATION: only a handle is a child",
+        "expect": "P-PATH-BUG-6",
+    },
+    {
+        "id": "P-PATH-BUG-6b",
+        "gate": "regression",
+        "rule": "a path's children are swept by NAME, never by the parent's count, and the delete prints its own `left=` proof (P-PATH-BUG-6/7/9)",
+        "what": "the delete stops printing the post-sweep `left=` reading - a delete that kept its discs reads exactly like a clean one (`segs=6` while five dots stay)",
+        "file": "Biotak/PathTool.mqh",
+        "find": "   PathWitness(\"swept id=\" + id + \" legs=\" + IntegerToString(legs) +\n"
+                "               \" mids=\" + IntegerToString(mids) +\n"
+                "               \" left=\" + IntegerToString(PathFamilyCount(id)));",
+        "replace": "   PathWitness(\"deleted \" + id);   // MUTATION: no post-sweep reading",
+        "expect": "P-PATH-BUG-6",
+    },
+    {
+        "id": "P-PATH-BUG-7a",
+        "gate": "regression",
+        "rule": "a path's children are swept by NAME, never by the parent's count, and the delete prints its own `left=` proof (P-PATH-BUG-6/7/9)",
+        "what": "the native-delete watcher keeps the ink row but drops the 50 % discs no more - a path deleted through the terminal's own object list leaves its dots",
+        "file": "Biotak/PathTool.mqh",
+        "find": "            PathMidDrop(pid);",
+        "replace": "            ;   // MUTATION: the discs outlive a native delete",
+        "expect": "P-PATH-BUG-6",
+    },
+    {
+        "id": "P-PATH-BUG-6c",
+        "gate": "regression",
+        "rule": "a path's children are swept by NAME, never by the parent's count, and the delete prints its own `left=` proof (P-PATH-BUG-6/7/9)",
+        "what": "the attach heal deletes silently - «nothing happened» cannot be told from «nothing found», and the report's own re-test has no line to read",
+        "file": "Biotak/PathTool.mqh",
+        "find": "               PathWitness(\"heal orphan id=\" + cid + \" child=\" + StringSubstr(nm, StringLen(pfx) + StringLen(cid)));",
+        "replace": "               ;   // MUTATION: the heal is silent",
+        "expect": "P-PATH-BUG-6",
+    },
+
+    #--- P-FIB-LV-SURPLUS - A SHRUNKEN LEVEL SET TAKES ITS CHILDREN WITH IT (2026-10-30).
+    #--- The pen's caps, wash and retired shadow are indexed by LEVEL; all three were swept
+    #--- 0..nw and `nw` IS the live count, so removing a level (the strip's own level chip
+    #--- ends in this sync) left that level's cap and halo standing at the old price with no
+    #--- pass able to reach them. Owned by `P-FIB-LV-SURPLUS` in tools/check-regressions.js.
+    {
+        "id": "P-FIB-LV-SURPLUS-a",
+        "gate": "regression",
+        "rule": "a fibo that loses a level loses its children - the cap/wash/shadow sweep runs from the live level count to FIBPEN_MAX_LEVELS and witnesses its own count",
+        "what": "the surplus sweep is bounded by the live count again - a removed level keeps its cap and its dotted halo at the old price, forever",
+        "file": "Biotak/FibPen.mqh",
+        "find": "   for(int lvx = nw; lvx < FIBPEN_MAX_LEVELS; lvx++)",
+        "replace": "   for(int lvx = nw; lvx < nw; lvx++)   // MUTATION: the sweep cannot see past the live set",
+        "expect": "P-FIB-LV-SURPLUS",
+    },
+
+    #--- P-MT4-LEGPREVIEW - THE LEG PREVIEW DIES WITH EVERY REASON (2026-10-30). `LM_prev_`
+    #--- is a fixed name: outside `inpObjectPrefix` and outside `TH3_LEG_PREFIX`, the only
+    #--- family REASON_REMOVE sweeps. MT5 shipped this fix on 2026-10-24; MT4 had no port.
+    {
+        "id": "P-MT4-LEGPREVIEW-a",
+        "gate": "regression",
+        "rule": "the leg preview leaves with every deinit reason, above the REASON_REMOVE branch",
+        "what": "the teardown sweeps no preview - a TF switch during a leg draw leaves the dashed line on the chart with no owner, forever",
+        "file": "Biotak/EventHandlers_Calc.mqh",
+        "find": "    ObjectsDeleteAll(0, \"LM_prev_\");",
+        "replace": "    // MUTATION: the preview outlives a TF switch",
+        "expect": "P-MT4-LEGPREVIEW",
+    },
+
+    #--- P-PERF-172 - A SWITCHED-OFF TAG DOES NOT BUY A FRAME (2026-10-30).
+    #--- `RefreshLiveCountdown` raised its frame flag before reading its own switch,
+    #--- so a tag that was already gone bought a FULL ChartRedraw once per second
+    #--- (3,600 an hour) for a label nothing draws. The flag is raised by a delete
+    #--- that really deleted now; this puts the assumption back.
+    {
+        "id": "P-PERF-172-a",
+        "gate": "regression",
+        "rule": "a switched-off countdown tag raises the frame flag only when a delete really deleted (probe first)",
+        "what": "the disabled branch deletes blind again - a chart with no tag repaints every object once per second, forever",
+        "file": "Biotak/Labels_Countdown.mqh",
+        "find": "      if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); s_cdDirty = true; }",
+        "replace": "      ObjectDelete(0, nm); s_cdDirty = true;   // MUTATION: the flag assumes a change",
+        "expect": "P-PERF-172",
+    },
+
+    #--- P-SESS-18 - THE FOUR TRADINGVIEW LEVELS (2026-10-30).
+    #--- TradingView's Sessions draws a Midpoint, a Mean, a VWAP and a least-squares
+    #--- Trendline beside every window's box. The card's row 13 chooses them, and the
+    #--- levels are ONE bar walk in SessTvFor. Three inverses: the window paint that
+    #--- stopped calling them, a level whose object name lost its spelling (so the one
+    #--- purge cannot reach it), and a row that paints OFF whatever is really drawn.
+    {
+        "id": "P-SESS-18-a",
+        "gate": "regression",
+        "rule": "every window paints its four TradingView levels from the same bar walk",
+        "what": "the window paint stops calling SessTvPaint - the row reads All and the chart draws nothing",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "            SessTvPaint(sl, wins[w].stamp, wins[w].sU, wins[w].eU, tvEnd, base, tip);",
+        "replace": "            SessTvPaintLost(sl, wins[w].stamp, wins[w].sU, wins[w].eU, tvEnd, base, tip);   // MUTATION",
+        "expect": "the TV levels are not painted per window",
+    },
+    {
+        "id": "P-SESS-18-b",
+        "gate": "regression",
+        "rule": "the four levels share one spellable name family so the one purge reaches them",
+        "what": "the midpoint's object tail loses its spelling - SessWipe can no longer sweep that level",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "SessWindowName(sl, stamp, \"TVM\")",
+        "replace": "SessWindowName(sl, stamp, \"TVX\")   // MUTATION",
+        "expect": "one of the four TradingView levels lost its name",
+    },
+    {
+        "id": "P-SESS-18-c",
+        "gate": "regression",
+        "rule": "the TV LEVELS row reads the live value it paints (P-DRAW-84's dead control class)",
+        "what": "row 13 returns 0 whatever g_sessTv holds - the dropdown shows Off while the chart draws all four",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "                if(row==13) return g_sessTv;               // P-SESS-18 the TV levels",
+        "replace": "                if(row==13) return 0;                      // MUTATION: the row never reads",
+        "expect": "have no READ",
+    },
+
+    #--- P-SESS-19 - THE BOTTOM STRIP (2026-10-30).
+    #--- The reported defect was «استریپ باکس رو می‌گیره»: a band anchored in PRICE lands
+    #--- on top of the session boxes. The strip is window pixels (CORNER_LEFT_LOWER) and
+    #--- has its own sweep. Both inverses are here, plus the persistence pair.
+    {
+        "id": "P-SESS-19-a",
+        "gate": "regression",
+        "rule": "the strip is painted in WINDOW pixels, never in price, so it cannot cover a box",
+        "what": "the block becomes a price-anchored OBJ_RECTANGLE - the band returns to the chart body",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE_LABEL, 0, 0, 0);",
+        "replace": "   if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE, 0, 0, 0);   // MUTATION",
+        "expect": "the strip is no longer a window-pixel band",
+    },
+    {
+        "id": "P-SESS-19-b",
+        "gate": "regression",
+        "rule": "the strip leaves with the sessions: one family, one sweep",
+        "what": "SessStripWipe stops deleting - the blocks stay on the chart after the master goes off",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   ObjectsDeleteAll(0, inpObjectPrefix + SESS_TAG + \"ST\", -1, -1);",
+        "replace": "   // MUTATION: the strip outlives its owner",
+        "expect": "the strip lost its own sweep",
+    },
+    {
+        "id": "P-SESS-19-c",
+        "gate": "regression",
+        "rule": "the strip and the levels survive an attach (SSTV / SSTS)",
+        "what": "the strip's own key is never saved - the card forgets the switch at the next attach",
+        "file": "Biotak/Runtime_A.mqh",
+        "find": " RSSetNext(p + \"SSTS\", g_sessStrip ? 1 : 0);",
+        "replace": " // MUTATION: the strip is not persisted",
+        "expect": "lost its persistence pair",
+    },
+
+    #--- P-SESS-20 - THE CHART FRAME CANNOT DECAY (2026-10-30).
+    #--- MEASURED 16:29 with the feed frozen since 14:37: `bkr=0 … raw=449 held=1`
+    #--- and every edge at `:07`. ConvertGMTToServer() re-added the decaying raw
+    #--- pair on top of the learned delta, so a dead feed slid the boxes by a second
+    #--- per second. The inverse is the raw pair back in a frame door.
+    {
+        "id": "P-SESS-20",
+        "gate": "regression",
+        "rule": "the frame doors spend the LEARNED delta; the raw pair is read once, in the learn",
+        "what": "an edge converts through ConvertGMTToServer again - a frozen feed slides every box one second per second",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "   eU = SessChartFrameOf(eU, bkrDeltaMin);",
+        "replace": "   eU = ConvertGMTToServer(eU);   // MUTATION: the raw pair decays",
+        "expect": "spends the RAW pair again",
+    },
+
+    #--- P-SESS-21 - THE LEARNED HOUR IS DURABLE (2026-10-30).
+    #--- MEASURED 16:29 with `No connection`: the attach learned the outage's decay
+    #--- (449 s -> snapped 0 on a GMT+2 broker) and every box painted 2 h early.
+    {
+        "id": "P-SESS-21-a",
+        "gate": "regression",
+        "rule": "an attach adopts the stored hour instead of learning the outage",
+        "what": "the store is never consulted - every restart during an outage starts blind and snaps the decay",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "      if(!s_sessDeltaOk && GlobalVariableCheck(k0))",
+        "replace": "      if(false && GlobalVariableCheck(k0))   // MUTATION: the store is ignored",
+        "expect": "the attach never adopts the stored hour",
+    },
+    {
+        "id": "P-SESS-21-b",
+        "gate": "regression",
+        "rule": "the store is written only when a LIVE read changed the hour (zero cost while still)",
+        "what": "the change guard goes - a still chart writes a global variable on every frame",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "      if(nearest != s_sessDeltaStored)\n"
+                "      {\n"
+                "         GlobalVariableSet(g_settingsGVPrefix + \"OV_SSBD\", (double)nearest);\n"
+                "         s_sessDeltaStored = nearest;\n"
+                "      }",
+        "replace": "      GlobalVariableSet(g_settingsGVPrefix + \"OV_SSBD\", (double)nearest);   // MUTATION\n"
+                   "      s_sessDeltaStored = nearest;",
+        "expect": "the store is written every frame",
+    },
+    {
+        "id": "P-SESS-21-c",
+        "gate": "regression",
+        "rule": "an adopted frame is remembered as stored, so it is never re-learned over",
+        "what": "the adoption forgets what the store held - the first call snaps the outage over a good hour",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "            s_sessDeltaStored = v0;",
+        "replace": "            // MUTATION: the adopted frame is not remembered",
+        "expect": "the adopted frame is not remembered as stored",
+    },
+    {
+        "id": "P-SESS-21-d",
+        "gate": "regression",
+        "rule": "a live learn stores the hour at all",
+        "what": "nothing is ever written - the durable home exists but is never filled",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "         GlobalVariableSet(g_settingsGVPrefix + \"OV_SSBD\", (double)nearest);",
+        "replace": "         // MUTATION: the hour is never stored",
+        "expect": "no durable home",
+    },
+
+    #--- P-SESS-22 - THE NAME SITS ABOVE ITS BOX (2026-10-30).
+    {
+        "id": "P-SESS-22",
+        "gate": "regression",
+        "rule": "the session name is painted above the range box, never on the candles",
+        "what": "the tag goes back inside the box (LEFT_UPPER at the high) - the reported mess",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "                  ANCHOR_LEFT_LOWER, tip);   // P-SESS-22: the name sits ABOVE the box (TradingView's range label), never on the candles",
+        "replace": "                  ANCHOR_LEFT_UPPER, tip);   // MUTATION: the tag is inside the box",
+        "expect": "the session name is back inside its box",
+    },
+
+    #--- P-SESS-24 - THE SHIPPED BODY IS ONE RECTANGLE (2026-10-30).
+    #--- MEASURED on the reporting chart: 367 SESS_ objects for 72 windows, four of
+    #--- five being one border SEGMENT — a hairline mesh 23 days deep. FILLED is
+    #--- ONE rectangle (border + wash) and the same chart carries 145.
+    {
+        "id": "P-SESS-24-a",
+        "gate": "regression",
+        "rule": "a saved slot wearing the OLD hollow stamp adopts the factory body ONCE (P-SESS-24)",
+        "what": "the style stamp is never migrated - every chart that opened the sessions card keeps the four-edge mesh for good",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "      if(SessSlotIsStyleStamp(i, s))             // P-SESS-24: the old hollow stamp",
+        "replace": "      if(false)                                  // MUTATION: the old stamp is never adopted",
+        "expect": "P-SESS",
+    },
+
+    #--- P-UI-RESET-ALL - ONE BUTTON, THE WHOLE INDICATOR BACK (2026-10-30).
+    #--- The user's «دکمه ریست کلی اندیکاتور» for MT4 and MT5: the per-card Reset
+    #--- only walks its own card, so the global one is a WIPE of the OV_ store.
+    {
+        "id": "P-UI-RESET-ALL-a",
+        "gate": "regression",
+        "rule": "the GENERAL card paints the Reset All pill (P-UI-RESET-ALL)",
+        "what": "the pill is never painted - the global reset has no face",
+        "file": "Biotak/BiotakPanels_Build.mqh",
+        "find": '   if(item==14) PnlFooterBtn(item,"ral", px+PNL_PAD_X+PnlFootBtnW("Reset")+PNL_BTN_PAD*2, fy, "Reset All", false, "reset");   // P-UI-RESET-ALL: the GENERAL card\'s third pill — the one Reset that reaches EVERY card',
+        "replace": "   // MUTATION: the Reset All pill is gone",
+        "expect": "no longer paints the Reset All pill",
+    },
+    {
+        "id": "P-UI-RESET-ALL-b",
+        "gate": "regression",
+        "rule": "a press on the Reset All pill is answered by COORDINATES (P-DRAW-84)",
+        "what": "the coordinate hit test is dropped - the baked skin swallows the click and the pill is dead on a green compile",
+        "file": "Biotak/BiotakPanels_Hit.mqh",
+        "find": '   if(item == 14 && PnlCtrlRectHit(PnlHead(item,"ral"),mx,my,PNL_BTN_PAD))',
+        "replace": '   if(false && PnlCtrlRectHit(PnlHead(item,"ral"),mx,my,PNL_BTN_PAD))   // MUTATION: the pill is dead',
+        "expect": "no coordinate hit test reads the Reset All pill back",
+    },
+    {
+        "id": "P-UI-RESET-ALL-c",
+        "gate": "regression",
+        "rule": "the store wipe DELETES the OV_ keys, never writes a default over them (P-UI-RESET-ALL)",
+        "what": "the default is written over each key - the next attach re-applies it as the user's own choice and the reset undoes itself",
+        "file": "Biotak/Runtime_B.mqh",
+        "find": "      GlobalVariableDel(nm);",
+        "replace": "      GlobalVariableSet(nm, 0.0);   // MUTATION: the default is written over the key",
+        "expect": "no longer DELETES the OV_ keys",
+    },
+    {
+        "id": "P-UI-RESET-ALL-d",
+        "gate": "regression",
+        "rule": "the global reset returns the session slots to the factory table (P-UI-RESET-ALL)",
+        "what": "the slots keep the user's table - the sessions card survives the global reset",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "   SessSlotsResetToFactory();                          // (3) sessions back to the preset table",
+        "replace": "   // MUTATION: the session slots keep the user's table",
+        "expect": "leaves the session slots edited",
     },
 ]
 

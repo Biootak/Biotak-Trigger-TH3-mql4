@@ -137,24 +137,100 @@ void PathRegAdd(const string id)
 // tail is not digits), so the orphan walk and the delete watcher skip it without
 // a second test.
 string PathHandleName(const string id, const int k) { return PathPrefix() + id + "_H" + IntegerToString(k); }
-bool PathIsHandle(const string nm)
+// P-PATH-BUG-6 (2026-10-30) — THE ORPHAN WALK ASKS «IS THIS A CHILD, AND OF WHOM», once
+// for BOTH child families. `PathIdOfName` rightly refuses a tail that is not digits, so
+// a handle (`_H<k>`) AND a 50 % marker (`_M<k>`) land here — the one moment a leftover
+// from an older build can be healed without the user touching the chart again.
+bool PathChildParent(const string nm, string &id)
 {
+   id = "";
    string pfx = PathPrefix();
    if(pfx == "" || StringFind(nm, pfx) != 0) return false;
    string rest = StringSubstr(nm, StringLen(pfx));
-   int ulast = -1;
-   for(int i = 0; i < StringLen(rest); i++)
-      if(StringGetChar(rest, i) == 95) ulast = i;
-   return (ulast > 0 && ulast + 1 < StringLen(rest) && StringGetChar(rest, ulast + 1) == 72);   // 'H'
+   int us = -1;
+   for(int c = 0; c < StringLen(rest); c++)
+      if(StringGetChar(rest, c) == 95) us = c;
+   if(us <= 0 || us + 2 >= StringLen(rest)) return false;   // needs `_H<k>` / `_M<k>` with a digit
+   int head = (int)StringGetChar(rest, us + 1);
+   if(head != 72 && head != 77) return false;               // 'H' handle · 'M' 50 % marker
+   for(int c = us + 2; c < StringLen(rest); c++)
+   {
+      int ch = (int)StringGetChar(rest, c);
+      if(ch < 48 || ch > 57) return false;
+   }
+   id = StringSubstr(rest, 0, us);
+   return (id != "");
+}
+// P-PATH-BUG-6 (ported from the MT5 tree, 2026-10-30 — MT5 has carried it since
+// 2026-10-29) — A CHILD IS SWEPT BY NAME, NOT BY ITS PARENT'S COUNT.
+//
+// Both child families were dropped by walking 0..PathSegCount(id), which is only
+// correct while the parent is still whole. Every route that matters runs AFTER the
+// segments are gone — PathDelete deletes the legs first and PathRegDel itself is called
+// by the delete watcher once the last leg has died — so PathSegCount answers 0 and the
+// sweep deleted `_H0` and left `_H1.._Hn` on the chart. That is the user's screenshot
+// (XAUUSD M15, five blue dots in a row and no line under them): «بقیاش هنگام حذف نمیشه».
+// One walk of the object list answers for any state of the parent, so the sweep cannot
+// be run one line too late. Cost: one walk per DELETE (a user action), never per frame.
+int PathChildrenDrop(const string id, const string tail)
+{
+   if(id == "") return 0;
+   int dropped = 0;
+   const string pre = PathPrefix() + id + tail;
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)   // backwards: a delete shifts the tail
+   {
+      string nm = ObjectName(0, i, 0, -1);
+      if(StringFind(nm, pre) != 0) continue;
+      if(ObjectDelete(0, nm)) dropped++;
+   }
+   return dropped;
+}
+// P-PATH-BUG-9 (ported from the MT5 tree, 2026-10-30) — A SEGMENT IS SWEPT BY NAME, NOT
+// BY A COUNT. `PathSegCount` is the CONTIGUOUS PREFIX of the index run (it stops at the
+// first index it cannot find) and it is right to be: nearly every caller indexes 0..n-1.
+// The SWEEP is the one caller not shaped like that — a family whose run has a hole (a
+// refused ObjectCreate, a partial native delete) lost only the legs before the hole and
+// kept the rest on the chart forever. A segment's tail is all digits; a handle's is
+// `H<k>` and a marker's `M<k>`, so one name walk separates them without a second store.
+int PathSegSweep(const string id)
+{
+   if(id == "") return 0;
+   int dropped = 0;
+   const string pre = PathPrefix() + id + "_";
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, 0, -1);
+      if(StringFind(nm, pre) != 0) continue;
+      string tail = StringSubstr(nm, StringLen(pre));
+      int tl = StringLen(tail);
+      if(tl == 0) continue;
+      bool digits = true;
+      for(int c = 0; c < tl; c++)
+      {
+         int ch = (int)StringGetChar(tail, c);
+         if(ch < 48 || ch > 57) { digits = false; break; }
+      }
+      if(digits && ObjectDelete(0, nm)) dropped++;
+   }
+   return dropped;
+}
+// P-PATH-BUG-6 — WHAT THE FAMILY STILL WEARS, re-read by name. The delete's own proof:
+// `left=0` is the number that says the sweep took segments AND dots AND markers, where
+// a count could always read clean while the chart kept the children. One walk per
+// DELETE only (a user action), never per frame.
+int PathFamilyCount(const string id)
+{
+   int n = 0;
+   if(id == "") return 0;
+   const string pre = PathPrefix() + id + "_";
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)
+      if(StringFind(ObjectName(0, i, 0, -1), pre) == 0) n++;
+   return n;
 }
 // The handles go with the path, always as one family (P-LOG-10 law 4). It sits ABOVE
 // PathRegDel on purpose: P-UI-146 makes the registrar the one sweep, and MQL4 has no
 // prototype that is not a warning (warning 46), so the order carries the dependency.
-void PathHandlesDrop(const string id)
-{
-   int m = PathSegCount(id);
-   for(int k = 0; k <= m; k++) ObjectDelete(0, PathHandleName(id, k));
-}
+void PathHandlesDrop(const string id) { PathChildrenDrop(id, "_H"); }
 void PathRegDel(const string id)
 {
    //--- P-UI-146 (2026-10-02, user: «ابزار path که حذف میشه وابتگی‌هاهم حذف بشه» — the
@@ -279,16 +355,27 @@ string PathTooltip(const int segs)
 }
 void PathDelete(const string id, const string why)
 {
-   PathWitness("delete id=" + id + " segs=" + IntegerToString(PathSegCount(id)) + " why=" + why);
+   int segs = PathSegCount(id);
+   PathWitness("delete id=" + id + " segs=" + IntegerToString(segs) + " why=" + why);
    if(s_pathDrag == id) PathDragRelease();
    PathSelect("");                       // every handle is the path's CHILD (P-HR-07's rule, one way)
-   int n = PathSegCount(id);
-   for(int i = 0; i < n; i++) ObjectDelete(0, PathSegName(id, i));
+   //--- P-PATH-BUG-9: by NAME. The count loop that stood here ran while the legs were
+   //--- still alive, then PathRegDel asked the count again for the dots — after they were
+   //--- gone. Both sweeps now read the object list, so the order of the two is harmless.
+   int legs = PathSegSweep(id);
    PathRegDel(id);
    PathInkForget(id);            // P-UI-137: the ink row dies with its path (no leak)
-   PathMidDrop(id);              // P-UI-139: ...and its 50 % markers with it (one sweep)
+   int mids = PathMidDrop(id);   // P-UI-139: ...and its 50 % markers with it (one sweep)
    if(s_pathDrag == id) s_pathDrag = "";
    if(s_pathClick == id) s_pathClick = "";
+   //--- P-PATH-BUG-6: THE DELETE ANSWERS WITH ITS OWN NUMBERS. The line above is written
+   //--- with the pre-delete count, but a count is exactly what USED to hide the leftovers
+   //--- (`segs=6` read fine while five dots stayed). This second line is the family
+   //--- re-walked AFTER both sweeps: `left=0` is the only reading that proves «بقیاش
+   //--- نمیمونه» on the flushed channel (P-LOG-3), and `legs`/`mids` say what it found.
+   PathWitness("swept id=" + id + " legs=" + IntegerToString(legs) +
+               " mids=" + IntegerToString(mids) +
+               " left=" + IntegerToString(PathFamilyCount(id)));
    ChartRedraw();
 }
 void PathSessionClear()
@@ -373,7 +460,8 @@ void PathAdoptOrphans()
    string pfx = PathPrefix();
    if(pfx == "") return;
    int n = ObjectsTotal(0, 0, -1);
-   for(int i = 0; i < n; i++)
+   int healed = 0;   // P-PATH-BUG-6: the flushed witness's own count, not the chart's guess
+   for(int i = n - 1; i >= 0; i--)   // P-PATH-BUG-6: backwards — the sweep below deletes
    {
       string nm = ObjectName(0, i, 0, -1);
       if(StringFind(nm, pfx) != 0) continue;
@@ -387,19 +475,26 @@ void PathAdoptOrphans()
          //--- see them again because `PathIdOfName` rightly refuses to read a handle as a
          //--- segment. So the sweep lives here, where the family is already being walked, and
          //--- it costs one string scan per prefixed object ONCE per attach.
-         if(PathIsHandle(nm))
+         //--- P-PATH-BUG-6: AND THE 50 % MARKERS ARE THE SAME CHILD — one parse answers both,
+         //--- so a disc left by the deleted-path door is healed here too, not only a dot.
+         string cid = "";
+         if(PathChildParent(nm, cid) && PathSegCount(cid) == 0)
          {
-            string rest = StringSubstr(nm, StringLen(pfx));
-            int us = -1;
-            for(int c = 0; c < StringLen(rest); c++)
-               if(StringGetChar(rest, c) == 95) us = c;
-            if(us > 0 && PathSegCount(StringSubstr(rest, 0, us)) == 0) ObjectDelete(0, nm);
+            if(ObjectDelete(0, nm))
+            {
+               healed++;
+               //--- the tail as its own two bytes (`_H3` / `_M3`): which family, and which index
+               PathWitness("heal orphan id=" + cid + " child=" + StringSubstr(nm, StringLen(pfx) + StringLen(cid)));
+            }
          }
          continue;
       }
       PathRegAdd(id);
       PathNormalise(id);
    }
+   // P-LOG-3: one line per heal, on the flushed channel, once per attach — «nothing
+   // happened» is unprovable without a number from the tool's own side.
+   if(healed > 0) PathWitness("heal done orphans=" + IntegerToString(healed));
 }
 // P-UI-136 — THE STRIP WRITES THE WHOLE PATH, NEVER ONE SEGMENT. The strip's slot
 // writer aims at ONE name (`DrawSlotWrite(name, …)`), and a path is N segments: a
@@ -539,11 +634,12 @@ void PathLockSet(const string id, const bool on)
 //--- hand is busy with the terminal's own drawing".
 #define PATH_NO_GRAB_MS 400
 string PathMidName(const string id, const int k) { return PathPrefix() + id + "_M" + IntegerToString(k); }
-void PathMidDrop(const string id)
+int PathMidDrop(const string id)
 {
-   int m = PathSegCount(id);
-   for(int k = 0; k < m; k++) ObjectDelete(0, PathMidName(id, k));
-   ObjectDelete(0, PathMidName(id, m));
+   //--- P-PATH-BUG-9: by name, like the segments and the dots. The count loop that stood
+   //--- here was read AFTER the legs died (`PathDelete` deleted them first), so it answered
+   //--- 0 and dropped `_M0` alone; every other disc stayed on the chart.
+   return PathChildrenDrop(id, "_M");
 }
 bool PathMidGet(const string id)
 {
@@ -910,7 +1006,17 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
       string pid;
       if(PathIdOfName(sparam, pid))
       {
-         if(PathSegCount(pid) == 0) PathRegDel(pid);
+         if(PathSegCount(pid) == 0)
+         {
+            PathRegDel(pid);      // the handle family (P-UI-146's one sweep)
+            //--- P-PATH-BUG-7 (ported from the MT5 tree, 2026-10-30): AND THE STATE THAT
+            //--- OUTLIVED IT. A path that dies through the terminal's own object list never
+            //--- passes through PathDelete, so its ink row and its 50 % discs were left
+            //--- behind — the discs as OBJECTS ON THE CHART (a dot with no line under it),
+            //--- the ink row as a leak a later path with the same id would inherit.
+            PathInkForget(pid);
+            PathMidDrop(pid);
+         }
          if(s_pathDrag == pid) PathDragRelease();
          // The handles follow their path: a segment gone RE-PLACES the vertex set,
          // and the last one gone takes the whole family with it (one sweep).

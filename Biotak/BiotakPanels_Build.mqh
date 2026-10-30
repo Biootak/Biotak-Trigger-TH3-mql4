@@ -994,6 +994,7 @@ void PnlCreate(const int item)
    //    rounded skins with the preview's reset/check glyphs. R-PANELUI2.
    int fy=py+PNL_HEAD_H+pairN*PNL_ROW_H;
    PnlFooterBtn(item,"rst",  px+PNL_PAD_X, fy, "Reset", false, "reset");
+   if(item==14) PnlFooterBtn(item,"ral", px+PNL_PAD_X+PnlFootBtnW("Reset")+PNL_BTN_PAD*2, fy, "Reset All", false, "reset");   // P-UI-RESET-ALL: the GENERAL card's third pill — the one Reset that reaches EVERY card
    PnlFooterBtn(item,"done", px+cardW-PNL_PAD_X-PnlFootBtnW("Done"), fy, "Done", true, "check");
 }
 

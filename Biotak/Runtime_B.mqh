@@ -3,6 +3,39 @@
 #define RUNTIME_B_MQH
 
 //==============================================================================
+// P-UI-RESET-ALL (2026-10-30) — THE SETTINGS STORE'S ONE WIPE.
+//
+// The panel overrides live in `<prefix>OV_*` and are re-applied on EVERY attach
+// (RuntimeSettingsLoadOverrides), so a setting can only go back to its factory
+// value if its KEY goes away: writing the default over it would be re-read as
+// the user's own choice next time. This is the only door that deletes them, and
+// it takes the whole `OV_` family — the rows, the session slots (`OV_SS<n>`) and
+// the learned broker hour (`OV_SSBD`) — because every one of them is a user
+// override of an input.
+//
+// Returns the number of keys deleted, so the button's witness is a COUNT and not
+// a feeling. The caller re-seeds afterwards (RuntimeSettingsInit ->
+// LoadOverrides finds nothing -> the inputs' own defaults).
+//==============================================================================
+int RuntimeSettingsClearOverrides()
+{
+   const string p   = g_settingsGVPrefix + "OV_";
+   const int    len = StringLen(p);
+   if(StringLen(g_settingsGVPrefix) == 0 || len <= 3) return 0;   // never sweep with an unset prefix
+   int n = 0;
+   for(int i = GlobalVariablesTotal() - 1; i >= 0; i--)
+   {
+      const string nm = GlobalVariableName(i);
+      if(StringLen(nm) < len) continue;
+      if(StringSubstr(nm, 0, len) != p) continue;
+      GlobalVariableDel(nm);
+      n++;
+   }
+   GVShadowsInvalidate();   // the shadows claim keys that no longer exist
+   return n;
+}
+
+//==============================================================================
 // PER-TARGET TRANSPARENCY — every COLOR row's target is adjustable from the
 // palette footer TR track / mixer (PaletteKindTransparency). Same visual
 // fade curve as trigger/lines, same per-target static cache discipline:

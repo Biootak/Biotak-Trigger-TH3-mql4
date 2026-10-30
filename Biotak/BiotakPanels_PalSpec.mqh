@@ -392,7 +392,7 @@ void PnlSpecBuild(const int item)
       // keeps ONE home for the mode and makes card 4 reachable from here too.
       PnlSpecAdd(14, PNL_K_LEGACY, 14, 1, "tag", "", "", 0, "HOVER CHIP");
    }
-   // P-SESS — SESSIONS (15): the overview. 11 rows, WIDE (two columns): the
+   // P-SESS — SESSIONS (15): the overview. 13 rows, WIDE (two columns): the
    // master and its door first, then every drawn family as one switch, its two
    // reach sliders paired. Row order = address order (spec order is the paint).
    else if(item == 15)
@@ -407,7 +407,11 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(15, PNL_K_LEGACY, 7, 1, "layers");   // overlap
       PnlSpecAdd(15, PNL_K_LEGACY, 8, 1, "timer");    // countdown
       PnlSpecAdd(15, PNL_K_LEGACY, 9, 1, "sparkles"); // alerts
-      PnlSpecAdd(15, PNL_K_LEGACY, 10, 1, "tag");     // EDIT SESSIONS nav
+      PnlSpecAdd(15, PNL_K_LEGACY, 10, 1, "layers");   // FILL % (P-SESS-14 — the look)
+      PnlSpecAdd(15, PNL_K_LEGACY, 11, 1, "clock");    // ZONE LAW (P-SESS-15 — standard table / city clock)
+      PnlSpecAdd(15, PNL_K_LEGACY, 13, 1, "line");     // TV LEVELS (P-SESS-18 — Midpoint / Mean / VWAP / Trendline)
+      PnlSpecAdd(15, PNL_K_LEGACY, 14, 1, "ruler");    // STRIP (P-SESS-19 — the bottom session divider)
+      PnlSpecAdd(15, PNL_K_LEGACY, 12, 1, "tag");     // EDIT SESSIONS nav
    }
    // P-SESS — SESSION EDITOR (16): one slot at a time, chosen at row 0. 13 rows,
    // WIDE. The NAMED rows (preset/zone/style) are dropdowns by option count

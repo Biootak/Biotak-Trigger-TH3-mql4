@@ -1154,6 +1154,31 @@ bool FibPenSync(const string fibo, const bool dropAll)
        string snm = FibPenShwName(fibo, l6);
        if(ObjectFind(0, snm) >= 0) { ObjectDelete(0, snm); dirty = true; nDrop++; }
     }
+   //--- P-FIB-LV-SURPLUS (2026-10-30) - A SHRUNKEN LEVEL SET LEFT THREE FAMILIES BEHIND.
+   //--- Caps, wash and the retired shadow are indexed by LEVEL, and all three were
+   //--- swept 0..nw only - where `nw` IS the live level count (`DrawLevelCount`, 812).
+   //--- Every door that shrinks the set ends in THIS sync (the level chip's remove:
+   //--- `DrawStripLevelsToggle` act=del -> `DrawStripLevelsRewrite`:96 -> here:108; the
+   //--- undo of that edit: DrawStrip_Paint:901 -> here:910; a template with a shorter
+   //--- set: Toolbar_Tpl:188 -> here:197), so the cap and the wash of the removed index
+   //--- stayed standing at the OLD level's price - a solid block and its dotted halo
+   //--- with no level under them - and nothing could ever reach them: the profile rows
+   //--- below walk to FIBPEN_MAX_LEVELS, these three never did. Same class the Path tool
+   //--- shipped (P-PATH-BUG-6/9): a child family swept by a count the edit had already
+   //--- shrunk. One probe per index past the live set; a full 12-level fibo pays ZERO.
+   int sur = 0;
+   for(int lvx = nw; lvx < FIBPEN_MAX_LEVELS; lvx++)
+   {
+      string cn2 = FibPenCapName(fibo, lvx);
+      if(ObjectFind(0, cn2) >= 0) { ObjectDelete(0, cn2); dirty = true; nDrop++; sur++; }
+      string wn2 = FibPenWashName(fibo, lvx);
+      if(ObjectFind(0, wn2) >= 0) { ObjectDelete(0, wn2); dirty = true; nDrop++; sur++; }
+      string sn2 = FibPenShwName(fibo, lvx);
+      if(ObjectFind(0, sn2) >= 0) { ObjectDelete(0, sn2); dirty = true; nDrop++; sur++; }
+   }
+   if(sur > 0)
+      DrawStripDiagEmit("[drawstrip] FIBPEN surplus fibo=\"" + fibo + "\" nw=" +
+                        IntegerToString(nw) + " sur=" + IntegerToString(sur));
    for(int dl2 = 0; dl2 < FIBPEN_MAX_LEVELS; dl2++)
    {
       int from = (!need[dl2] ? 0 : wantN[dl2] + (coreN[dl2] ? 1 : 0));

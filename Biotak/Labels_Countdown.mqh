@@ -155,11 +155,26 @@ static bool s_cdDirty = false;
 void RefreshLiveCountdown()
 {
    string nm = LiveCountdownObjName();
-   s_cdDirty = true;   // deletes below are changes; CreateLive clears it when clean
+   // P-PERF-172 (2026-10-30): A SWITCHED-OFF TAG WRITES NOTHING, SO IT MUST NOT
+   // ASK FOR A FRAME. `s_cdDirty` is the 1 Hz caller's repaint gate
+   // (`TradePlanLiveTick` -> `if(s_cdDirty) ThrottledChartRedraw()`), and it
+   // used to be raised BEFORE the switch below was read, on the assumption
+   // that the two deletes are always "changes". They are changes only when the
+   // object is really there: on a chart where the tag was already removed both
+   // `ObjectDelete` calls are no-ops, and the flag then bought a FULL ChartRedraw
+   // of every object on the chart once per second - 60 a minute, 3,600 an hour -
+   // for a label nothing draws. MEASURED by construction: the 1 Hz gate at
+   // Labels_A.mqh:1378 is 1000 ms and CHART_REDRAW_THROTTLE_MS is 100, so the
+   // throttle never swallows it; the branch is reached every second while
+   // `inpShowLiveCountdown` is off or the indicator is F-muted.
+   // The flag now answers its own question - did a delete really delete? - so
+   // the steady case costs two probes, zero writes, zero frames.
+   s_cdDirty = false;
    if(!LiveCountdownEnabled())
    {
-      ObjectDelete(0, nm);
-      ObjectDelete(0, GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME);
+      if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); s_cdDirty = true; }
+      string legacy = GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME;
+      if(ObjectFind(0, legacy) >= 0) { ObjectDelete(0, legacy); s_cdDirty = true; }
       g_cdTagValid = false;
       return;
    }

@@ -5724,13 +5724,24 @@ function main() {
     // MEASURED on the reporting chart: every session box shipped as a SOLID
     // saturated slab — a rectangle renders filled whatever FILL says on some
     // MT4 builds, the same law ZoneFactory.mqh:143 pays with border segments.
-    // MEASURED AGAIN 16:31 after the deploy: the FILLED path (BGCOLOR = the
-    // 14% tint, FILL written true) still shipped as a solid slab — this build
-    // fills a rectangle with its COLOR; BGCOLOR and FILL are both unconsumed.
     // So the renderer routes by kind — HOLLOW = the four edge segments (the
     // only body that cannot slab), FILLED = the one rectangle with its fill
-    // CLAIMED (FILL written true) — and the FACTORY ships HOLLOW: the calm
-    // look may only ride the edges.
+    // CLAIMED (FILL written true).
+    //
+    // P-SESS-24 (2026-10-30) REVERSES THE SHIPPED STAMP, and the reason is a
+    // COUNT, not a taste: the reporting chart's own profile carried 367 SESS_
+    // objects for 72 windows, four of every five being one border SEGMENT
+    // (`_BET/_BEB/_BEL/_BER`) plus the tag — a hairline mesh 23 days deep. A
+    // filled body is ONE rectangle (border + wash), so the same chart carries
+    // 145. The calm look now rides the wash at 14 % (g_sessFill), which is what
+    // TradingView's own session boxes are (P-SESS-18/19 brought the TV levels
+    // and the divider for the same reason). HOLLOW stays a style the editor can
+    // pick, and it stays the four-edge body when it is picked.
+    //
+    // The reversal ships with its MIGRATION: a slot that still wears the old
+    // OUTLINE stamp (every other field equal to the current preset) adopts the
+    // factory body once, or every chart that ever opened the sessions card keeps
+    // the mesh for good.
     const sessDraw = linesOf(SESS_DRAW);
     if (!sessDraw) broken.push('Biotak/Sessions_Draw.mqh is gone — the session boxes have no renderer');
     else {
@@ -5742,8 +5753,14 @@ function main() {
     }
     const sessModel = linesOf(SESS_MODEL);
     if (!sessModel) broken.push('Biotak/Sessions_Model.mqh is gone — the session factory has no home');
-    else if (!/s\.style\s*=\s*SESS_STYLE_OUTLINE;/.test(codeOf(sessModel)))
-      broken.push('the factory session box left OUTLINE — FILLED slabs a fresh chart on the reporting build (ZoneFactory.mqh:143): the busy chart this entry was born from');
+    else {
+      const mCode = codeOf(sessModel);
+      if (!/s\.style\s*=\s*SESS_STYLE_FILLED;/.test(mCode))
+        broken.push('the factory session box is not FILLED — P-SESS-24 ships ONE rectangle per window (145 objects on the reporting chart) instead of the four-edge mesh (367), and a fresh chart is back on the mesh');
+      if (!/bool SessSlotIsStyleStamp\(const int idx, const SessSlot &s\)/.test(mCode) ||
+          !/if\(SessSlotIsStyleStamp\(i, s\)\)/.test(mCode))
+        broken.push('a saved slot wearing the OLD hollow stamp never adopts the factory body — every chart that opened the sessions card keeps the four-edge mesh for good (P-SESS-24)');
+    }
 
     // -- the LIVE session is bold, the past ones fade (P-SESS-06, 2026-10-17) -----
     // The user's ask: «سشن که لایو درش هستشم فرق بکنه استایل و غیره که بولد بشه و
@@ -5778,7 +5795,115 @@ function main() {
     }
   }
 
-  // -- 52b. P-UI-169 (2026-10-20): a HOLD on a card-less tool owns no card -----
+  // -- 52a. P-SESS-14/15 (2026-10-30): the LOOK and the ZONE LAW - both END TO END --
+  // Two rows joined the SESSIONS card and both must reach the picture, not just the
+  // store: the FILL % (P-SESS-14) and the ZONE LAW switch (P-SESS-15). A row that is
+  // painted but not READ is the dead-control class (P-DRAW-84): the slider would sit
+  // at 0 and the switch would look off while the boxes stayed put. And the law itself
+  // has two halves that must not drift apart - SessEffZone's OFF arm (standard time,
+  // the classic table) and its ON arm (the city's own clock) - because the ONE thing a
+  // user reads off this card is where a box starts, and a variant that skips it moves
+  // every edge by the hour its DST really moves.
+  {
+    const broken = [];
+    const model = codeOf(linesOf(SESS_MODEL) || []);
+    if (!/if\(g_sessDst\)\s*return\s+s\.zone;/.test(model))
+      broken.push('SessEffZone lost its ON arm - the city clock no longer answers (P-SESS-15)');
+    if (!/effCustom\s*=\s*SessZoneBaseMin\(s\.zone\);/.test(model) || !/return\s+SZ_CUSTOM;/.test(model))
+      broken.push('SessEffZone lost its OFF arm - "no DST" is no longer spelled SZ_CUSTOM + the zone base (P-SESS-15)');
+    if (!/int\s+zZone\s*=\s*SessEffZone\(s,\s*zOff\);/.test(model) ||
+        !/SessWallTsToUtc\(\(datetime\)wStart,\s*zZone,\s*zOff,/.test(model))
+      broken.push('the window edges stopped asking SessEffZone - the switch is stored and never read, so both conventions paint the same boxes (P-SESS-15)');
+    const apply = codeOf(linesOf(APPLY) || []);
+    if (!/if\(row==10\)\s*return\s+g_sessFill;/.test(apply))
+      broken.push('the FILL row has no READ - the slider paints 0 whatever the body really keeps (P-SESS-14, the dead-control class)');
+    if (!/else if\(row==10\)\s*\{\s*g_sessFill\s*=/.test(apply))
+      broken.push('the FILL row has no WRITE - the slider moves and no box changes (P-SESS-14)');
+    if (!/if\(row==11\)\s*return\s+g_sessDst\s*\?/.test(apply))
+      broken.push('the ZONE LAW row has no READ - the switch paints OFF while the windows wear the city clock (P-SESS-15)');
+    if (!/else if\(row==11\)\s*\{\s*g_sessDst\s*=/.test(apply))
+      broken.push('the ZONE LAW row has no WRITE - flipping it changes nothing on the chart (P-SESS-15)');
+    const rt = codeOf(linesOf(path.join(BIOTAK, 'Runtime_A.mqh')) || []);
+    if (!/RSSetNext\(p \+ "SSFA", g_sessFill\);/.test(rt) || !/RSSetNext\(p \+ "SSDZ", g_sessDst \? 1 : 0\);/.test(rt) ||
+        !/GlobalVariableCheck\(p \+ "SSFA"\)/.test(rt) || !/GlobalVariableCheck\(p \+ "SSDZ"\)/.test(rt))
+      broken.push('a SESSIONS row lost its persistence pair (SSFA / SSDZ) - the card forgets the look and the law at the next attach');
+    const palB = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalB.mqh')) || []);
+    // P-SESS-16: the four SHIPPED presets must stay the classic table, or a fresh
+    // chart draws a world nobody else draws. Each line is (local hours, base offset)
+    // that resolves to the quoted UTC window while ZONE LAW is OFF.
+    for (const [re, why] of [
+      [/case 0: s\.zone = SZ_TOKYO;\s+s\.startMin = 540; s\.endMin = 1080; s\.col = 6;/, 'Tokyo left 09:00-18:00 local / magenta — it no longer draws 00-09Z'],
+      [/case 1: s\.zone = SZ_LONDON;\s+s\.startMin = 420; s\.endMin = 960;\s+s\.col = 0;/, 'London left 07:00-16:00 local / blue — it no longer draws 07-16Z'],
+      [/case 2: s\.zone = SZ_NEWYORK;\s+s\.startMin = 480; s\.endMin = 1020; s\.col = 4;/, 'New York left 08:00-17:00 local / coral — it no longer draws 13-22Z'],
+      [/case 3: s\.zone = SZ_SYDNEY;\s+s\.startMin = 420; s\.endMin = 960;\s+s\.col = 1;/, 'Sydney left 07:00-16:00 local / amber — it no longer draws 21-06Z'],
+    ]) if (!re.test(model)) broken.push(why + ' (P-SESS-16)');
+    const draw = codeOf(linesOf(SESS_DRAW) || []);
+    if (!/if\(SessSlotsMigrateLegacy\(g_sessSlot\)\)/.test(draw))
+      broken.push('the legacy-preset migration lost its one caller — a chart saved by an older build keeps drawing the old table (P-SESS-16)');
+    if (!/\[P-SESS\] win slot=%d stamp=%d sU=%s eU=%s/.test(draw))
+      broken.push('the session box lost its flushed witness — every edge question goes back to guessing from a screenshot (P-SESS-15)');
+    if (!/label="ZONE LAW"/.test(palB) || !/label="FILL"/.test(palB))
+      broken.push('the two new SESSIONS rows lost their caption - a row with no name is a row nobody can use');
+    const spec = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalSpec.mqh')) || []);
+    if (!/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*11,\s*1,\s*"clock"\);/.test(spec) ||
+        !/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*12,\s*1,\s*"tag"\);/.test(spec))
+      broken.push('card 15 lost a spec row (the ZONE LAW switch or the EDIT SESSIONS nav) - the panel body and the row addresses disagree');
+    if (broken.length) {
+      failures.push('P-SESS-14/15: ' + broken.join('; ') + ' (Biotak/Sessions_Model.mqh + Biotak/BiotakPanels_PalSpec.mqh + Biotak/BiotakPanels_PalB.mqh + Biotak/BiotakPanels_Apply.mqh + Biotak/Runtime_A.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-14/15 the SESSIONS card\'s two new rows are end to end: FILL % (read + write + SSFA) and the ZONE LAW switch (SessEffZone\'s two arms, both edges asking it, read + write + SSDZ)');
+    }
+  }
+
+  // -- 52a2. P-SESS-18/19 (2026-10-30): THE TRADINGVIEW LEVELS AND THE STRIP ----
+  // TradingView's Sessions draws four price levels beside the box (Midpoint, Mean,
+  // VWAP, least-squares Trendline) and can mark the active session along the BOTTOM
+  // of the chart. Both are new rows on card 15, and both must be end to end: a row
+  // that is painted but never READ is the dead-control class (P-DRAW-84), and the
+  // strip must be laid out in WINDOW PIXELS - a price-anchored band is the one thing
+  // that would put it back on top of a session box (the reported defect).
+  {
+    const broken = [];
+    const spec = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalSpec.mqh')) || []);
+    const apply = codeOf(linesOf(APPLY) || []);
+    const palB = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalB.mqh')) || []);
+    const rt = codeOf(linesOf(path.join(BIOTAK, 'Runtime_A.mqh')) || []);
+    const draw = codeOf(linesOf(SESS_DRAW) || []);
+    if (!/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*13,\s*1,\s*"line"\);/.test(spec))
+      broken.push('card 15 lost the TV LEVELS row - the four TradingView levels have no door');
+    if (!/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*14,\s*1,\s*"ruler"\);/.test(spec))
+      broken.push('card 15 lost the STRIP row - the bottom divider has no switch');
+    if (!/if\(row==13\)\s*return\s+g_sessTv;/.test(apply) || !/if\(row==14\)\s*return\s+g_sessStrip\s*\?/.test(apply))
+      broken.push('the TV LEVELS / STRIP rows have no READ - both paint OFF whatever the chart really draws (P-SESS-18/19)');
+    if (!/else if\(row==13\)\s*\{\s*g_sessTv\s*=/.test(apply) || !/else if\(row==14\)\s*\{\s*g_sessStrip\s*=/.test(apply))
+      broken.push('the TV LEVELS / STRIP rows have no WRITE - flipping them changes nothing on the chart (P-SESS-18/19)');
+    if (!/RSSetNext\(p \+ "SSTV", g_sessTv\)/.test(rt) || !/RSSetNext\(p \+ "SSTS", g_sessStrip \? 1 : 0\)/.test(rt) ||
+        !/GlobalVariableCheck\(p \+ "SSTV"\)/.test(rt) || !/GlobalVariableCheck\(p \+ "SSTS"\)/.test(rt))
+      broken.push('a SESSIONS row lost its persistence pair (SSTV / SSTS) - the card forgets the levels and the strip at the next attach');
+    if (!/label="TV LEVELS"/.test(palB) || !/label="STRIP"/.test(palB))
+      broken.push('the two new SESSIONS rows lost their caption - a row with no name is a row nobody can use');
+    // the four levels: ONE bar walk, four objects, and every one of them inside the
+    // SESS_ family so the one purge (SessWipe) reaches them
+    if (!/void SessTvFor\(/.test(draw) || !/SessTvPaint\(sl, wins\[w\]\.stamp/.test(draw))
+      broken.push('the TV levels are not painted per window - SessTvFor/SessTvPaint lost a caller (P-SESS-18)');
+    if (!/SessWindowName\(sl, stamp, "TVM"\)/.test(draw) || !/SessWindowName\(sl, stamp, "TVE"\)/.test(draw) ||
+        !/SessWindowName\(sl, stamp, "TVW"\)/.test(draw) || !/SessWindowName\(sl, stamp, "TVT"\)/.test(draw))
+      broken.push('one of the four TradingView levels lost its name - the family has no single spelling (P-SESS-18)');
+    // the strip lives in WINDOW pixels, never in price: that is the whole reason it
+    // cannot cover a box, and it is the half a future edit would undo
+    if (!/OBJPROP_CORNER, CORNER_LEFT_LOWER/.test(draw) || !/OBJ_RECTANGLE_LABEL/.test(draw))
+      broken.push('the strip is no longer a window-pixel band - a price-anchored strip lands on top of the session boxes again (P-SESS-19)');
+    if (!/ObjectsDeleteAll\(0, inpObjectPrefix \+ SESS_TAG \+ "ST"/.test(draw))
+      broken.push('the strip lost its own sweep - its blocks stay on the chart after the sessions are turned off (P-SESS-19)');
+    if (!/SessStripTick\(\);/.test(draw))
+      broken.push('the strip tick lost its caller - the blocks never lay themselves out against the current view (P-SESS-19)');
+    if (broken.length) {
+      failures.push('P-SESS-18/19: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh + Biotak/BiotakPanels_PalSpec.mqh + Biotak/BiotakPanels_PalB.mqh + Biotak/BiotakPanels_Apply.mqh + Biotak/Runtime_A.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-18/19 the SESSIONS card draws TradingView\'s four levels (Midpoint/Mean/VWAP/Trendline, one bar walk) and the bottom strip in WINDOW pixels (never in price), both end to end with their persistence pair');
+    }
+  }
+
   // The four tools that own no card (Horizontal Ray, Path, Chart Scale, Hide)
   // fell through FeaturePanel's IDENTITY fallback, so a hold opened somebody
   // else's card (15 = Sessions, 16 = Session Editor) or none at all (17/18 are
@@ -6023,6 +6148,129 @@ function main() {
       failures.push('P-SESS-08..12: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
     } else {
       console.log('[PASS] P-SESS-08..12 the session scan is the chart\'s own: the ghost tag is not a fill child, a window outside the loaded history paints nothing (never the oldest bar), the window end is exclusive, a new bar rescans the live window, and a zero-bar TF switch keeps the family and retries instead of storing an empty build');
+    }
+  }
+
+  // -- 52h. P-SESS-13 (2026-10-30): the FRAME BOUNDARY ---------------------------
+  // MEASURED on a GMT+2 broker (AMarkets, XAUUSD M15, 30 Oct 11:04 server): every
+  // box sat exactly 2 h to the LEFT - LDN painted 08:00-17:00 chart time where
+  // 10:00-19:00 is the session, TYO/NY likewise. The engine resolved the right UTC
+  // instant and the renderer handed it straight to ObjectMove, whose time axis IS
+  // the broker's clock (TimeCurrent/Time[]), so a UTC clock reading became a server
+  // wall clock. The model now converts once through the project's one owner pair
+  // (ConvertGMTToServer / ConvertServerToGMT) and the caller converts nothing.
+  {
+    const broken = [];
+    const sm = linesOf(SESS_MODEL);
+    const sd13 = linesOf(SESS_DRAW);
+    if (!sm) broken.push('Biotak/Sessions_Model.mqh is gone - the frame door has no owner');
+    if (!sd13) broken.push('Biotak/Sessions_Draw.mqh is gone - the frame door has no caller');
+    else {
+      const sc13 = codeOf(sd13);
+      if (!/isOpen = SessSlotIsOpenNow\(s, now, bkr\);/.test(sc13))
+        broken.push('the alert flip stopped asking the model - a slot flips server-minus-UTC early (P-SESS-13)');
+      if (/SessWindowAt\(now,/.test(sc13))
+        broken.push('SessionsTick hands the chart clock to a UTC query again - the frame boundary is bypassed (P-SESS-13)');
+    }
+    if (sm) {
+      const m13 = codeOf(sm);
+      if (!/sU = SessChartFrameOf\(sU, bkrDeltaMin\);/.test(m13) || !/eU = SessChartFrameOf\(eU, bkrDeltaMin\);/.test(m13))
+        broken.push('a window edge leaves the model in UTC - ObjectMove plots it on the chart clock, so every box sits server-minus-UTC to the left again (P-SESS-13)');
+      const nb13 = bodyOf(sm, 'datetime SessSlotNextBoundary(');
+      if (!nb13 || !/SessUtcFrameOf\(nowServer, bkrDeltaMin\)/.test(nb13.text) || !/return SessChartFrameOf\(b, bkrDeltaMin\);/.test(nb13.text))
+        broken.push('the countdown boundary answers UTC for a chart-frame now - the countdown is early by the offset (P-SESS-13)');
+      const op13 = bodyOf(sm, 'bool SessSlotIsOpenNow(');
+      if (!op13 || !/SessUtcFrameOf\(nowServer, bkrDeltaMin\)/.test(op13.text))
+        broken.push('SessSlotIsOpenNow was dropped or stopped converting - the one frame door is gone (P-SESS-13)');
+    }
+    if (broken.length) {
+      failures.push('P-SESS-13: ' + broken.join('; ') + ' (Biotak/Sessions_Model.mqh + Biotak/Sessions_Draw.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-13 the sessions live in the CHART frame: a window edge leaves the model already converted (one owner pair), the countdown boundary is chart in / chart out, the alert flip asks the model instead of the UTC engine, and SessionsTick never hands TimeCurrent() to SessWindowAt - so no box can be painted at the UTC clock reading again');
+    }
+  }
+
+  // -- 52h2. P-SESS-20 (2026-10-30): THE CHART FRAME CANNOT DECAY -----------------
+  // MEASURED 16:29, terminal frozen since 14:37 (invalid account): the flushed
+  // witness read `[P-SESS] paint bkr=0 … srv=2026.10.30 13:07:09 gmt=…12:59:40
+  // raw=449 held=1` and EVERY Tokyo edge read `:07` — the raw (TimeCurrent -
+  // TimeGMT) pair had decayed 7m29s below the broker's real offset, and
+  // ConvertGMTToServer() spent that decay on the learned delta's own work. The
+  // rule: the frame doors spend the LEARNED delta (SessModelLiveDeltaMin), and the
+  // raw pair is read exactly once, in the learn's probe.
+  {
+    const broken = [];
+    const sm20 = linesOf(SESS_MODEL);
+    if (!sm20) broken.push('Biotak/Sessions_Model.mqh is gone - the frame doors have no owner');
+    else {
+      const m20 = codeOf(sm20);
+      if (!/datetime SessChartFrameOf\(const datetime utc, const int bkrDeltaMin\)/.test(m20) ||
+          !/datetime SessUtcFrameOf\(const datetime chart, const int bkrDeltaMin\)/.test(m20))
+        broken.push('the learned-frame pair (SessChartFrameOf / SessUtcFrameOf) is gone - the doors fall back to the raw pair');
+      if (/ConvertGMTToServer\(/.test(m20))
+        broken.push('a frame door spends the RAW pair again (ConvertGMTToServer) - a frozen feed slides every box one second per second');
+      const probes = (m20.match(/ConvertServerToGMT\(/g) || []).length;
+      if (probes !== 1)
+        broken.push('the raw server->GMT pair is read ' + probes + ' time(s), not the ONE probe the learn owns - a second copy decays with the feed');
+      for (const door of ['bool SessSlotWindowForZoneDay(', 'datetime SessSlotNextBoundary(', 'bool SessSlotIsOpenNow(']) {
+        const b20 = bodyOf(sm20, door);
+        if (!b20 || !/Sess(Chart|Utc)FrameOf\(/.test(b20.text))
+          broken.push('the door ' + door + ') converts nothing - its edges would leave in the wrong frame');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-SESS-20: ' + broken.join('; ') + ' (Biotak/Sessions_Model.mqh)');
+    } else {
+      console.log("[PASS] P-SESS-20 the session frame is the LEARNED broker delta, never the raw (TimeCurrent - TimeGMT) pair: the raw pair is read once (the learn's probe) and every frame door spends SessChartFrameOf / SessUtcFrameOf, so a frozen feed HOLDS the boxes instead of sliding them a second per second");
+    }
+  }
+
+  // -- 52h3. P-SESS-21 (2026-10-30): the learned hour SURVIVES a restart --------
+  // MEASURED 16:29 (terminal frozen since 14:37, `No connection`): the build learned
+  // the outage's own decay — raw=449 s on a GMT+2 broker, snapped to 0 — and held it,
+  // so every box painted two hours early and the next restart learned garbage again.
+  // The rule: the frame is stored once (only when a LIVE read CHANGED it) and adopted
+  // at attach as an unverified frame that the first real tick overwrites.
+  {
+    const broken = [];
+    const sm21 = linesOf(SESS_MODEL);
+    if (!sm21) broken.push('Biotak/Sessions_Model.mqh is gone - the learned frame has no owner');
+    else {
+      const m21 = codeOf(sm21);
+      const keys = (m21.match(/OV_SSBD/g) || []).length;
+      if (keys < 2)
+        broken.push('the learned hour has no durable home (OV_SSBD read + write) - a restart while the feed is dead learns the outage and paints every box hours off');
+      if (!/if\(!s_sessDeltaOk && GlobalVariableCheck\(k0\)\)/.test(m21))
+        broken.push("the attach never adopts the stored hour - a restart during an outage learns the outage's own decay");
+      if (!/s_sessDeltaStored = v0;/.test(m21))
+        broken.push('the adopted frame is not remembered as stored - the first call re-learns the outage straight over the good hour');
+      if (!/if\(nearest != s_sessDeltaStored\)/.test(m21))
+        broken.push('the store is written every frame instead of only when a LIVE read changed it - a still chart buys a syscall per frame');
+    }
+    if (broken.length) {
+      failures.push('P-SESS-21: ' + broken.join('; ') + ' (Biotak/Sessions_Model.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-21 the learned broker hour is durable: a LIVE read stores it once (OV_SSBD, written only on a change), an attach adopts it as unverified and waits for a real tick, so a restart during an outage can no longer learn the outage\'s own decay');
+    }
+  }
+
+  // -- 52h4. P-SESS-22 (2026-10-30): the session name is ABOVE its box ----------
+  // The tag was anchored LEFT_UPPER at the box's own top, so it hung INSIDE the
+  // range and sat on the candles (the reported «بهم ریخته»). TradingView's range
+  // label sits above the high: LEFT_LOWER is that seat.
+  {
+    const broken = [];
+    const sd22 = linesOf(SESS_DRAW);
+    if (!sd22) broken.push('Biotak/Sessions_Draw.mqh is gone - the tag has no owner');
+    else {
+      const d22 = codeOf(sd22);
+      if (!/SessText\(nmB \+ "L", wins\[w\]\.sU, wins\[w\]\.hi, SessZoneTag\(s\.zone\)[^;]*ANCHOR_LEFT_LOWER/.test(d22))
+        broken.push('the session name is back inside its box (LEFT_UPPER) - the tag sits ON the candles instead of above the range');
+    }
+    if (broken.length) {
+      failures.push('P-SESS-22: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-22 the session name is painted ABOVE its range box (LEFT_LOWER at the high), the way TradingView\'s range label seats it - never on the candles inside the box');
     }
   }
 
@@ -6335,7 +6583,11 @@ function main() {
       if (!shape || !shape.text.includes('CircRingFits()') || !shape.text.includes('CIRC_EDGE_TRIGGER'))
         broken.push('CircRailShape is gone or no longer rides the near-edge trigger with the ring-fit gate — the paint and the capacity can disagree again');
       const ringFits = bodyOf(menuRing, 'bool CircRingFits()');
-      if (!ringFits || !ringFits.text.includes('CircChordRadiusForN(n1)') || !ringFits.text.includes('CircFitLimitOuter()'))
+      // P-UI-218: CircRadius's shrink cap bounds the FIRST circle only. The OUTER circle's
+      // own radius is the larger of (inner + clearance) and its CHORD floor for n2 > 12 —
+      // so this reach test is the one guard the cap cannot replace, and it is asserted by
+      // name (a bare CircFitLimitOuter() spelling is satisfied by the cap block above it).
+      if (!ringFits || !ringFits.text.includes('CircChordRadiusForN(n1)') || !ringFits.text.includes('CircRing2Radius() > CircFitLimitOuter()'))
         broken.push('CircRingFits stopped proving BOTH circles — the squeeze band draws a capped circle BELOW its chord (44px seats 32px apart, the P-UI-13 stack) or an outer ring past the chart edge');
       const cap = bodyOf(menuRing, 'int CircRailCapacity(');
       if (!cap || !cap.text.includes('CircBtnSizeForN(k)') || !cap.text.includes('CIRC_PAD') || !cap.text.includes('return 1'))
@@ -9929,6 +10181,258 @@ function main() {
       failures.push('P-BK-135: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Shot / the harness)');
     else
       console.log('[PASS] P-BK-135 the factor belongs to the pair: BaseKnotPairGrade is the ONE answer (a rung or an FTR rides the box, an off-ladder Hunt does not), the geometry multiplies BOTH legs or neither, the note\'s risk and the card\'s cells ask the same factor - so every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) and the 2h20m box reads 142.5 / 53.4, not 142.5 / 80.5 = 1.77');
+  }
+
+  // P-PATH-BUG-6/7/9 (2026-10-30) — A PATH'S CHILDREN ARE SWEPT BY NAME.
+  //
+  // MEASURED on the report (XAUUSD M15, 2026-10-30 11:58): five blue dots in a row and no
+  // line under them, after the path was deleted. `path_mid_dot.bmp` is 11x11 RoyalBlue
+  // `#4169E1` and `cp_handle.bmp` is 19x19 green `#2ECC71`, so the leftovers were the
+  // `_M<k>` markers. Every one of them is a CHILD of the path, and every route that drops
+  // children used to walk `0..PathSegCount(id)` — a count that answers 0 once the legs are
+  // gone, which is the moment every delete route actually runs. So the sweep is by NAME
+  // (one object-list walk per delete, never per frame) and the delete prints its own
+  // `left=` proof, because a count read clean while the chart kept the children.
+  {
+    const broken = [];
+    const pt = linesOf(path.join(BIOTAK, 'PathTool.mqh'));
+    const tap = linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh'));
+    const child = pt ? bodyOf(pt, 'bool PathChildParent(') : null;
+    if (!child)
+      broken.push('PathChildParent is gone - the orphan walk can no longer name the parent of a handle or a 50 % marker');
+    else {
+      if (!child.text.includes('head != 72 && head != 77'))
+        broken.push('the child parse no longer accepts BOTH `_H<k>` and `_M<k>` - an orphan disc is invisible to the heal again (the five blue dots)');
+      if (!child.text.includes('ch < 48 || ch > 57'))
+        broken.push('the child parse no longer requires a numeric index - a segment would be read as a child');
+    }
+    const adopt = pt ? bodyOf(pt, 'void PathAdoptOrphans(') : null;
+    if (!adopt || !adopt.text.includes('PathChildParent(nm, cid) && PathSegCount(cid) == 0'))
+      broken.push('PathAdoptOrphans heals by a test of its own instead of PathChildParent - the `_M` family is left on the chart');
+    if (!adopt || !adopt.text.includes('heal orphan id='))
+      broken.push('the heal writes no witness on the flushed channel - "nothing happened" cannot be told from "nothing found"');
+    const sweep = pt ? bodyOf(pt, 'int PathSegSweep(') : null;
+    if (!sweep || !sweep.text.includes('ObjectsTotal(0, 0, -1)'))
+      broken.push('PathSegSweep walks a COUNT again - a holed run keeps every leg past the gap');
+    else if (!sweep.text.includes('ch < 48 || ch > 57') || !sweep.text.includes('ObjectDelete(0, nm)'))
+      broken.push('PathSegSweep no longer separates a leg from a child by its digits - the sweep would eat the dots or delete nothing');
+    const kids = pt ? bodyOf(pt, 'int PathChildrenDrop(') : null;
+    if (!kids || !kids.text.includes('ObjectsTotal(0, 0, -1)'))
+      broken.push('PathChildrenDrop is count-shaped again - children past a hole survive their parent');
+    const handles = pt ? bodyOf(pt, 'void PathHandlesDrop(') : null;
+    if (!handles || !handles.text.includes('PathChildrenDrop(id, "_H")'))
+      broken.push('PathHandlesDrop no longer routes the `_H` family through the by-name sweep');
+    const mid = pt ? bodyOf(pt, 'int PathMidDrop(') : null;
+    if (!mid || !mid.text.includes('PathChildrenDrop(id, "_M")'))
+      broken.push('PathMidDrop no longer routes the `_M` family through the by-name sweep - the 50 % discs outlive the delete');
+    const del = pt ? bodyOf(pt, 'void PathDelete(') : null;
+    if (!del || !del.text.includes('PathSegSweep(id)'))
+      broken.push('PathDelete no longer sweeps the legs by name');
+    if (!del || !del.text.includes('PathMidDrop(id)'))
+      broken.push('PathDelete no longer drops the 50 % discs');
+    if (!del || !del.text.includes('swept id=') || !del.text.includes('" left="'))
+      broken.push('PathDelete no longer prints the post-sweep `left=` proof - a delete reads clean while the chart keeps the children');
+    const fam = pt ? bodyOf(pt, 'int PathFamilyCount(') : null;
+    if (!fam || !fam.text.includes('PathPrefix() + id + "_"'))
+      broken.push('PathFamilyCount is gone - `left=` has no reader and the delete cannot be checked after the fact');
+    const reg = pt ? bodyOf(pt, 'void PathRegDel(') : null;
+    if (!reg || !reg.text.includes('PathHandlesDrop(id)'))
+      broken.push('PathRegDel no longer takes the handle family with the path');
+    const evt = pt ? bodyOf(pt, 'bool PathOnChartEvent(') : null;
+    if (!evt || !evt.text.includes('PathMidDrop(pid)'))
+      broken.push('the native-delete watcher no longer drops the 50 % discs - a dot with no line under it');
+    if (!evt || !evt.text.includes('PathRegDel(pid)'))
+      broken.push('the native-delete watcher no longer deregisters the family by name');
+    const fire = tap ? bodyOf(tap, 'void DrawStripFireDelete(') : null;
+    if (!fire || !fire.text.includes('DrawIsPathSeg('))
+      broken.push('the strip bin no longer asks DrawIsPathSeg - a path would be deleted as a plain drawing');
+    if (!fire || !fire.text.includes('PathDelete(tmpId, "strip bin")'))
+      broken.push('the strip bin no longer reaches PathDelete - the ONE door a path is deleted by');
+    if (broken.length)
+      failures.push('P-PATH-BUG-6/7/9: ' + broken.join('; ') + ' (Biotak/PathTool.mqh / Biotak/DrawStrip_Tap.mqh)');
+    else
+      console.log('[PASS] P-PATH-BUG-6/7/9 a path\'s children are swept by NAME: PathChildParent answers for both `_H` and `_M`, the orphan walk heals both families with its own witness, PathDelete drops legs and discs by name and prints `left=`, and the strip bin still reaches that ONE door');
+  }
+
+  // P-FIB-LV-SURPLUS (2026-10-30) - A SHRUNKEN LEVEL SET TAKES ITS CHILDREN WITH IT.
+  //
+  // The fibo pen's caps, wash and retired shadow are indexed by LEVEL, and all three were
+  // swept 0..nw while `nw` IS the live level count (`DrawLevelCount`). Every door that
+  // SHRINKS the set ends in the same sync (the level chip's remove: DrawStripLevelsToggle
+  // act=del -> DrawStripLevelsRewrite -> FibPenSync; the undo of that edit at
+  // DrawStrip_Paint; a template with a shorter set), so removing one level left the cap and
+  // the wash of the removed index standing at the OLD level's price - and no later pass
+  // could reach them: the profile rows walk to FIBPEN_MAX_LEVELS, these three never did.
+  // Same class as P-PATH-BUG-6/9: a child family swept by a count the edit already shrank.
+  {
+    const broken = [];
+    const fp = linesOf(path.join(BIOTAK, 'FibPen.mqh'));
+    const sync = fp ? bodyOf(fp, 'bool FibPenSync(') : null;
+    if (!sync)
+      broken.push('FibPenSync is gone');
+    else {
+      if (!sync.text.includes('for(int lvx = nw; lvx < FIBPEN_MAX_LEVELS; lvx++)'))
+        broken.push('the surplus sweep is gone or bounded by the live count again - a removed level leaves its cap and wash standing at the old price');
+      for (const n of ['FibPenCapName(fibo, lvx)', 'FibPenWashName(fibo, lvx)', 'FibPenShwName(fibo, lvx)'])
+        if (!sync.text.includes(n))
+          broken.push('the surplus sweep no longer answers for ' + n);
+      if (!sync.text.includes('FIBPEN surplus'))
+        broken.push('the surplus sweep is silent on the flushed channel - "no strays" and "never looked" read the same line');
+      for (const loop of ['for(int l4 = 0; l4 < nw; l4++)', 'for(int l5 = 0; l5 < nw; l5++)', 'for(int l6 = 0; l6 < nw; l6++)'])
+        if (!sync.text.includes(loop))
+          broken.push('a level-indexed pass lost its own shape (' + loop + ') - the shrunk-set sweep is not the whole fix');
+      if (!sync.text.includes('for(int dl2 = 0; dl2 < FIBPEN_MAX_LEVELS; dl2++)'))
+        broken.push('the profile-row sweep is no longer the full-range shape the surplus sweep pairs with');
+    }
+    const tap = linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh'));
+    const tog = tap ? bodyOf(tap, 'bool DrawStripLevelsToggle(') : null;
+    if (!tog || !tog.text.includes('DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n)'))
+      broken.push('the level chip no longer funnels through DrawStripLevelsRewrite - the shrink door the fix rides is gone');
+    if (broken.length)
+      failures.push('P-FIB-LV-SURPLUS: ' + broken.join('; ') + ' (Biotak/FibPen.mqh)');
+    else
+      console.log('[PASS] P-FIB-LV-SURPLUS a fibo that lost a level loses its children: the caps, the wash and the retired shadow are swept from the live level count to FIBPEN_MAX_LEVELS, and the sweep witnesses its own count on the flushed channel');
+  }
+
+  // P-MT4-LEGPREVIEW (2026-10-30) - THE LEG PREVIEW DIES WITH EVERY REASON.
+  //
+  // `LM_prev_` is a FIXED name, outside `inpObjectPrefix` and outside `TH3_LEG_PREFIX`
+  // (the only family REASON_REMOVE sweeps), so a draw cancelled by a TF switch, a params
+  // change or a chart close left the dashed preview on the chart for good: the migration
+  // walks the prefixed family, and the drag filter refuses a base the registry does not
+  // hold. The MT5 twin shipped this as P-MT5-LEGPREVIEW (2026-10-24); MT4 never got it.
+  {
+    const broken = [];
+    const calc = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
+    const deinit = calc ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
+    if (!deinit)
+      broken.push('OnDeinitHandler is gone');
+    else {
+      const at = deinit.text.indexOf('ObjectsDeleteAll(0, "LM_prev_")');
+      if (at < 0)
+        broken.push('the teardown no longer sweeps the leg preview - a TF switch during a leg draw leaves the dashed line for good');
+      else {
+        const rm = deinit.text.indexOf('if(reason == REASON_REMOVE)');
+        if (rm >= 0 && at > rm)
+          broken.push('the preview sweep sits inside the REASON_REMOVE branch - a TF switch keeps the orphan');
+      }
+    }
+    const tool = linesOf(path.join(BIOTAK, 'TH3Tool_C.mqh'));
+    const clr = tool ? bodyOf(tool, 'void LegPreviewClear(') : null;
+    if (!clr || !clr.text.includes('"LM_prev_Line"'))
+      broken.push('LegPreviewClear no longer names the preview line - the gesture exits lost their own sweep');
+    if (broken.length)
+      failures.push('P-MT4-LEGPREVIEW: ' + broken.join('; ') + ' (Biotak/EventHandlers_Calc.mqh / Biotak/TH3Tool_C.mqh)');
+    else
+      console.log('[PASS] P-MT4-LEGPREVIEW the leg preview leaves with EVERY deinit reason: the fixed `LM_prev_` prefix is swept above the REASON_REMOVE branch, so a TF switch mid-draw cannot leave a dashed line with no owner');
+  }
+
+  // P-PERF-172 (2026-10-30) - A SWITCHED-OFF TAG DOES NOT BUY A FRAME.
+  //
+  // `RefreshLiveCountdown` raised `s_cdDirty = true` BEFORE it read its own switch,
+  // on the comment's assumption that "deletes below are changes". They are changes
+  // only when the object is really there: once the tag was gone, both `ObjectDelete`
+  // calls were no-ops and the flag still told the 1 Hz caller
+  // (`TradePlanLiveTick` -> `if(s_cdDirty) ThrottledChartRedraw()`) that the chart
+  // had moved — a FULL ChartRedraw of every object once per second, 3,600 an hour,
+  // for a label nothing draws. A feature that is OFF costs zero (§5: at rest, zero
+  // writes). The flag must be raised by a delete that really deleted, and the
+  // caller must stay the only reader.
+  //
+  // Two trees, one rule: the same function in the MT5 twin
+  // (`Biotak-Trigger-TH3-mql5/Biotak/LabelFunctions.mqh`) is asserted when the
+  // sibling tree is present, so the pair cannot drift again.
+  {
+    const broken = [];
+    const trees = [
+      { tag: 'MT4', abs: path.join(BIOTAK, 'Labels_Countdown.mqh') },
+      { tag: 'MT5', abs: path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', 'Biotak', 'LabelFunctions.mqh') },
+    ];
+    for (const t of trees) {
+      if (t.tag === 'MT5' && !fs.existsSync(t.abs)) continue;   // sibling tree not checked out: nothing to assert
+      const ls = linesOf(t.abs);
+      const fn = ls ? bodyOf(ls, 'void RefreshLiveCountdown()') : null;
+      if (!fn) { broken.push(`${t.tag}: RefreshLiveCountdown is gone`); continue; }
+      const off = fn.text.indexOf('if(!LiveCountdownEnabled())');
+      if (off < 0) { broken.push(`${t.tag}: the disabled branch is gone`); continue; }
+      const before = fn.text.slice(0, off);
+      if (!/s_cdDirty\s*=\s*false\s*;/.test(before))
+        broken.push(`${t.tag}: s_cdDirty is not cleared before the switch is read - a switched-off tag owes a frame again`);
+      const branch = fn.text.slice(off);
+      const dels = branch.match(/ObjectDelete\(/g) || [];
+      const guards = branch.match(/ObjectFind\([^)]*\)\s*>=\s*0\)\s*\{\s*ObjectDelete\(/g) || [];
+      if (dels.length === 0)
+        broken.push(`${t.tag}: the disabled branch no longer removes the tag`);
+      else if (guards.length !== dels.length)
+        broken.push(`${t.tag}: ${dels.length} delete(s) but ${guards.length} probe-first guard(s) - a no-op delete must not raise the frame flag`);
+      if (!/s_cdDirty\s*=\s*true\s*;/.test(branch))
+        broken.push(`${t.tag}: a delete that really deleted no longer raises s_cdDirty - the tag would stay on screen`);
+    }
+    const live = linesOf(LABELS_A);
+    const tick = live ? bodyOf(live, 'void TradePlanLiveTick()') : null;
+    if (!tick || !tick.text.includes('if(s_cdDirty) ThrottledChartRedraw();'))
+      broken.push('MT4: TradePlanLiveTick no longer repaints on s_cdDirty - the fix has no reader');
+    if (broken.length)
+      failures.push('P-PERF-172: ' + broken.join('; ') + ' (Biotak/Labels_Countdown.mqh, MT5 Biotak/LabelFunctions.mqh)');
+    else
+      console.log('[PASS] P-PERF-172 a switched-off countdown tag costs zero: the frame flag is raised by a delete that really deleted (probe first), so the 1 Hz caller no longer repaints the whole chart once a second for a label nothing draws');
+  }
+
+  // -- 60. P-UI-RESET-ALL (2026-10-30): ONE BUTTON, THE WHOLE INDICATOR BACK ---
+  // The user's «دکمه ریست کلی اندیکاتور», in BOTH terminals. The per-card Reset
+  // (PnlResetItem) walks the rows of the card it was pressed on and stops there:
+  // every OTHER card's `OV_` override is still on disk and is re-applied on the
+  // next attach. A GLOBAL reset is therefore a WIPE of the store, not a loop of
+  // per-row writes — writing a default over a key would be re-read as the user's
+  // own choice, and the "reset" would undo itself on the next restart.
+  {
+    const broken = [];
+    const MT5 = (...p) => path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', ...p);
+    const trees = [
+      { tag: 'MT4', build: PANELS_BUILD, hit: PANELS_HIT,
+        route: path.join(BIOTAK, 'BiotakPanels_Route.mqh'), apply: APPLY,
+        wipe: path.join(BIOTAK, 'Runtime_B.mqh') },
+      { tag: 'MT5', build: MT5('Biotak', 'BiotakPanels.mqh'), hit: MT5('Biotak', 'BiotakPanels.mqh'),
+        route: MT5('Biotak', 'BiotakPanels.mqh'), apply: MT5('Biotak', 'BiotakPanels.mqh'),
+        wipe: MT5('Biotak', 'RuntimeSettings.mqh') },
+    ];
+    for (const t of trees) {
+      const build = codeOf(linesOf(t.build) || []);
+      const hit   = codeOf(linesOf(t.hit) || []);
+      const route = codeOf(linesOf(t.route) || []);
+      const apply = codeOf(linesOf(t.apply) || []);
+      const wipe  = codeOf(linesOf(t.wipe) || []);
+      // (1) the pill is PAINTED, on the GENERAL card only (item 14 = CIR_GENERAL)
+      if (!/if\(item==14\) PnlFooterBtn\(item,"ral"/.test(build))
+        broken.push(`${t.tag}: the GENERAL card no longer paints the Reset All pill (item 14) — the global reset has no face`);
+      // (2) a painted control no press can reach is not a control (P-DRAW-84)
+      if (!/PnlCtrlRectHit\(PnlHead\(item,"ral"\),mx,my/.test(hit))
+        broken.push(`${t.tag}: no coordinate hit test reads the Reset All pill back — the skin swallows the click and the button is dead (P-DRAW-84)`);
+      if (!/name == PnlHead\(i, "ral"\)/.test(route))
+        broken.push(`${t.tag}: the name router does not answer the Reset All pill — a name-delivered press lands nowhere`);
+      // (3) ONE action behind both doors, and it is a WIPE + a RE-SEED
+      const all = bodyOf(linesOf(t.apply) || [], 'int PnlResetAll()');
+      if (!all) broken.push(`${t.tag}: PnlResetAll is gone — the pill has no action`);
+      else {
+        if (!/RuntimeSettingsClearOverrides\(\)/.test(all.text))
+          broken.push(`${t.tag}: the global reset never wipes the store — the other cards' OV_ overrides survive and come back on the next attach`);
+        if (!/RuntimeSettingsInit\(\)/.test(all.text) || !/RuntimeSettingsLoadOverrides\(\)/.test(all.text))
+          broken.push(`${t.tag}: the global reset does not re-seed the mirrors from the Inputs dialog — the runtime copies keep the edited values`);
+        if (!/SessSlotsResetToFactory\(\)/.test(all.text))
+          broken.push(`${t.tag}: the global reset leaves the session slots edited — the sessions card keeps the user's table`);
+        if (!/RuntimeSettingsPrimeOverrideShadow\(\)/.test(all.text))
+          broken.push(`${t.tag}: the global reset leaves the shadow claiming the OLD values — the next save rewrites ~100 keys (P-PERF-27b)`);
+      }
+      // (4) the wipe is a DELETE of the OV_ family, never "write the default over it"
+      if (!/int RuntimeSettingsClearOverrides\(\)/.test(wipe) || !/GlobalVariableDel\(nm\)/.test(wipe) ||
+          !/StringSubstr\(nm, 0, len\) != p/.test(wipe))
+        broken.push(`${t.tag}: the store wipe no longer DELETES the OV_ keys — a default written over a key is re-read as the user's own choice`);
+    }
+    if (broken.length) {
+      failures.push('P-UI-RESET-ALL: ' + broken.join('; ') + ' (BiotakPanels_Build/_Hit/_Route/_Apply + Runtime_B, MT4 and MT5)');
+    } else {
+      console.log('[PASS] P-UI-RESET-ALL one button puts the WHOLE indicator back on the inputs\' own values in both terminals: the GENERAL card paints the pill, the coordinate hit test AND the name router reach the same PnlResetAll, the store is WIPED (OV_ keys DELETED, so a later attach cannot re-apply them), the mirrors are re-seeded, the session slots return to the preset table, and the shadow is primed so the next save writes nothing');
+    }
   }
 
   if (failures.length) {

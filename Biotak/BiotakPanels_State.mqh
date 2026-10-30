@@ -296,13 +296,13 @@ bool PnlCardFade(const int item)
 // because MAX LEVELS left only card 9's DISPLAY (its address keeps its branch),
 // and [2]/[3] keep their numbers the same way while TRADE CARD and MARGIN BOTTOM
 // left THEIR displays. The moved rows never took a setting with them.
-// P-SESS: [15] the Sessions card (11 addresses: master · two day sliders · seven
+// P-SESS: [15] the Sessions card (12 addresses: master · two day sliders · eight
 // switches · the editor NAV) and [16] the Session Editor (13 addresses: the slot
 // pick · preset · timezone · offset · HH/MM pairs · days mask · colour · style ·
 // active · the overview NAV). Both are WIDE (> PNL_WIDE_MIN_ROWS 10), so their
 // bodies compose — the OVERVIEW card pairs its sliders and switches, and the
 // editor pairs each HH/MM slider with its sibling.
-int g_PnlRows[PNL_COUNT] = {5,18,11,6,1,8,11,6,4,2,7,7,1,7,15,11,13};
+int g_PnlRows[PNL_COUNT] = {5,18,11,6,1,8,11,6,4,2,7,7,1,7,15,15,13};
 
 // g_PnlRows[12] is the BASE (TAB row only) — PnlRowsCount(12) returns
 // 1 + the open tab's section rows (6 each tab), the same dynamic pattern

@@ -807,6 +807,11 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       }
       if(name == PnlHead(i, "rst"))
          return PnlResetItem(i);
+      // P-UI-RESET-ALL (2026-10-30): the GENERAL card's global reset. Same door the
+      // coordinate path calls, so a name-delivered press and a press on the skin
+      // land on ONE function.
+      if(name == PnlHead(i, "ral"))
+         return PnlResetAll();
       if(name == PnlHead(i, "pal"))
       {
          PalOpenForItem(i);

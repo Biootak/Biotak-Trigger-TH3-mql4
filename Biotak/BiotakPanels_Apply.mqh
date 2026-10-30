@@ -270,7 +270,12 @@ double PnlDefValSet(const int item,const int row)
                if(row==7) return 1.0;                 // OVERLAP on
                if(row==8) return 1.0;                 // COUNTDOWN on
                if(row==9) return 0.0;                 // ALERTS off
-               return 0;                              // row 10 = NAV
+               if(row==10) return 14;                 // FILL: the shipped tint (P-SESS-14)
+               if(row==11) return 0.0;                // ZONE LAW: the standard table (P-SESS-15)
+               if(row==13) return 0;                  // TV LEVELS: OFF — TradingView's own default (Range only)
+               if(row==14) return 1.0;                // STRIP: on (P-SESS-19)
+              if(row==15) return -13;                // BROKER UTC: AUTO (P-SESS-23 - learn it)
+               return 0;                              // row 12 = NAV
       case 16: {                                      // the selected slot's factory preset
                SessSlot fdef; SessSlotFactory(g_sessSlotsEdit, fdef);
                if(row==0) return (double)g_sessSlotsEdit;      // the pick itself
@@ -520,7 +525,11 @@ double PnlCurrentSet(const int item,const int row)
                 if(row==7) return g_sessOverlap ? 1.0 : 0.0;
                 if(row==8) return g_sessCountdown ? 1.0 : 0.0;
                 if(row==9) return g_sessAlerts ? 1.0 : 0.0;
-                return 0;                        // row 10 = NAV
+                if(row==10) return g_sessFill;             // P-SESS-14
+                if(row==11) return g_sessDst ? 1.0 : 0.0;  // P-SESS-15
+                if(row==13) return g_sessTv;               // P-SESS-18 the TV levels
+                if(row==14) return g_sessStrip ? 1.0 : 0.0;// P-SESS-19 the bottom strip
+                return 0;                        // row 12 = NAV
        case 16: {                                // decode the selected slot once
                 SessSlot cs; SessSlotGet(g_sessSlotsEdit, cs);
                 if(row==0) return (double)g_sessSlotsEdit;
@@ -1019,7 +1028,11 @@ int PnlApplySet(const int item,const int row,const double v)
           else if(row==7)  { g_sessOverlap  = (v>0.5); }
           else if(row==8)  { g_sessCountdown= (v>0.5); }
           else if(row==9)  { g_sessAlerts   = (v>0.5); }
-          RuntimeSettingsSaveOverridesThrottled();   // OV_SSON/SSHD/.../SSAL
+          else if(row==10) { g_sessFill     = ClampSettingInt((int)MathRound(v),0,SESS_FILL_MAX); }      // P-SESS-14: the look
+          else if(row==11) { g_sessDst      = (v>0.5); }      // P-SESS-15: the zone law — every window moves
+          else if(row==13) { g_sessTv       = ClampSettingInt((int)MathRound(v),0,5); }   // P-SESS-18: the TV levels
+          else if(row==14) { g_sessStrip    = (v>0.5); }      // P-SESS-19: the bottom strip
+          RuntimeSettingsSaveOverridesThrottled();   // OV_SSON/SSHD/.../SSAL/SSFA/SSFW
           SessionsTick();                            // paint now, not next tick
           break;
        case 16: { // P-SESS — SESSION EDITOR. One slot at a time: decode, change
@@ -1104,6 +1117,46 @@ int PnlResetItem(const int item)
    g_PnlSpecStamp[item]=0;            // …but rebuild through it
    if(g_PnlOpen==item) PnlRebuildKeepSpot(item);   // rebuild so widgets show restored values
    return flags;
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-RESET-ALL (2026-10-30) — ONE BUTTON, THE WHOLE INDICATOR BACK |
+//| TO THE INPUTS' OWN VALUES.                                        |
+//|                                                                  |
+//| The per-card Reset above walks the rows of the card it was pressed |
+//| on and stops there: every OTHER card's `OV_` override is still on  |
+//| disk and is re-applied on the next attach. This is the global one. |
+//|                                                                  |
+//|   1. the settings store is WIPED — `RuntimeSettingsClearOverrides` |
+//|      is the one door that DELETES `OV_*` (rows, session slots      |
+//|      `OV_SS<n>`, the learned hour `OV_SSBD`), because writing a    |
+//|      default over a key would be re-read as the user's own choice; |
+//|   2. the mirrors are re-seeded from the Inputs dialog              |
+//|      (`RuntimeSettingsInit`) and the loader then finds nothing to  |
+//|      apply — the factory value IS what the inputs say;             |
+//|   3. the session slots go back to the factory table                |
+//|      (`SessSlotsResetToFactory` — 0 IS the preset);                |
+//|   4. the override shadow is primed with what the load read, so the |
+//|      next save is a no-op instead of ~100 writes (P-PERF-27b);     |
+//|   5. the open card is rebuilt and the chart re-rendered WHOLE.     |
+//|                                                                  |
+//| WHERE THINGS STAND IS NOT A SETTING: the orb, the chip and the     |
+//| strip keep the hand's places — their homes live under HOME_/STAR,  |
+//| which this path never touches (P-UI-174/190).                      |
+//+------------------------------------------------------------------+
+int PnlResetAll()
+{
+   const int keys = RuntimeSettingsClearOverrides();   // (1) the store's one wipe
+   RuntimeSettingsInit();                              // (2) seed from the Inputs dialog
+   RuntimeSettingsLoadOverrides();                     //     nothing left to apply
+   SessSlotsResetToFactory();                          // (3) sessions back to the preset table
+   RuntimeSettingsPrimeOverrideShadow();               // (4) the next save writes nothing
+   UpdateCircularItemStates();
+   UpdateCircularBadges();
+   SaveUIStates();
+   if(g_PnlOpen >= 0) PnlRebuildKeepSpot(g_PnlOpen);   // the widgets show the restored values
+   _LOG_GATE_W Print("[UI] reset ALL keys=", keys);
+   return REFRESH_ALL | REFRESH_HTF;                   // (5) every surface, HTF candles included
 }
 
 //+------------------------------------------------------------------+

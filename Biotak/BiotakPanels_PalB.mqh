@@ -1069,6 +1069,22 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==7)  { kind=1; label="OVERLAP"; }
       else if(row==8)  { kind=1; label="COUNTDOWN"; }
       else if(row==9)  { kind=1; label="ALERTS"; }
+      // P-SESS-14 — THE LOOK. One numeric row after the seven switches: how much ink
+      // the filled body keeps. It defaults to the shipped 14 %, so an untouched chart
+      // paints byte-identically.
+      else if(row==10) { label="FILL"; minV=0; maxV=SESS_FILL_MAX; unit="%"; }
+      // P-SESS-15 — THE ZONE LAW. OFF = the classic fixed table every session chart
+      // quotes (Tokyo 00-09Z, London 08-17Z, NY 13-22Z, Sydney 21-06Z); ON = each
+      // city's OWN clock, so its DST term moves the edge by the hour it really moves.
+      else if(row==11) { kind=1; label="ZONE LAW"; }
+      // P-SESS-18 — THE TRADINGVIEW LEVELS. TV's Sessions draws the window's
+      // MIDPOINT (50 % of its range), its MEAN (average price), its VWAP and its
+      // TRENDLINE (least squares through the closes). One dropdown, five choices,
+      // ALL by default: "make it like TradingView" means these are on.
+      else if(row==13) { kind=2; label="TV LEVELS"; opts="Off|Midpoint|Mean|VWAP|Trend|All"; minV=0; maxV=5; }
+      // P-SESS-19 — THE STRIP. TV's "Show Sessions Divider": the active session
+      // coloured along the BOTTOM of the chart, plus a mark where it begins.
+      else if(row==14) { kind=1; label="STRIP"; }
       else             { kind=5; label="EDIT SESSIONS"; opts="16"; }   // NAV → the editor
    }
    else if(item==16)  // P-SESS — SESSION EDITOR: one slot at a time (row 0 picks

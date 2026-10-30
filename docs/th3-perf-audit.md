@@ -111,6 +111,58 @@ deliberate trade. Removing it needs a dependency map (delete the siblings of one
 immediately, let the rebuild reconcile), which is a new owner in the delete path and has
 to be tested against the family's name grammar before it ships.
 
+### 1.6 A switched-off tag bought a full repaint every second — `P-PERF-172`
+
+`TradePlanLiveTick` (`Biotak/Labels_A.mqh:1378-1383`) drives the countdown tag on its own
+1 Hz gate and repaints only when the callee says the chart moved:
+`RefreshLiveCountdown(); if(s_cdDirty) ThrottledChartRedraw();`.
+
+`RefreshLiveCountdown` (`Biotak/Labels_Countdown.mqh:155`) raised `s_cdDirty = true`
+BEFORE it read its own switch, on the comment's assumption that "the deletes below are
+changes". They are changes only when the object is really there. With `inpShowLiveCountdown`
+off — or the indicator `F`-muted, because `LiveCountdownEnabled()` is
+`inpShowLiveCountdown && !IsIndicatorHidden()` (`Labels_Countdown.mqh:144`) — the tag was
+already gone, so both `ObjectDelete` calls were no-ops and the flag still reported a
+change: one full `ChartRedraw()` of every object on the chart per second, 60 a minute,
+3,600 an hour, for a label nothing draws.
+
+The throttle could not absorb it: the gate is 1000 ms and `CHART_REDRAW_THROTTLE_MS` is
+100 (`GlobalVariables.mqh:540`), so every call cleared it.
+
+Fixed in both trees — `Biotak/Labels_Countdown.mqh` and MT5
+`Biotak/LabelFunctions.mqh:531` — the flag is cleared first and raised only by a delete
+that really deleted (probe first). Steady state: two `ObjectFind`, 0 writes, 0 frames.
+The ON path is untouched (`CreateLivePriceCountdown` still sets the flag on entry and
+clears it on the still-second compare).
+
+Gate: `P-PERF-172` in `tools/check-regressions.js` (asserts both files, and that
+`TradePlanLiveTick` is still the flag's only reader), mutation `P-PERF-172-a`.
+
+### 1.7 S1 was priced, not rewritten
+
+`RefreshKitOnBar` (`BiotakPanels_Life.mqh:559-586`) is called from `OnCalculate`
+(`Biotak Trigger TH3.mq4:276`) and `OnTimer` (`:463`) — on every tick twice. Its whole
+fan-out was counted by reading each callee's body, not by running it. On a still chart
+the pass costs **six terminal reads and zero writes**:
+
+| read | site | when paid |
+| --- | --- | --- |
+| 1 × `iTime` | `DrawStrip_Pick.mqh:1070` (`BoxExtrasPump`, 2 s gate after the read) | always |
+| 1 × `TerminalInfoInteger` | `BiotakPanels_Route.mqh:1176` → `Util_A.mqh:239` (hold poll's key state) | always |
+| 1 × `iTime` | `HTFCandles_Draw.mqh:540` (forming HTF candle) | `g_UI.showHTF` |
+| 1 × `ObjectFind` | `BiotakMenu_B.mqh:541` (tip heal) | a tooltip is armed |
+| 2 × `ObjectFind` | `BiotakMenu_D.mqh:60` (one ring seat per tick, P-UI-163) | ring placed |
+| (+2 × `ObjectFind`) | `BiotakMenu_D.mqh:62` | that seat has a badge |
+
+Everything else on the chain is a compare behind a clock
+(`RefreshUIPerTick`: 500 ms menu sync, `TradePlanLiveTick`: 1 s / 2 s,
+`HTFEnsureDrawn`, `PnlDpiPoll`, `BkMiniStripHeal`), and each of those was read and
+found gated. `BoxExtrasPump` is the one chart-scaled walk in the tick path
+(`ObjectsTotal` + name walk, 2 s or new-bar gated, ~600 objects), but its family order
+(`FillIsChild` → `DrawIsIndicatorObject` → mid/fib/pen) is already the cheapest ordering,
+and reordering or an early exit changes what it can see — rejected as a behaviour change,
+not fixed. No tick-rate repaint exists anywhere on the chain.
+
 ## 2. Measured and deliberately NOT changed
 
 **`RefreshVisibleStatusLabels()` builds a label string 4×/s and usually discards it.**
@@ -149,7 +201,7 @@ OnCalculate took … [base= hist= levels= labels= overlay=]`) needs no flag at a
 
 | # | suspect | why | where |
 | --- | --- | --- | --- |
-| S1 | `RefreshKitOnBar()` runs from `OnCalculate` **and** `OnTimer` — "on every tick twice" (`BiotakPanels_Life.mqh:401`) — and fans out to ~10 polls | each poll is documented as throttled, but the fan-out itself is the always-on cost and has never been priced as a whole | `BiotakPanels_Life.mqh:399-425` |
+| S1 | `RefreshKitOnBar()` runs from `OnCalculate` **and** `OnTimer` — "on every tick twice" (`BiotakPanels_Life.mqh:401`) — and fans out to ~10 polls | **closed 2026-10-30 — priced, no defect (§1.7): six terminal reads, zero writes on a still chart, every poll gated by its own clock** | `BiotakPanels_Life.mqh:399-425` |
 | S2 | the P-FREE-01 batch (`e09870e`, `51bf372`, `975542b`) added a `MessageBox()` and a chart legend | a modal dialog on the single MQL4 thread is a total freeze. Currently **dead code** (no caller — `grep` finds none) and the legend was reverted by `18584e7`, so today it costs nothing — but it is a landmine | `BuildConfig.mqh` |
 | S3 | `e8cb55b` added the spec's rungs + a brown exhaustion level, `28154e2` rewrote `TH3Renderer_B.mqh` (386 lines), `1e527cd` reworked it again (91 lines) | more objects to build/move/delete, on the newest and least-measured renderer | `Biotak/TH3/TH3Renderer_*.mqh` |
 | S4 | `TH3HitPivotForward()` runs on every tick **before** the throttle early-return (`EventHandlers_Objects.mqh:352`) | live whenever an ABCD pattern is active; its measure is memoised on `(tC,pC,dir,rung,ref,iBars,TF)` (`TH3Pivots_A.mqh:1024`), so a still chart is a hit — but the memo has never been read against the live hit/miss counters | `TH3Renderer_C.mqh:108` |
