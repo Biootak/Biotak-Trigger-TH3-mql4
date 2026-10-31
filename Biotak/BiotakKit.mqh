@@ -294,7 +294,21 @@ string PnlFracKeyShared(const int item) { return "BIOMENU_PNL_" + IntegerToStrin
 void InitializeUISupport()
 {
    RuntimeSettingsLoadOverrides();
-   SyncTHFlagsFromMode();   // OV-loaded flags must match the restored g_thLabelsMode
+   // P-UI-194f (2026-10-31) — THE SYNC THAT UNDID THE LOAD IT FOLLOWED.
+   //
+   // `SyncTHFlagsFromMode();` stood here with the comment "OV-loaded flags must match
+   // the restored g_thLabelsMode". The direction is backwards: `RuntimeSettingsLoad-
+   // Overrides` seeds the THREE TH flags (OV_ keys TH / TF / TS2), and
+   // `RestoreDiscreteToggles` reads them one line below as the fallback for a chart
+   // that has no `Biotak_THLabels_<cid>` key yet (`g_thLabelsMode = THModeFromFlags()`).
+   // Syncing in between derived all three from `g_thLabelsMode` — still the Inputs-
+   // dialog answer, because the override load is the FIRST thing on this path — so a
+   // kit-level "TH labels OFF" was overwritten before the one reader that wanted it
+   // ever ran. The two sibling families do not have this line and work: `SL` and `AL`
+   // load into `g_showLines` / `g_showATRLabels` and the restore consumes them
+   // untouched. Deleting it makes TH behave like its siblings; the restore already
+   // ends in `SyncTHFlagsFromMode()`, which is where the sync belongs — after the
+   // decision, never before it.
    RestoreDiscreteToggles();   // P-UI-142: chart key, else the OV_-seeded mirror (restart-durable; the early dialog-fallback block stays for Lite)
    LoadPalRecent();
 

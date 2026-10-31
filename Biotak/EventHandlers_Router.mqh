@@ -430,7 +430,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 if(g_thLabelsMode == 0) g_thLabelsMode = 2;
             }
 
-            g_thLabelsVisible = (g_thLabelsMode != 0);
+            // P-UI-194d: same removal as the ring's - the direct mirror write was dead
+            // (the sync below writes the identical value) and left the other three
+            // mirrors looking like they were this function's business too.
             RequestUISync();   // P-UI-40: the TH LABELS card cycles on this mode
             SyncTHFlagsFromMode();   // flags follow the mode → card never disagrees
             GlobalVariableSet(thGvar, (double)g_thLabelsMode);
@@ -632,7 +634,21 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_countdownGapPx = (int)FactoryDefault(FF_COUNTDOWN_GAP);
             RefreshLiveCountdown();
             g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 2 : 0; // Default STANDARD if enabled
-            g_thLabelsVisible = (g_thLabelsMode != 0);
+            // P-UI-194d (2026-10-31) — THE TH MIRROR, EIGHT LINES BELOW THE ATR ONE.
+            // Same reset, same defect, one family further down: `g_thLabelsVisible`
+            // was written directly and `SyncTHFlagsFromMode()` was never called, so
+            // the THREE other mirrors of this one state (g_showTHLabels /
+            // g_showFractalTHs / g_showStandardTHs) kept their pre-reset values. The
+            // TH LABELS card then printed the old master row and the old FRACTAL /
+            // STANDARD rows, and THModeFromFlags() - which reads the FLAGS, not the
+            // mode - answered the pre-reset mode to every caller that re-derives
+            // from it. Q was the ONLY one of the nine writers that skipped the sync
+            // (the A key, the ring, both panel rows and every init path call it);
+            // the panel's own PnlResetAll calls it too, so the two "back to the
+            // inputs" implementations had drifted again - the exact shape P-UI-194c
+            // records. The sync also sets g_thLabelsVisible, so this is one call,
+            // not a call plus a write.
+            SyncTHFlagsFromMode();
             // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
 #ifndef BUILD_LITE
             if(inpEnableTH3Tool) {

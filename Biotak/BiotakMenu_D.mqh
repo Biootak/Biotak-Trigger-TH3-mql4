@@ -570,7 +570,11 @@ int RingFeatureClick(const int feat)
           g_thLabelsMode = g_thLastOnMode;
           if(g_thLabelsMode == 0) g_thLabelsMode = 2;
        }
-      g_thLabelsVisible = (g_thLabelsMode != 0);
+      // P-UI-194d: the direct `g_thLabelsVisible = (g_thLabelsMode != 0)` that stood
+      // here was a SECOND writer of a mirror SyncTHFlagsFromMode already owns - it
+      // wrote the same value one line before the sync overwrote it, so it was dead
+      // today and a trap tomorrow (delete the "redundant" sync and the three other
+      // mirrors silently stop following). The mode is the owner; the sync publishes.
       RequestUISync();   // P-UI-40: the TH LABELS card cycles on this mode
       SyncTHFlagsFromMode();   // flags follow the mode → TH card stays in sync
       string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();

@@ -2181,6 +2181,28 @@ if (Test-Path $maskGate) {
     Invoke-ProjectGate -Name "mask owner gate" -Script $maskGate -Runner "node" -Cache $gateCache
 }
 
+#--- P-UI-194c/d/e/f (2026-10-31): THE SAME CLASS, ON A PAIR OF VARIABLES. The mask
+#--- gate above covers the property that is a timeframe MASK. This one covers the
+#--- property that is TWO VARIABLES: the runtime half and the value a settings card
+#--- prints from it. The report that started it was the Q reset moving
+#--- `g_atrLabelsVisible` and leaving `g_showATRLabels` - the card kept showing the
+#--- pre-reset state until the row was touched. That same evening the shape turned up
+#--- four more times: the TH mode's FOUR mirrors left stale by the same reset (Q was
+#--- the only one of nine writers that skipped SyncTHFlagsFromMode), both restore
+#--- paths moving the runtime half and not the card mirror (so a chart whose LINES
+#--- were off came back with the lines hidden and the switch drawn ON - the dead press
+#--- the user reports as «کار نمیکنه»), the P-UI-119 migration, and the corrupted-GV
+#--- branch. Plus the inverse: `SyncTHFlagsFromMode()` sat BETWEEN the OV_ settings
+#--- load and the restore that consumes it, so a kit-level "TH OFF" was overwritten
+#--- before its only reader ran. The compiler cannot see any of these: both halves are
+#--- `static bool`, the assignment type-checks, and only the control disagrees.
+$mirrorGate = Join-Path $SCRIPT_ROOT "tools\mirror_owner_check.js"
+if (Test-Path $mirrorGate) {
+    Write-Host ""
+    Write-Host "  Mirror owner gate (one state, one owner - every mirror moves with it):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "mirror owner gate" -Script $mirrorGate -Runner "node" -Cache $gateCache
+}
+
 #--- P-DRAW-92: THE NAME LEDGER IS PART OF THE BUILD. A surface that paints an object
 #--- must be able to DELETE it, and the compiler cannot see the difference: MT4 answers
 #--- NOTHING to a write aimed at a name the chart does not carry, so an object a panel

@@ -410,6 +410,25 @@ void RestoreDiscreteToggles()
    g_triggerLevelsEnabled = RestoreBoolGlobalVar("Biotak_TriggerLevels_" + cid, g_triggerLevelsEnabled);
    g_linesVisible = RestoreBoolGlobalVar("Biotak_LinesVisible_" + cid, g_showLines);
    g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + cid, g_showATRLabels);
+   // P-UI-194e (2026-10-31) — A RESTORE IS A WRITER, SO IT OWNS BOTH HALVES.
+   //
+   // The two lines above restore the RUNTIME half of two one-state/two-variable
+   // pairs and stopped there, exactly like the Q reset did before P-UI-194c. The
+   // card mirrors (`g_showLines` on the Zones card row 1, `g_showATRLabels` on the
+   // ATR card row 4) kept the Inputs-dialog value, so a chart whose LINES had been
+   // turned OFF before the restart came back with the lines hidden and the switch
+   // drawn ON - and the row's own click handler then "turned on" a family that was
+   // already off, which is the dead press the user reports as «کار نمیکنه».
+   //
+   // The TH case directly below is the proof this is a hole and not a design: it
+   // ends in SyncTHFlagsFromMode(), i.e. it moves all four mirrors to the restored
+   // value. LINES and ATR never got that line. They do now - and the assignment
+   // goes the SAME direction the owner does (mirror := runtime, see
+   // SetLinesVisible's `g_showLines = visible`), never the other way, so the
+   // restore still decides and the mirror still only publishes.
+   g_showLines = g_linesVisible;
+   g_showATRLabels = g_atrLabelsVisible;
+   UpdateLinesVisibleCache(g_linesVisible);
    string thk = "Biotak_THLabels_" + cid;
    if(GlobalVariableCheck(thk))
    {
@@ -425,7 +444,8 @@ void RestoreDiscreteToggles()
       {
          GlobalVariableSet(thk, 0.0);
          g_thLabelsMode = 0;
-         g_thLabelsVisible = false;
+         // P-UI-194e: the sync at the end of this function is the writer; the direct
+         // mirror write that stood here was dead and hid which line actually publishes.
       }
    }
    else
@@ -576,6 +596,16 @@ int OnInitHandler() {
     // Restore ATR labels visibility (Default to OFF on first load)
     g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + chartIdStr, false);
 
+    // P-UI-194e (2026-10-31) — the SAME two mirrors as the late restore, for the
+    // path that has no late restore: this block is the ONLY one Lite runs (the
+    // P-UI-142 block lives in BiotakKit, which Lite does not compile). Both write
+    // the mirror the card prints from the value just restored, and neither touches
+    // the FALLBACKS above: `false` for ATR on a first attach stays `false` - the
+    // decision belongs to that line, the mirror only publishes it.
+    g_showLines = g_linesVisible;
+    g_showATRLabels = g_atrLabelsVisible;
+    UpdateLinesVisibleCache(g_linesVisible);
+
     // Restore TH labels mode (Default OFF: 0=OFF, 1=FRACTAL, 2=STANDARD exclusive)
     string thLabelsGvarName = "Biotak_THLabels_" + chartIdStr;
     if(GlobalVariableCheck(thLabelsGvarName)) {
@@ -592,7 +622,10 @@ int OnInitHandler() {
             _LOG_GATE_E Print("[E][GEN] OnInit: Corrupted TH labels state (", DoubleToString(gvarValue, 10), "), resetting");
             g_thLabelsMode = 0; // Default to OFF
             GlobalVariableSet(thLabelsGvarName, 0.0);
-            g_thLabelsVisible = false;
+            // P-UI-194e: this branch wrote ONE mirror of the four and left the other
+            // three holding the corrupted read. The mode is the owner; the sync is
+            // how every other path publishes it, including the two branches above.
+            SyncTHFlagsFromMode();
         }
     } else {
         // First attach: honor the Inputs-dialog TH flags, default ON is STANDARD.
@@ -629,9 +662,11 @@ int OnInitHandler() {
         MidZonesStateForget();          // the mid-zone band's own key (RuntimeSettings owner)
         g_triggerLevelsEnabled = false; // ...and the runtime copies, so THIS attach is clean too
         g_linesVisible         = false;
+        g_showLines            = false;  // P-UI-194e: the mirror is one of the copies, not a bystander
         g_thLabelsMode         = 0;
         SyncTHFlagsFromMode();          // the TH flag mirrors follow the single source of truth
         g_showMidZones         = false;
+        UpdateLinesVisibleCache(false); // P-UI-194e: and the 100 ms cache with them
         GlobalVariableSet(levelsOffStamp, 1.0);
     }
 
