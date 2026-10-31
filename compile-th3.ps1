@@ -2160,6 +2160,27 @@ if (Test-Path $staleGate) {
     Invoke-ProjectGate -Name "stale state gate" -Script $staleGate -Runner "node" -Cache $gateCache
 }
 
+#--- P-HTF-AUDIT-4 / P-UI-194b (2026-10-31): ONE PROPERTY, ONE OWNER IS PART OF THE
+#--- BUILD. `OBJPROP_TIMEFRAMES` has 135 raw write sites across 22 files and five
+#--- inputs (the family switch, the F mute, the line switch, the panel cull, the
+#--- chart's own per-TF rule). A writer that reads ONE input and writes the property
+#--- is a second owner, and the compiler cannot see it: the name resolves, the write
+#--- lands, and only the PICTURE is wrong. That is the report the user filed twice —
+#--- «کندل‌های تایم بالا ... میاد در صورتی که خاموش بودشه» (the HTF overlay came back
+#--- with its switch OFF, because the F-show walk wrote ALL_PERIODS over a family
+#--- whose own composer had folded the switch and the mute) and the L key flashing
+#--- the level family across a muted chart. Same defect, two doors. The TH3 caption
+#--- family had already learned it by hand on 2026-10-16 (P-UI-160b guards its three
+#--- entries); this gate is that lesson, tree-wide. Every unmask writer must fold
+#--- `IsIndicatorHidden()` — or name itself in the tool's ALLOW table with a REASON,
+#--- so the next author meets the question instead of the bug.
+$maskGate = Join-Path $SCRIPT_ROOT "tools\mask_owner_check.js"
+if (Test-Path $maskGate) {
+    Write-Host ""
+    Write-Host "  Mask owner gate (every unmask knows the mute - one property, one owner):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "mask owner gate" -Script $maskGate -Runner "node" -Cache $gateCache
+}
+
 #--- P-DRAW-92: THE NAME LEDGER IS PART OF THE BUILD. A surface that paints an object
 #--- must be able to DELETE it, and the compiler cannot see the difference: MT4 answers
 #--- NOTHING to a write aimed at a name the chart does not carry, so an object a panel

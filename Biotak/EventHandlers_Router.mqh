@@ -605,12 +605,27 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // restoring from the captured factory defaults instead (reading
             // inpX here is a self-assign no-op that kept the current values).
             g_triggerLevelsEnabled = (FactoryDefault(FF_TRIGGER_SHOW) > 0.5);
+            // P-UI-194c (2026-10-31) — THIS RESET IS A SECOND IMPLEMENTATION OF
+            // "back to the inputs", and it had drifted from the panel's
+            // PnlResetAll: the MID ZONES switch was never restored here, so Q left
+            // the family on whatever the ring had set while every sibling switch
+            // (trigger / lines / ATR / TH / countdown) went back to factory.
+            // FF_SHOW_MIDZONES has always existed (the panel's per-item reset
+            // reads it), so this is a missing line, not a missing key.
+            g_showMidZones = (FactoryDefault(FF_SHOW_MIDZONES) > 0.5);
             // P-PERF-29: same owner as the hotkey and the panel rows, so the
             // restore writes the mask too (it used to leave the objects as they
             // were, which only a timeframe switch repaired).
             SetLinesVisible(FactoryDefault(FF_SHOW_LINES) > 0.5, false);
             InvalidateAllVisibilityCaches();
             g_atrLabelsVisible = (FactoryDefault(FF_SHOW_ATR) > 0.5);
+            // P-UI-194c: and the CARD MIRROR with it. `g_showATRLabels` is what the
+            // ATR card prints (`PnlCurrentSet` item 2 row 4) and what the panel row
+            // writes back into `g_atrLabelsVisible`; the reset used to move the
+            // runtime half alone, so the card kept showing the pre-reset state until
+            // the row was touched. One state, two variables, every writer must move
+            // both - the A key and the ring already do.
+            g_showATRLabels = g_atrLabelsVisible;
             g_showLiveCountdown = (FactoryDefault(FF_SHOW_COUNTDOWN) > 0.5);
             g_countdownColor = (color)(int)FactoryDefault(FF_COUNTDOWN_COLOR);
             g_countdownFontSize = (int)FactoryDefault(FF_COUNTDOWN_SIZE);

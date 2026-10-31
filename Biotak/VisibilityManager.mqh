@@ -419,11 +419,21 @@ int VisibilityShowAllCached(const bool atrShouldShow, const bool showAtrTargets,
 //+------------------------------------------------------------------+
 void SetAllLineObjectsVisibility(const bool visible)
 {
+    // P-UI-194b (2026-10-31) — THE MEMO KEY MUST COVER THE VALUE IT CACHES.
+    // The written mask became `visible && !IsIndicatorHidden()` (see below), so a
+    // guard that remembers only `visible` would answer "already written" for a
+    // chart whose mute has moved since - the classic narrow-key memo, and the
+    // same defect class as the second writer this file keeps closing. Both terms
+    // are in the key now, so the memo can only skip a write that would write the
+    // same mask.
     static bool s_lastAllLineVisible = true;
+    static bool s_lastAllLineHidden = false;
     static bool s_allLineInit = false;
-    if(s_allLineInit && s_lastAllLineVisible == visible) return;
+    const bool hidNow = IsIndicatorHidden();
+    if(s_allLineInit && s_lastAllLineVisible == visible && s_lastAllLineHidden == hidNow) return;
     s_allLineInit = true;
     s_lastAllLineVisible = visible;
+    s_lastAllLineHidden = hidNow;
 
     // P-UI-194b (2026-10-31) — THE L KEY IS A FAMILY SWITCH, NOT A WAY PAST THE
     // MUTE. Every other family writer already folds `IsIndicatorHidden()`: the ATR
@@ -436,8 +446,9 @@ void SetAllLineObjectsVisibility(const bool visible)
     // across a chart the user had muted. The STATE still flips - SetLinesVisible
     // sets g_linesVisible before calling here, and the persisted key follows -
     // only the paint waits for the mute to lift, which is then decided by the
-    // F-show walk exactly like every other family.
-    long timeframes = (visible && !IsIndicatorHidden()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    // F-show walk exactly like every other family. `hidNow` is the SAME read the
+    // memo above keyed on, so the two cannot disagree.
+    long timeframes = (visible && !hidNow) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     // PERF FIX: Early-exit loop based on occupied count
     int visited = 0;
     for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
