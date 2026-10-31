@@ -1478,11 +1478,10 @@ int ApplyHideAllState(const bool hide)
 //| the moment the mute went - and the control would snap straight     |
 //| back to OFF.                                                       |
 //|                                                                   |
-//| Both surfaces call this, never a copy of it: the ring's four       |
-//| family items (BiotakMenu) and the panel's gated rows (BiotakPanels)|
-//| are both included ABOVE this point in the entry, so this is the    |
-//| lowest module that can own the transition for both. One walk, one  |
-//| cache refresh, one forced frame.                                   |
+//| Both surfaces call this, never a copy: the ring family items     |
+//| (familyToggle) and the panel gated rows (PnlSettingIsMuteGated), |
+//| both included ABOVE here. One walk, one refresh, one frame.      |
+//| P-UI-194g: HTF was in NEITHER list until 2026-10-31.             |
 //+------------------------------------------------------------------+
 void ReleaseIndicatorMute()
 {

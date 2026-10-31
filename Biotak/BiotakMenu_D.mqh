@@ -502,9 +502,15 @@ int RingFeatureClick(const int feat)
    //
    // The mute is NOT a switch (P-PERF-41 stays intact: each light still owns one
    // switch), it is the whole-indicator master every family already shares.
+   // P-UI-194g (2026-10-31): HTF joined this list. It is a visibility family like
+   // the other five — `HTFBoxMask` folds `IsIndicatorHidden()`, so the F mute hides
+   // the overlay — but it was the one switch the mute-release path never learned,
+   // on BOTH surfaces. The card's master row is gated now (PnlSettingIsMuteGated
+   // item 6), and the ring seat needs the same two terms: without them a press on a
+   // muted chart inverted the raw flag instead of answering what the light showed.
    bool familyToggle = (feat == CIR_TRIGGER || feat == CIR_ZONES ||
                         feat == CIR_ATR     || feat == CIR_TH ||
-                        feat == CIR_SESSIONS);   // P-SESS
+                        feat == CIR_HTF     || feat == CIR_SESSIONS);   // P-SESS
    bool mutedPress   = (familyToggle && IsIndicatorHidden());
    bool wantOn       = (familyToggle && !mutedPress) ? !CircFeatureOn(feat) : mutedPress;
    if(mutedPress) ReleaseIndicatorMute();
@@ -611,7 +617,13 @@ int RingFeatureClick(const int feat)
    //}
     else if(feat == CIR_HTF)
     {
-       SetHTFVisible(!g_UI.showHTF);
+       // P-UI-194g: `wantOn`, not `!g_UI.showHTF`. The two are the same value on a
+       // normal press (`wantOn = !CircFeatureOn(feat)` and CircFeatureOn is this
+       // flag), and they DIFFER on a muted one: wantOn is then TRUE by construction,
+       // because a muted press means "show this family" and the mute was released
+       // above. Reading the flag directly here would have inverted it instead —
+       // switching the overlay OFF on the press that asked to see it.
+       SetHTFVisible(wantOn);
       // P-UI-40b (2026-09-13): the HTF card's row 0 displays THIS flag, and this
       // file is included BEFORE the panel's - so the ring cannot repaint that card
       // itself. The ring repairs its own light/status on the next tick

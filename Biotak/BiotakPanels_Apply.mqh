@@ -345,6 +345,18 @@ bool PnlSettingIsMuteGated(const int item,const int row)
                                               // COUNTDOWN · ATR LABELS ·
                                               // TRADE LABELS · H/L PIP LABELS
    if(item==3)  return (row==0);              // TH LABELS (the family's master)
+   // P-UI-194g (2026-10-31) — THE ONE FAMILY THE MUTE GATE DID NOT KNOW.
+   // HTF CANDLES is a visibility family like every other: its mask composer
+   // (`HTFBoxMask`) spells `!g_UI.showHTF || IsIndicatorHidden()`, so the F mute
+   // hides the overlay exactly the way it hides the zones and the ATR labels. But
+   // this list stopped at the five families the ring cycles and never named it, so
+   // on a muted chart the card's master row answered the RAW flag: it drew ON while
+   // the candles were gone, and the press computed `v = !displayed = 0` — one press
+   // on an ON-looking switch turned the overlay OFF with nothing on screen changing.
+   // Unhide, and the candles were gone for a reason the user never gave. The row is
+   // gated now, so it reads OFF while muted and the press releases the mute first,
+   // which is what P-UI-93 built this function for.
+   if(item==6)  return (row==0);              // HTF CANDLES (the family's master)
    if(item==7)  return (row==1);              // SHOW LINES (same switch, other card)
    if(item==11) return (row>=1 && row<=6);    // SHOW STRUCTURE + L1..L5
    // P-SESS: the Sessions master is its family's top and its painter spells
@@ -449,7 +461,7 @@ double PnlCurrentSet(const int item,const int row)
                if(row==7) return g_showTH3Labels?1.0:0.0;
                if(row==8) return g_th3BaseRangePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
                return 0;
-       case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
+       case 6: if(row==0) return PnlMuteGatedValue(g_UI.showHTF);   // P-UI-194g: the F mute hides the overlay, so this row answers it too
                if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
                if(row==2) return 100-g_HTFOpacity;   // stored as opacity, shown as transparency
               if(row==7) return g_HTFWickWidth;
