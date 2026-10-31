@@ -425,7 +425,19 @@ void SetAllLineObjectsVisibility(const bool visible)
     s_allLineInit = true;
     s_lastAllLineVisible = visible;
 
-    long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    // P-UI-194b (2026-10-31) — THE L KEY IS A FAMILY SWITCH, NOT A WAY PAST THE
+    // MUTE. Every other family writer already folds `IsIndicatorHidden()`: the ATR
+    // and TH label families in Labels_B, the zone/trigger bands in
+    // SetPipelineZoneVisibility, the level render in ObjectFunctions, the HTF
+    // overlay in HTFBoxMask - and the panel's SHOW LINES row is mute-gated
+    // (PnlSettingIsMuteGated). This walk was the ONE writer that did not, so
+    // pressing L on a muted chart un-masked every level line and the render only
+    // took them back on its next guarded pass: a flash of the whole level family
+    // across a chart the user had muted. The STATE still flips - SetLinesVisible
+    // sets g_linesVisible before calling here, and the persisted key follows -
+    // only the paint waits for the mute to lift, which is then decided by the
+    // F-show walk exactly like every other family.
+    long timeframes = (visible && !IsIndicatorHidden()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     // PERF FIX: Early-exit loop based on occupied count
     int visited = 0;
     for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
