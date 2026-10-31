@@ -561,21 +561,15 @@ int RingFeatureClick(const int feat)
    else if(feat == CIR_TH)
    {
        // Exclusive: ON -> OFF (remembers), OFF -> remembered ON (default STANDARD).
-       if(g_thLabelsMode != 0) {
-          g_thLabelsMode = 0;
-       }
-       else {
-          g_thLabelsMode = g_thLastOnMode;
-          if(g_thLabelsMode == 0) g_thLabelsMode = 2;
-       }
        // P-UI-93: this item CYCLES the mode rather than flipping a switch, and the
        // cycle contains 0 (off). A muted press means "show TH", so it must not land
        // on 0 - the mute would go and the family would stay hidden, which is the
-       // dead press again. A mode of 0 is raised to the remembered ON mode.
-       if(mutedPress && g_thLabelsMode == 0) {
-          g_thLabelsMode = g_thLastOnMode;
-          if(g_thLabelsMode == 0) g_thLabelsMode = 2;
-       }
+       // dead press again.
+       // P-UI-194h: written as one question, not "cycle, then patch the muted case".
+       // The patch WAS the right answer, but it lived here only - the hotkey cycled
+       // straight past 0 into a hidden family. THRememberedOnMode now answers all
+       // three doors, so a muted press means ON wherever it is pressed.
+       g_thLabelsMode = (!mutedPress && g_thLabelsMode != 0) ? 0 : THRememberedOnMode();
       // P-UI-194d: the direct `g_thLabelsVisible = (g_thLabelsMode != 0)` that stood
       // here was a SECOND writer of a mirror SyncTHFlagsFromMode already owns - it
       // wrote the same value one line before the sync overwrote it, so it was dead

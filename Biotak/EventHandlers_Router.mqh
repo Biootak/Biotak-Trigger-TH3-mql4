@@ -26,6 +26,37 @@ bool AnyStripTextFieldFocused()
 }
 #endif
 
+//+------------------------------------------------------------------+
+//| P-UI-194h (2026-10-31) — THE THIRD SURFACE ANSWERS THE SAME        |
+//| QUESTION AS THE OTHER TWO.                                        |
+//|                                                                   |
+//| A family has three doors: the card row, the ring seat and the      |
+//| hotkey. The first two learned the muted case in P-UI-93 — every    |
+//| gated control READS OFF while the chart is muted, so a press can   |
+//| only mean "show me this again", and they release the mute before   |
+//| they write. The hotkeys never did: they flipped the STORED flag,   |
+//| which nobody can see while muted. Press A on a muted chart and the |
+//| ATR labels went OFF (they were stored ON); the user found out only |
+//| when he released F and the labels were gone — a switch that moved  |
+//| nothing he could see, in the direction opposite to what the chart  |
+//| was showing him.                                                   |
+//|                                                                   |
+//| The rule is the one the cards already use, in one line: a toggle's |
+//| target is the state its control DISPLAYS, not the state it stores. |
+//| Unmuted those are the same value; muted the displayed one is OFF,  |
+//| so every press lands ON and lifts the mute.                        |
+//|                                                                   |
+//| Returned, never written here: each caller owns its own state (the  |
+//| lines switch has SetLinesVisible, HTF has SetHTFVisible, the rest  |
+//| are plain flags), and this must not become a fourth owner.         |
+//+------------------------------------------------------------------+
+bool FamilyPressTarget(const bool storedOn)
+{
+   if(!IsIndicatorHidden()) return !storedOn;
+   ReleaseIndicatorMute();
+   return true;
+}
+
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     // BKCORNER-TOAST: the note's clock stops while the cursor is on it. One int
@@ -230,7 +261,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // object MASK all live in one owner now - the panel rows and the
             // factory reset used to raise the flag WITHOUT writing the mask,
             // which the P-PERF-25 skip then trusted and painted nothing.
-            bool p26want = !g_linesVisible;
+            // P-UI-194h: `FamilyPressTarget`, not `!g_linesVisible` — on a muted
+            // chart the LINES row reads OFF, so L means "show the lines" there and
+            // lifts the mute (the cards' rule, P-UI-93; see the helper's header).
+            bool p26want = FamilyPressTarget(g_linesVisible);
             // P-PERF-22: this was a full-chart walk - ObjectsTotal(0,-1,-1) then
             // ObjectName + ObjectGetInteger for EVERY object on the chart, ours
             // or not, plus one TIMEFRAMES write per line whether or not the mask
@@ -339,7 +373,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // owner (SetTriggerLevelsVisible, EventHandlers_Objects) now writes the
             // family's masks through the render's own writer and repaints on the
             // spot, exactly as the structure switches have since P-PERF-32.
-            bool tNext = !g_triggerLevelsEnabled;
+            // P-UI-194h: the muted case first — the TRIGGER card's SHOW row is gated,
+            // so on a muted chart T means "show the trigger zones" and lifts the mute.
+            bool tNext = FamilyPressTarget(g_triggerLevelsEnabled);
             RequestUISync();   // P-UI-40: the TRIGGER card's SHOW row + the ring badge
             LOG_I(LOG_CAT_KEYS, tNext ? "Trigger Zones: ON" : "Trigger Zones: OFF");
             // P-KEY-PROBE: the press is the FIRST timestamp of the latency pair; the
@@ -371,7 +407,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpHTFKey))
         {
             // P-HTF-KEY: the owner holds state + key + mask walk + paint.
-            SetHTFVisible(!g_UI.showHTF);
+            // P-UI-194h: same rule — the HTF card's master row is gated now
+            // (P-UI-194g), so a muted press means "show the overlay", not "flip the
+            // flag nobody can see".
+            SetHTFVisible(FamilyPressTarget(g_UI.showHTF));
             RequestUISync();   // P-UI-40b: the HTF card's row 0 displays this flag
             LOG_I(LOG_CAT_LINES, "HTF " + (g_UI.showHTF ? "VISIBLE" : "HIDDEN"));
             return;
@@ -384,7 +423,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpATRLabelsKey))
         {
             string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
-            g_atrLabelsVisible = !g_atrLabelsVisible;
+            // P-UI-194h: the muted case is the whole point of the helper — the ATR
+            // card's row 4 reads OFF while muted, so A must mean "show them".
+            g_atrLabelsVisible = FamilyPressTarget(g_atrLabelsVisible);
             RequestUISync();   // P-UI-40: the ATR card's own rows show this switch
             g_showATRLabels = g_atrLabelsVisible;   // keep the ATR card mirror in sync
             GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
@@ -408,7 +449,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(IsHotkeyPressed(lparam, sparam, inpCountdownKey))
         {
-            g_showLiveCountdown = !g_showLiveCountdown;
+            // P-UI-194h: the COUNTDOWN row is gated too, so the key answers the same
+            // question the row does instead of inverting an invisible flag.
+            g_showLiveCountdown = FamilyPressTarget(g_showLiveCountdown);
             RequestUISync();   // P-UI-40: COUNTDOWN card row 0 shows this switch
             RuntimeSettingsSaveOverridesThrottled();   // OV_ CD/CDC/CDS/CDG
             RefreshLiveCountdown();
@@ -422,13 +465,18 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
             
             // Cycle exclusive: ON -> OFF (remembers), OFF -> remembered ON (default STANDARD).
-            if(g_thLabelsMode != 0) {
-                g_thLabelsMode = 0;
-            }
-            else {
-                g_thLabelsMode = g_thLastOnMode;
-                if(g_thLabelsMode == 0) g_thLabelsMode = 2;
-            }
+            // P-UI-194h: EXCEPT on a muted chart, where the TH card's master row is
+            // gated and therefore READS OFF — so the key can only mean "show TH".
+            // It releases the mute and restores the remembered ON mode, which is
+            // exactly what that row's press does (Panels_Apply case 3 row 0). Cycling
+            // there would have landed on mode 0 and hidden the family the user just
+            // asked for.
+            // Which mode "ON" means is THRememberedOnMode's business — this key, the
+            // ring seat and the card's master row all ask it, so the three doors
+            // cannot answer the same press differently.
+            bool thMuted = IsIndicatorHidden();
+            if(thMuted) ReleaseIndicatorMute();
+            g_thLabelsMode = (!thMuted && g_thLabelsMode != 0) ? 0 : THRememberedOnMode();
 
             // P-UI-194d: same removal as the ring's - the direct mirror write was dead
             // (the sync below writes the identical value) and left the other three

@@ -468,6 +468,19 @@ int THModeFromFlags()
    return 0;
 }
 
+// P-UI-194h: the mode a press produces when it MEANS "turn the family on" — the
+// remembered selection, and STANDARD when none was ever set. THREE doors ask this
+// exact question (the card's master row, the ring's TH seat, the S hotkey) and
+// each used to spell out the same two lines; that is the shape that drifts, and
+// the ring's copy had already grown a patch the other two did not have.
+// Reads only. Returns a mode; the caller assigns g_thLabelsMode and syncs.
+// Stricter than the old `if(m==0) m=2` on purpose: only 1 and 2 are real ON modes,
+// so a legacy 3 (BOTH) can never leak through as an "ON" answer.
+int THRememberedOnMode()
+{
+   return (g_thLastOnMode == 1 || g_thLastOnMode == 2) ? g_thLastOnMode : 2;
+}
+
 void SyncTHFlagsFromMode()
 {
    if(g_thLabelsMode == 3) g_thLabelsMode = 2; // legacy BOTH migrates to STANDARD

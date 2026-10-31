@@ -749,8 +749,13 @@ int PnlApplySet(const int item,const int row,const double v)
             // restores the remembered selection, defaulting to STANDARD when none is set.
             bool masterOn=(v>0.5);
             int m0 = masterOn ? THModeFromFlags() : 0;
-            if(masterOn && m0==0) { m0=g_thLastOnMode; if(m0==0) m0=2; }
-            g_showTHLabels=masterOn;
+            // P-UI-194h: was a third spelling of "remembered mode, default STANDARD".
+            if(masterOn && m0==0) m0 = THRememberedOnMode();
+            // P-UI-194h: `g_showTHLabels=masterOn;` stood here and was provably dead —
+            // SyncTHFlagsFromMode() below writes exactly that value: masterOn false
+            // gives m0=0, and masterOn true gives m0=THModeFromFlags() or a non-zero
+            // remembered mode, so m0!=0 either way. Same second-writer P-UI-194d
+            // removed from the ring and the hotkey; this was the last door holding it.
             g_thLabelsMode=m0;
             SyncTHFlagsFromMode();
             GlobalVariableSet("Biotak_THLabels_"+GetCachedChartIdStr(),(double)m0);
