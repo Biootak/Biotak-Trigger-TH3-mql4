@@ -27,6 +27,13 @@ bool HTFHasKeys(const string pfx)
 void InitializeHTFCandles()
 {
    g_HTFPrefix = HTF_PREFIX_BASE + IntegerToString(ChartID()) + "_";
+   // P-HTF-AUDIT-4: publish the namespace to the F walks (VisibilityManager,
+   // included BEFORE this module — it cannot call in here, and the Lite build
+   // carries it without any HTF module). The value stays `g_HTFPrefix`; this
+   // module remains its only writer, exactly like the g_OverlayNameRoot line
+   // below. The reader uses it to SKIP this family, never to mask it: the mask
+   // composer is HTFBoxMask, and it is the only writer of that property.
+   g_HTFVisNamespace = g_HTFPrefix;
    // P-DRAW-87 (2026-09-30): PUBLISH the namespace, do not re-declare it. The
    // draw-strip's `DrawIsIndicatorObject` (DrawToolbar, included before this file)
    // is the ONE owner of "this object is the product's, not the user's drawing",

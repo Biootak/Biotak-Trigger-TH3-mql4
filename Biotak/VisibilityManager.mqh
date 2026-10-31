@@ -28,6 +28,32 @@ void UpdateLinesVisibleCache(bool visible)
 
 void InvalidateLinesVisibleCache() { g_linesVisibleCacheTime = 0; }
 
+//+------------------------------------------------------------------+
+//| P-HTF-AUDIT-4: A FAMILY WITH ITS OWN MASK COMPOSER IS NOT THIS   |
+//| FILE'S TO UNMASK.                                                |
+//|                                                                  |
+//| The HTF overlay's mask has exactly one composer - `HTFBoxMask`   |
+//| (HTFCandles_Draw) - and that composer already folds in BOTH      |
+//| inputs: the overlay switch and the F mute (`IsIndicatorHidden`).  |
+//| So "hidden" is not a state the F-show walk may decide for it; it  |
+//| is a state the walk has to ASK for, and it cannot ask, because    |
+//| this file is included before the HTF module and the LITE build    |
+//| carries no HTF module at all. Hence the namespace: the HTF owner  |
+//| PUBLISHES its prefix here (HTFCandles_Life, InitializeHTFCandles) |
+//| and this file only recognises it. "" = no overlay on this chart,  |
+//| which is the Lite case, and then nothing is skipped.             |
+//|                                                                  |
+//| Declared here rather than in GlobalVariables because that file is |
+//| shared with every build and this is a one-reader seam.            |
+//+------------------------------------------------------------------+
+string g_HTFVisNamespace = "";
+
+bool VisibilityIsHTFName(const string nm)
+{
+    if(StringLen(g_HTFVisNamespace) == 0) return false;
+    return (StringFind(nm, g_HTFVisNamespace) == 0);
+}
+
 void InvalidateAllVisibilityCaches()
 {
     InvalidateLinesVisibleCache();
@@ -291,6 +317,16 @@ int VisibilityShowAllCached(const bool atrShouldShow, const bool showAtrTargets,
         if(!CacheSlotIsLive(i)) continue;
         const string nm = g_objectCacheHash[i].name;
         if(StringFind(nm, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot layer ignores F
+        // P-HTF-AUDIT-4 (2026-10-31, user: «بعدش که کندل‌های تایم بالا رو خاموش
+        // میکنیم و مخفی رو میزنم زمانیکه روشن میکنم کندل‌های تایم بالاهم میاد»):
+        // THE OVERLAY IS NOT THIS WALK'S TO UNMASK. Its rects reach the cache
+        // through `CacheUpdateZone` (HTFRectUpsert), so they ARE in this set —
+        // and the blanket `ALL_PERIODS` below overruled the switch. MEASURED
+        // sequence: switch ON, F-hide, switch OFF (the toggle wrote nothing, the
+        // family was already NO_PERIODS), F-show -> every HTF rect repainted
+        // while the switch said off. Skipped, not re-decided: HTFEnsureDrawn
+        // re-asserts the composer on the same F edge (P-HTF-AUDIT-4 there).
+        if(VisibilityIsHTFName(nm)) continue;
         // P-PERF-41: the zone family answers to its OWN switch (and to L for its
         // boundary lines) - one predicate, shared with the family walk and the
         // render writer, so "zones off" cannot survive an F press again.

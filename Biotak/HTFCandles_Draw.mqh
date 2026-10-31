@@ -786,10 +786,25 @@ void HTFEnsureDrawn()
    // The state is the truth, the chart is the copy: one walk per instance (the
    // toggle keeps owning its own edge), zero per-tick cost. allowBuild=false so
    // the first build still goes through the staging guard below.
+   //
+   // P-HTF-AUDIT-4 (2026-10-31, user: «بعدش که کندل‌های تایم بالا رو خاموش
+   // میکنیم و مخفی رو میزنم ... کندل‌های تایم بالاهم میاد»): THE F EDGE IS THE
+   // SAME KIND OF MISMATCH, so it re-reconciles on the same terms. The F-HIDE
+   // walk masks every cached rect (correct: hidden means hidden), and the
+   // F-SHOW walk now SKIPS this family (VisibilityManager, P-HTF-AUDIT-4) —
+   // which is why the family must be re-asserted here: after F-hide -> switch
+   // OFF -> F-show the boxes would otherwise stay masked with the switch ON,
+   // and the reverse order is the reported bug. `IsIndicatorHidden` is the
+   // 100 ms-cached read of the same bit `HTFBoxMask` uses, so both writers
+   // agree by construction. Cost: one bool compare per tick, one family walk
+   // per F EDGE (the edge is a keypress, never a per-frame path).
    static bool s_reconciled = false;
-   if(!s_reconciled)
+   static bool s_seenHidden = false;
+   const bool hidNow = IsIndicatorHidden();
+   if(!s_reconciled || hidNow != s_seenHidden)
    {
       s_reconciled = true;
+      s_seenHidden = hidNow;
       // The exact probe, not `HTFAnyBoxesExist()`: that one only looks at indices
       // 0..2, and a family whose head was culled still has to be masked.
       int vis0 = 0;
@@ -803,6 +818,7 @@ void HTFEnsureDrawn()
          // opened OFF onto a visible family), so it reports on the same flushed
          // channel as the toggle: family / visible before -> after.
          DrawStripDiagEmit("[HTF] reconcile on=" + IntegerToString(g_UI.showHTF ? 1 : 0) +
+                           " hidden=" + IntegerToString(hidNow ? 1 : 0) +
                            " family=" + IntegerToString(fam0) +
                            " visible " + IntegerToString(vis0) + "->" + IntegerToString(vis1));
       }
