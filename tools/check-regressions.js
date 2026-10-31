@@ -6460,6 +6460,22 @@ function main() {
         broken.push('the global age sweep owns the session family again — a box older than an hour is deleted on the next cleanup pass (P-SESS-43)');
       if (!/if\(StringFind\(objName, "TH3_Structure_"\) == 0\) continue;/.test(t43))
         broken.push('the structure family lost its exemption in the same walk (P-SESS-43)');
+      // -- THE MT5 TREE CARRIES THE SAME LAW (P-SESS-43 ported, 2026-10-31) --------
+      // One gate, both trees: the MT5 mirror is compiled from its own copy of these
+      // two files, so a rule asserted on MT4 alone can be undone there by an edit
+      // nobody gates. Same precedent as P-UI-RESET-ALL below.
+      const MT543 = (...p) => path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', ...p);
+      const sd5 = codeOf(linesOf(MT543('Biotak', 'Sessions_Draw.mqh')) || []);
+      const tail5 = codeOf(linesOf(MT543('Biotak', 'EventHandlers.mqh')) || []);
+      if (!sd5)
+        broken.push('MT5: Biotak/Sessions_Draw.mqh is missing — the mirror has no sessions owner');
+      else if (!/bool SessPaintAll\(/.test(sd5) || !/SessSweepSurplus\(\)/.test(sd5) ||
+               !/if\(unpriced <= 0\)/.test(sd5))
+        broken.push('MT5: the paint is a wipe again (void SessPaintAll / no SessSweepSurplus / no cold-pass fence) — the same switch deletes and redraws the family there');
+      if (!tail5)
+        broken.push('MT5: Biotak/EventHandlers.mqh is missing — the mirror\'s age sweep has no owner');
+      else if (!/if\(StringFind\(objName, indicatorPrefix \+ "SESS_"\) == 0\) continue;/.test(tail5))
+        broken.push('MT5: the age sweep owns the session family again — a box older than an hour is deleted on the next cleanup pass there (P-SESS-43)');
     }
     if (broken.length) {
       failures.push('P-SESS-37/43: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh + Biotak/EventHandlers_Tail.mqh)');
