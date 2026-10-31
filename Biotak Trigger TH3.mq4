@@ -158,20 +158,44 @@ int OnInit()
     // nothing, so every `PnlDrawS_*` object on the chart is someone else's. One prefix
     // scan per ATTACH, never per frame.
     uint p4i = GetTickCount();
+#ifdef DSTRIP_DIAG
+    //--- P-SESS-42: the attach side of the teardown census. On a timeframe switch
+    //--- this is what the PREVIOUS instance left behind, measured before this one
+    //--- writes anything.
+    DrawStripDiagEmit("[P-SESS] attach pre=" + IntegerToString(SessFamilyCount()));
+#endif
     int result = OnInitHandler();
     uint p4ind = GetTickCount() - p4i;
     p4i = GetTickCount();
+#ifdef DSTRIP_DIAG
+    //--- P-SESS-42: the attach bisect. `attach pre=` above is what the switch kept;
+    //--- each line below names the step that took it away, so «حذف و رسم» stops
+    //--- being a guess. One walk per step, on the attach only.
+    DrawStripDiagEmit("[P-SESS] init handler n=" + IntegerToString(SessFamilyCount()));
+#endif
     if(result == INIT_SUCCEEDED)
     {
         // P-DRAW-120: the sweep is a chart WRITE — after the seed, after the refusal.
 #ifndef BUILD_LITE
         DrawStripSweepStale();
 #endif
+#ifdef DSTRIP_DIAG
+        DrawStripDiagEmit("[P-SESS] init sweep n=" + IntegerToString(SessFamilyCount()));
+#endif
         // --- Circular menu / settings panels / HTF candles ---
         InitializeUIStates();      // menu + UI globals
+#ifdef DSTRIP_DIAG
+        DrawStripDiagEmit("[P-SESS] init uistates n=" + IntegerToString(SessFamilyCount()));
+#endif
         InitializeBiotakKit();   // panel state, colors, boxes, custom lines
+#ifdef DSTRIP_DIAG
+        DrawStripDiagEmit("[P-SESS] init kit n=" + IntegerToString(SessFamilyCount()));
+#endif
         InitializeHTFCandles();    // HTF candle engine
         CreateMenu();              // orb + ring + tools
+#ifdef DSTRIP_DIAG
+        DrawStripDiagEmit("[P-SESS] init menu n=" + IntegerToString(SessFamilyCount()));
+#endif
         // P-UI-114: right-click era deleted — terminal menu untouched, strip on
         // LEFT hold (DrawStrip.mqh).
         ChartRedraw();
@@ -189,6 +213,13 @@ int OnInit()
 void OnDeinit(const int reason)
 {
     uint p4d = GetTickCount();   // P-PERF-04: teardown budget (timeframe switch)
+    // P-SESS-36 (2026-10-31) — THE SWITCH THAT IS STILL OWED DIES WITH THIS ATTACH.
+    // A timeframe change IS a deinit + init on MT4, so a save that a switch asked
+    // for inside the throttle's 500 ms window must reach the store HERE, before the
+    // next attach reads it back. MEASURED: the ring's sessions key saved through the
+    // throttle, the store kept the old value, and the next attach wiped the family
+    // because it loaded "sessions off". Free when nothing is owed.
+    RuntimeSettingsSaveDrain();
     // P-PERF-44: the ledger is read by the breakdown line below, so it is cleared
     // HERE - at the start of the transaction it describes, never inside a saver
     // (a saver that returns early would leave the previous teardown's numbers).
@@ -202,9 +233,21 @@ void OnDeinit(const int reason)
     // Reported only when the total blows the budget, like every other ledger.
     uint p15t = p4d;
     uint p15Pnl, p15Menu, p15Htf, p15Save, p15Cleanup, p15Handler;
+#ifdef DSTRIP_DIAG
+    //--- P-SESS-42 (2026-10-31) — WHO TAKES THE SESSION FAMILY, MEASURED STEP BY STEP.
+    //--- «هنوز فیلکر داره و حذف و رسم میشه»: a switch is deinit + init, and five
+    //--- different owners run inside this teardown. A number after each one names the
+    //--- owner that emptied the chart instead of leaving the next report to guess
+    //--- (law: never fix a symptom you have not measured). One walk per step, only on
+    //--- a teardown, behind the standing diag define.
+    DrawStripDiagEmit("[P-SESS] td start n=" + IntegerToString(SessFamilyCount()));
+#endif
     SnapshotOpenSurfaces();   // P-UI-142: record open panel/tools BEFORE the closes below clear them
     PnlCloseAll();
     p15Pnl = GetTickCount() - p15t; p15t = GetTickCount();
+#ifdef DSTRIP_DIAG
+    DrawStripDiagEmit("[P-SESS] td panels n=" + IntegerToString(SessFamilyCount()));
+#endif
     // P-DRAW-08: the drawing strip's own objects die with the instance — the
     // removal path owns them, so no PnlDrawS_* button survives a REASON_REMOVE
     // (the name was `Biotak_DS_*` in the note that first said this; the objects
@@ -212,14 +255,23 @@ void OnDeinit(const int reason)
     DrawStripClose();
     DeleteMenu();
     p15Menu = GetTickCount() - p15t; p15t = GetTickCount();
+#ifdef DSTRIP_DIAG
+    DrawStripDiagEmit("[P-SESS] td strip+menu n=" + IntegerToString(SessFamilyCount()));
+#endif
     DeleteHTFCandles();
     p15Htf = GetTickCount() - p15t; p15t = GetTickCount();
     SaveBiotakKit();
     p15Save = GetTickCount() - p15t; p15t = GetTickCount();
     CleanupUIStates(reason);
     p15Cleanup = GetTickCount() - p15t; p15t = GetTickCount();
+#ifdef DSTRIP_DIAG
+    DrawStripDiagEmit("[P-SESS] td ui+htf n=" + IntegerToString(SessFamilyCount()));
+#endif
     OnDeinitHandler(reason);
     p15Handler = GetTickCount() - p15t;
+#ifdef DSTRIP_DIAG
+    DrawStripDiagEmit("[P-SESS] td handler n=" + IntegerToString(SessFamilyCount()));
+#endif
     uint p15total = GetTickCount() - p4d;
     P4ReportSlow("OnDeinit reason=" + IntegerToString(reason),
                  p15total, P_P4_INIT_WARN_MS);

@@ -141,7 +141,7 @@ double PnlDefValSet(const int item,const int row)
                if(row==17) return 1;   // P-UI-143: BOTTOM OPACITY card look as shipped
               if(row==8) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;
               if(row==9) return (FactoryDefault(FF_SHOW_MIDPOINT)>0.5)?1.0:0.0;
-              return 0;                        // rows 10-11 = NAV rows
+              return 0;                        // rows 10-13 and 18 = NAV rows
       case 2: if(row==0) return (FactoryDefault(FF_SHOW_COUNTDOWN)>0.5)?1.0:0.0;
               if(row==1) return 3;   // COLOR row → palette sentinel
               if(row==2) return FactoryDefault(FF_COUNTDOWN_SIZE);
@@ -270,8 +270,9 @@ double PnlDefValSet(const int item,const int row)
                if(row==7) return 1.0;                 // OVERLAP on
                if(row==8) return 1.0;                 // COUNTDOWN on
                if(row==9) return 0.0;                 // ALERTS off
-               if(row==10) return 14;                 // FILL: the shipped tint (P-SESS-14)
+               if(row==10) return 62;                 // TRANSPARENCY: 62 % of the ink given up is the shipped 14 % visible (P-SESS-28: the paint fades 38^2/100)
                if(row==11) return 0.0;                // ZONE LAW: the standard table (P-SESS-15)
+               if(row==16) return 1.0;                // STYLE: EMPTY ships — no fill over the candles (P-SESS-29)
                if(row==13) return 0;                  // TV LEVELS: OFF — TradingView's own default (Range only)
                if(row==14) return 1.0;                // STRIP: on (P-SESS-19)
               if(row==15) return -13;                // BROKER UTC: AUTO (P-SESS-23 - learn it)
@@ -391,7 +392,7 @@ double PnlCurrentSet(const int item,const int row)
               if(row==14 || row==15) return 0;                 // P-UI-131h: colour rows
               if(row==16) return g_zoneEdgeTopTransparency;
               if(row==17) return g_zoneEdgeBottomTransparency;
-              return 0;                        // rows 10-11 = NAV rows
+              return 0;                        // rows 10-13 and 18 = NAV rows
       case 2: if(row==0) return PnlMuteGatedValue(g_showLiveCountdown);   // countdown's own layer · P-UI-93
               if(row==1) return 0;   // COUNT COLOR (palette only)
               if(row==2) return g_countdownFontSize;
@@ -525,8 +526,9 @@ double PnlCurrentSet(const int item,const int row)
                 if(row==7) return g_sessOverlap ? 1.0 : 0.0;
                 if(row==8) return g_sessCountdown ? 1.0 : 0.0;
                 if(row==9) return g_sessAlerts ? 1.0 : 0.0;
-                if(row==10) return g_sessFill;             // P-SESS-14
+                if(row==10) return 100 - g_sessFill;       // P-SESS-25: TRANSPARENCY (the face of the stored ink)
                 if(row==11) return g_sessDst ? 1.0 : 0.0;  // P-SESS-15
+                if(row==16) return SessAllStyleIs(SESS_STYLE_OUTLINE) ? 1.0 : 0.0;   // P-SESS-25
                 if(row==13) return g_sessTv;               // P-SESS-18 the TV levels
                 if(row==14) return g_sessStrip ? 1.0 : 0.0;// P-SESS-19 the bottom strip
                 return 0;                        // row 12 = NAV
@@ -913,6 +915,13 @@ int PnlApplySet(const int item,const int row,const double v)
                 RequestUISync();
                 g_forceClearOnNextDraw = true; g_redrawTHLevelsNeeded = true;
                 g_labelsRelayoutNeeded = true; flags = REFRESH_ALL;
+                // P-UI-220: «اثار هستش یا نه» is answered by THIS line, not by a
+                // screenshot — the type the per-frame resolver reads back, the
+                // override it reads it from, and the rebuild the write asked for.
+                DrawStripDiagEmit("[P-UI-220] start point set type=" +
+                                  IntegerToString((int)g_thStartPointType) +
+                                  " override=" + IntegerToString(g_startPointOverride) +
+                                  " rebuild=1");
              }
           }
           else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
@@ -1028,11 +1037,24 @@ int PnlApplySet(const int item,const int row,const double v)
           else if(row==7)  { g_sessOverlap  = (v>0.5); }
           else if(row==8)  { g_sessCountdown= (v>0.5); }
           else if(row==9)  { g_sessAlerts   = (v>0.5); }
-          else if(row==10) { g_sessFill     = ClampSettingInt((int)MathRound(v),0,SESS_FILL_MAX); }      // P-SESS-14: the look
+          // P-SESS-14: the look. P-SESS-25: the row speaks TRANSPARENCY (0 = solid),
+          // while the stored value stays the ink the body KEEPS (SSFA), so every
+          // saved chart decodes exactly as before.
+          else if(row==10) { g_sessFill     = ClampSettingInt(100 - (int)MathRound(v),0,SESS_FILL_MAX); }
           else if(row==11) { g_sessDst      = (v>0.5); }      // P-SESS-15: the zone law — every window moves
+          // P-SESS-25: Filled|Empty for the whole family — ONE write, every slot.
+          else if(row==16) { SessSetAllStyle((v > 0.5) ? SESS_STYLE_OUTLINE : SESS_STYLE_FILLED); }
           else if(row==13) { g_sessTv       = ClampSettingInt((int)MathRound(v),0,5); }   // P-SESS-18: the TV levels
           else if(row==14) { g_sessStrip    = (v>0.5); }      // P-SESS-19: the bottom strip
-          RuntimeSettingsSaveOverridesThrottled();   // OV_SSON/SSHD/.../SSAL/SSFA/SSFW
+          //--- P-SESS-34 (2026-10-31): A SINGLE CLICK MUST REACH THE DISK.
+          //--- MEASURED on the live chart: `OV_SSTS` sat at 0 while the panel showed
+          //--- STRIP on (the store's last write was 20:26, the panel's was later) —
+          //--- the 500 ms throttle behind a one-click SWITCH can drop the only write
+          //--- that click makes, so the next attach came back with the strip off and
+          //--- the boxes on. A switch is ONE event, never a drag; the throttle stays
+          //--- for the SLIDERS, which really are a stream of events.
+          if(row==1 || row==2 || row==10 || row==13) RuntimeSettingsSaveOverridesThrottled();  // days / transparency / TV (drags)
+          else                                        RuntimeSettingsSaveOverrides();            // switches + STYLE: one write, always
           SessionsTick();                            // paint now, not next tick
           break;
        case 16: { // P-SESS — SESSION EDITOR. One slot at a time: decode, change
@@ -1155,7 +1177,13 @@ int PnlResetAll()
    UpdateCircularBadges();
    SaveUIStates();
    if(g_PnlOpen >= 0) PnlRebuildKeepSpot(g_PnlOpen);   // the widgets show the restored values
-   _LOG_GATE_W Print("[UI] reset ALL keys=", keys);
+   //--- P-UI-219: the FLUSHED channel, not the journal (AGENTS law 3). The report
+   //--- «روی ریست ال کلیک میکنم این میاد» was undecidable from the Experts tab
+   //--- precisely because a `Print` here sat unread in MT4's RAM buffer: the count
+   //--- of deleted keys is the difference between "the button never ran" and
+   //--- "it ran and wiped nothing".
+   DrawStripDiagEmit("[P-UI-219] reset ALL keys=" + IntegerToString(keys) +
+                     " open=" + IntegerToString(g_PnlOpen));
    return REFRESH_ALL | REFRESH_HTF;                   // (5) every surface, HTF candles included
 }
 
@@ -1163,18 +1191,26 @@ int PnlResetAll()
 //| P-UI-145 (2026-10-13) — THE SEAT REGISTRY: NO UI CONTROL MAY BE    |
 //| DRAGGED OFF ITS SEAT.                                             |
 //|                                                                  |
-//| Every card and palette control is born `OBJPROP_SELECTABLE=true`  |
-//| (PnlSetButton below — the name router needs OBJECT_CLICK), and    |
-//| the project's own measured law says what that costs (P-UI-48 /    |
+//| Every card and palette control USED to be born `OBJPROP_SELECTABLE |
+//| =true` (PnlSetButton below — the name router needed OBJECT_CLICK), |
+//| and the project's own measured law says what that cost (P-UI-48 /  |
 //| P-BK-15, BaseKnot_Base.mqh:848): «MT4 grabs a selectable object    |
 //| exactly once, on the press that lands on it» — a press that then  |
 //| travels native-drags the OBJECT, and a selected object is moved   |
 //| by every later drag anywhere on the chart (the hijack). A shaky   |
 //| hand (3–10 px, below the card's own PNL_DRAG_CTRL_PX proof)       |
-//| therefore displaces a swatch / cell / tab / × off its seat, and   |
-//| the displaced button is then saved into the chart profile at its  |
+//| therefore displaced a swatch / cell / tab / × off its seat, and   |
+//| the displaced button was then saved into the chart profile at its  |
 //| absolute pixels and restored as a ghost after the next restart —  |
 //| the user's «ممکن است به‌اشتباه درگ شده … روی هم افتاده».          |
+//|                                                                  |
+//| P-UI-219 (2026-10-30) closes the first half of that story: the     |
+//| factory no longer sets the flag at all, so no panel control can be |
+//| grabbed, native-dragged, or opened in the properties dialog. The   |
+//| registry SURVIVES because it became the delivery: with no           |
+//| OBJECT_CLICK to route, `PnlSeatPressAct` (BiotakPanels_Route.mqh)  |
+//| hit-tests the SAME seats this paint wrote. One list, two readers,  |
+//| zero second grid.                                                 |
 //|                                                                  |
 //| The answer is ONE registry filled by the ONE factory that paints  |
 //| buttons (never a second arithmetic — contract item 7): the seat   |
@@ -1277,6 +1313,11 @@ void PnlSeatForget(const string prefix)
    s_pnlSeatN = w;
    s_pnlSeatFullSaid = false;   // the pool has room again — a later FULL is a new fact
 }
+//--- P-UI-219 (2026-10-30): the registry's READ side, for the press-time door in
+//--- BiotakPanels_Route.mqh. The arrays stay private to this file — the door asks
+//--- for a name, it never copies the grid (contract item 7: one owner per arithmetic).
+int PnlSeatCount() { return s_pnlSeatN; }
+string PnlSeatNameAt(const int i) { return (i < 0 || i >= s_pnlSeatN) ? "" : s_pnlSeatNm[i]; }
 
 //+------------------------------------------------------------------+
 //| Object factories                                                  |
@@ -1314,7 +1355,7 @@ void PnlSetRect(const string n,const int x,const int y,const int w,const int h,c
 }
 
 void PnlSetButton(const string n,const int x,const int y,const int w,const int h,
-                  const string txt,const color bg,const color border,const bool selectable)
+                  const string txt,const color bg,const color border)
 {
    if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,n,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -1333,7 +1374,15 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_BORDER_TYPE,BORDER_FLAT);
    ObjectSetInteger(0,n,OBJPROP_BORDER_COLOR,border);
    ObjectSetInteger(0,n,OBJPROP_STATE,false);
-   ObjectSetInteger(0,n,OBJPROP_SELECTABLE,selectable);
+   //--- P-UI-219 (2026-10-30): NEVER selectable. MT4 grabs a selectable object on the
+   //--- press that lands on it (P-UI-48's own law, quoted above at the seat registry),
+   //--- so a press on a panel button is spent on SELECTION and the next press on the
+   //--- same pixel opens the terminal's object-properties dialog — the user's «روی
+   //--- ریست ال کلیک میکنم این میاد» with the `…_Pnl14_ral` window on screen and no
+   //--- `[UI] reset ALL` line behind it. Delivery does NOT need the flag any more:
+   //--- the coordinate hit tests and `PnlSeatPressAct` answer for every control this
+   //--- factory paints, off the seat remembered two lines above.
+   ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,n,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_CTL);
 }

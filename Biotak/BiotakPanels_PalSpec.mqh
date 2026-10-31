@@ -58,7 +58,7 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
       PnlSpecAdd(0, PNL_K_LEGACY, 3, 1, "eye");   // hotkey T lives in the header badge only
    }
-   else if(item == 1)   // ZONES & LEVELS (gold) — 11 settings / 18 display rows
+   else if(item == 1)   // ZONES & LEVELS (gold) — 11 settings / 19 display rows
                         // (P-UI-131k retired the BORDER TRANSPARENCY row from the display:
                         // the two per-half opacities own the edge now. Address 7 lives on.)
    {
@@ -101,7 +101,7 @@ void PnlSpecBuild(const int item)
       // module reads and changed nothing on the chart (P-UI-47). That row is gone
       // too; setting 9 stays persisted and inert so the addresses above it do not
       // move.
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 4);
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 5);
       PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "steps", "", "", 0, "5 LEVELS");
       PnlSpecAdd(1, PNL_K_LEGACY, 11, 1, "line", "", "", 0, "ONE STYLE");
       // P-UI-126: APPENDED (row 12), so every address above keeps its number and a
@@ -112,6 +112,13 @@ void PnlSpecBuild(const int item)
       // P-UI-131: the GENERAL card's door on the main card, APPENDED (row 13) the
       // same way P-UI-126 added the row above.
       PnlSpecAdd(1, PNL_K_LEGACY, 13, 1, "info", "", "", 0, "GENERAL");
+      // P-UI-220: the ANCHOR's START POINT (address 4 of the CUSTOM PRICE card) had
+      // ONE door — hold the PIN ring item, or hold the custom-price line. Nothing on
+      // the levels' own card named it, so «این تنظیمات startpoint سطوح رو توی پنل ها
+      // ندیدم» was a true report about a live setting. APPENDED (row 18) the way
+      // P-UI-126 and P-UI-131 appended theirs, so every address above keeps its
+      // number and the NAV row itself persists nothing.
+      PnlSpecAdd(1, PNL_K_LEGACY, 18, 1, "target", "", "", 0, "START POINT");
    }
    else if(item == 2)   // ATR LABELS (gold) — the countdown tag, the label
                         // switches, the plan ATR and the card colours: addresses
@@ -411,6 +418,7 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(15, PNL_K_LEGACY, 11, 1, "clock");    // ZONE LAW (P-SESS-15 — standard table / city clock)
       PnlSpecAdd(15, PNL_K_LEGACY, 13, 1, "line");     // TV LEVELS (P-SESS-18 — Midpoint / Mean / VWAP / Trendline)
       PnlSpecAdd(15, PNL_K_LEGACY, 14, 1, "ruler");    // STRIP (P-SESS-19 — the bottom session divider)
+      PnlSpecAdd(15, PNL_K_LEGACY, 16, 1, "layers");   // STYLE Filled|Empty for the whole family (P-SESS-25 — appended)
       PnlSpecAdd(15, PNL_K_LEGACY, 12, 1, "tag");     // EDIT SESSIONS nav
    }
    // P-SESS — SESSION EDITOR (16): one slot at a time, chosen at row 0. 13 rows,

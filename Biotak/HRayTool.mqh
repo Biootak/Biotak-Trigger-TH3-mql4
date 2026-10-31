@@ -20,7 +20,24 @@
 #ifndef HRAY_TOOL_MQH
 #define HRAY_TOOL_MQH
 
+// P-HRN-01 (2026-10-31, user: «این خط هر چی گره هستش تا تایم پایین رو برام مشخص
+// بکنه تا یک دقیقه» + «گره‌هایی که توی این خط تشکیل میشه رو باید باکس بکشی براش،
+// باکس هم فیل نداشته باشه» + the RTM Zones page: «It draws the RTM zones those
+// lines produce, as rectangles, across timeframes down to M1»). The ray's LOWER-TF
+// NODES live in their own module and are pulled in HERE, not by the entry, so
+// every harness that includes this file (12 of them) gets the same chain the
+// entry does — measured: without it the tests died on 8 x error 168.
+// Full only: the module reads the TH3 pivot detector, which Lite does not carry.
+// It is included BELOW the tag defines on purpose — a #define does not resolve
+// backwards, and the first attempt put it above them (`undeclared identifier`).
+
 #define HRAY_TAG "_HRAY_"
+// P-HRN-01: the ray's lower-TF zone objects wear this tag INSIDE the ray's own
+// prefix (so a REASON_REMOVE sweep still takes them). It is declared here, not in
+// HRayNodes.mqh, because the ADOPTION walk below must skip them in BOTH builds —
+// a Lite chart that opens a Full chart's drawing would otherwise register a
+// rectangle as a RAY and let the hand grab it.
+#define HRAY_NODES_TAG "_HRN_"
 #define HRAY_COLOR clrRed
 #define HRAY_WIDTH 1
 #define HRAY_STYLE STYLE_SOLID
@@ -37,6 +54,11 @@
 void HRayWitness(const string line) { DrawStripDiagEmit("[HRay] " + line); }
 #else
 void HRayWitness(const string line) { Print("[HRay] " + line); }
+#endif
+
+//--- the nodes module, after every tag it reads (see the note above)
+#ifndef BUILD_LITE
+#include "HRayNodes.mqh"
 #endif
 
 static bool   s_hrayArmed    = false;  // arm session live (the menu light reads this)
@@ -88,6 +110,8 @@ bool HRayIsHandle(const string nm)
    int l = StringLen(nm);
    return (l > 2 && StringSubstr(nm, l - 2) == "_H");
 }
+// P-HRN-01: a zone (rectangle or its TF tag) is a CHILD of a ray, never a ray.
+bool HRayIsNodeObj(const string nm) { return (StringFind(nm, HRAY_NODES_TAG) >= 0); }
 int HRayRegFind(const string id)
 {
    for(int i = 0; i < ArraySize(s_hrayIds); i++)
@@ -155,15 +179,23 @@ void HRayNormalise(const string line)
    if((bool)ObjectGetInteger(0, line, OBJPROP_SELECTED))
       ObjectSetInteger(0, line, OBJPROP_SELECTED, false);
 }
-void HRayAdoptOrphans()
+//--- P-PERF-157 (2026-10-29, one file both trees since 2026-10-31): the adopt walk
+//--- is a full object enumeration, and the per-tick caller paid it on every frame.
+//--- `force` marks the moments that MUST walk (an attach); otherwise a count that
+//--- did not move cannot carry a ray we do not know.
+void HRayAdoptOrphans(const bool force = false)
 {
    string pfx = HRayPrefix();
    if(pfx == "") return;
    int n = ObjectsTotal(0, 0, -1);
+   static int s_adoptTotal = -1;
+   if(!force && n == s_adoptTotal) return;
+   s_adoptTotal = n;
    for(int i = 0; i < n; i++)
    {
       string nm = ObjectName(0, i, 0, -1);
       if(StringFind(nm, pfx) != 0 || HRayIsHandle(nm)) continue;
+      if(HRayIsNodeObj(nm)) continue;   // P-HRN-01: a zone is not a ray
       HRayRegAdd(StringSubstr(nm, StringLen(pfx)));
       HRayNormalise(nm);
    }
@@ -204,6 +236,11 @@ int HRayHideAll()
       n++;
    }
    if(s_hraySel != "") HRayHandleFollow(s_hraySel);   // parks through its hidden branch
+   // P-HRN-01: a zone rectangle is not period-maskable (contract §2), so the mute
+   // hides it by EXISTENCE. The cache stays — the show path repaints, zero reads.
+#ifndef BUILD_LITE
+   HRayNodesHideAll();
+#endif
    return n;
 }
 
@@ -219,6 +256,9 @@ int HRayShowAll()
       n++;
    }
    HRayFollowAll();   // re-place the selected ray's dot
+#ifndef BUILD_LITE
+   HRayNodesShowAll();
+#endif
    return n;
 }
 
@@ -257,6 +297,11 @@ void HRayPlace(const datetime t, const double price)
       HRaySelect(ln);   // the fresh ray is selected, so its dot answers at once
       HRayHandleFollow(ln);
       HRayWitness("placed \"" + ln + "\" at " + DoubleToString(price, Digits));
+      // P-HRN-01: the level is placed -> ask every lower rung what node it holds.
+      // ONE scan per placement (never per tick); the answer is cached in HRayNodes.
+#ifndef BUILD_LITE
+      HRayNodesScan(ln);
+#endif
    }
 }
 // THE lock giver-backer for the carry — every path that drops the drag goes
@@ -271,6 +316,9 @@ void HRayDelete(const string line, const string why)
 {
    HRayWitness("delete \"" + line + "\" (" + why + ")");
    if(s_hrayDrag == line) HRayDragRelease();
+#ifndef BUILD_LITE
+   HRayNodesForget(line);   // P-HRN-01: the zones are the ray's children — they go with it
+#endif
    ObjectDelete(0, HRayHandleName(line));
    ObjectDelete(0, line);
    string pfx = HRayPrefix();
@@ -350,6 +398,11 @@ void HRayDragEnd()
    if(s_hrayDrag == "") return;
    HRayWitness("drag end \"" + s_hrayDrag + "\" moved=" + (s_hrayMoved ? "yes" : "no"));
    if(s_hrayMoved) s_hrayEndMs = GetTickCount();   // trailing release-click is select-only
+   // P-HRN-01: the level MOVED, so its nodes did too — one re-scan at the release
+   // (the same single moment the drag already pays for), never inside the move stream.
+#ifndef BUILD_LITE
+   if(s_hrayMoved) HRayNodesScan(s_hrayDrag);
+#endif
    HRayDragRelease();
    ChartRedraw();
 }
@@ -385,6 +438,9 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
    }
    if(id == CHARTEVENT_OBJECT_DELETE && pfx != "" && StringFind(sparam, pfx) == 0)
    {
+      // P-HRN-01: our OWN zone teardown raises this event for every rectangle it
+      // removes — reading it as "the ray is gone" would delete the line under it.
+      if(HRayIsNodeObj(sparam)) return false;
       if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;   // bulk teardown — nothing to heal
       HRayWitness("object-delete seen \"" + sparam + "\"");
       // P-HR-07 (2026-09-28, user: «روی استریپ کلیک میکنم همه پاک میشه»): the
@@ -396,6 +452,9 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
       // the ray, and placing a second ray erased the first.
       if(HRayIsHandle(sparam)) return false;
       string ln = sparam;
+#ifndef BUILD_LITE
+      HRayNodesForget(ln);   // P-HRN-01: a ray deleted behind our back takes its zones
+#endif
       ObjectDelete(0, HRayHandleName(ln));
       if(ObjectFind(0, ln) < 0)
          HRayRegDel(StringSubstr(ln, StringLen(pfx)));
@@ -563,19 +622,39 @@ HRayDragStart(ln);   // select + carry in one press
 }
 // Fresh instance (attach / TF switch reuses the same chart): adopt the chart's
 // rays — statics may not know them yet, but the objects survived. Idempotent.
+// Fresh instance (attach / TF switch reuses the same chart): adopt the chart's
+// rays — statics may not know them yet, but the objects survived. Idempotent.
+void HRayHandlesWipe()
+{
+   for(int i = 0; i < ArraySize(s_hrayIds); i++)
+      ObjectDelete(0, HRayHandleName(HRayLineName(s_hrayIds[i])));
+}
 void HRayOnInit()
 {
    s_hrayArmed = false;
    s_hrayDrag = "";
    s_hraySel = "";
    s_hrayClick = "";
-   HRayAdoptOrphans();
+   HRayAdoptOrphans(true);   // P-PERF-157b: the attach moment always walks
+   HRayHandlesWipe();
+   // P-HRN-01/03: a TF switch IS a fresh instance — the statics die, the objects
+   // survive. The cache is rebuilt by ADOPTING those objects (one ObjectsTotal
+   // walk, zero scan), so the mute and the delete sweep keep working after it.
+#ifndef BUILD_LITE
+   HRayNodesAdoptAndFill();
+#endif
 }
 // Deinit safety: a remove must never leave a stuck arm; committed rays are
 // chart objects, so only REASON_REMOVE sweeps them (a TF switch keeps them).
 void HRayOnDeinit(const int reason)
 {
-   s_hrayArmed = false;
+   if(s_hrayDrag != "") HRayDragRelease();
+   if(s_hrayArmed)
+   {
+      s_hrayArmed = false;
+      ChartViewLockRelease();
+   }
+   if(reason != REASON_REMOVE) HRayHandlesWipe();
    s_hrayDrag = "";
    s_hraySel = "";
    if(reason == REASON_REMOVE)
@@ -583,6 +662,9 @@ void HRayOnDeinit(const int reason)
       string pfx = HRayPrefix();
       if(pfx != "") ObjectsDeleteAll(0, pfx);
       ArrayResize(s_hrayIds, 0);
+#ifndef BUILD_LITE
+      HRayNodesForgetAll();   // P-HRN-01: the cache dies with the objects it names
+#endif
    }
 }
 

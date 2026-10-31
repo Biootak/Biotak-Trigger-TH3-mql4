@@ -909,6 +909,20 @@ void BaseKnotPress(const datetime t, const double praw)
 //+------------------------------------------------------------------+
 bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+   //--- P-PERF-171 (2026-10-29, ported from the MQL5 tree 2026-10-31) — A MOVE
+   //--- BELONGS TO THE GESTURE THAT OWNS IT. Dragging ONE vertex dot of a path on
+   //--- AUDUSDb,H1 measured `[mvus-avg] knot=25` on every move of a drag this layer
+   //--- did not start — 12..18 delivered moves a second, and THAT is the «سنگینی».
+   //--- The bit is stored before the return on purpose: the press edge below reads
+   //--- it as "was the button down on the last move I saw", and a stale `true` would
+   //--- make the first move after the gesture look like a RISING edge.
+   //--- IDLE-only: this layer's own armed session and its own drag keep their moves;
+   //--- what stops is the HOVER — the box test on a drag that is not this layer's.
+   if(id == CHARTEVENT_MOUSE_MOVE && g_bkState == BK_IDLE && GestureMoveOwned())
+   {
+      g_bkLeftPrev = (((int)StringToInteger(sparam) & 1) != 0);
+      return false;
+   }
    BaseKnotLazyInit();
    string tag = (StringLen(inpObjectPrefix) > 0 ? inpObjectPrefix + BK_TAG : "");
 

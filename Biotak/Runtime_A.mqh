@@ -91,7 +91,7 @@ static bool g_showMidpointLine = true;                           // [03] inpShow
 static bool g_showMidZones = true;                               // [07.1] inpShowMidZones (P-UI-143: card look as shipped)
 static ENUM_ZONE_STYLE g_midZoneStyle = ZONE_STYLE_BOX_FILLED;   // [07.1] inpMidZoneStyle
 static int g_midZoneTransparency = 66;                           // [07.2] inpMidZoneTransparency (P-UI-143)
-static double g_midZoneHeightPercent = 50.0;                     // [07.2] inpMidZoneHeightPercent
+static double g_midZoneHeightPercent = 33.0;                     // [07.2] inpMidZoneHeightPercent (P-UI-143: card look as shipped, 33%)
 static ENUM_LINE_STYLE g_midZoneBorderStyle = STYLE_SOLID;       // [07.2] inpMidZoneBorderStyle
 static int g_midZoneBorderWidth = 5;                             // [07.2] inpMidZoneBorderWidth (P-UI-143)
 // P-UI-63: the EDGE's transparency, the band's sibling. `g_midZoneTransparency` owns the
@@ -231,7 +231,7 @@ static bool   g_sessPrior = false;       // [15] prior session H/L (dashed)
 static bool   g_sessOverlap = true;      // [15] overlap rectangles (today)
 static bool   g_sessCountdown = true;    // [15] next-boundary countdown text
 static bool   g_sessAlerts = false;      // [15] open/close alerts
-static int    g_sessFill = 14;           // [15] LOOK (P-SESS-14): filled body's ink kept in % (14 == the shipped tint)
+static int    g_sessFill = 38;           // [15] LOOK (P-SESS-14/28): the body's ink knob; the PAINT fades it with the house curve (38^2/100 = 14 % visible == the shipped tint). Stored value, one meaning: ink.
 static bool   g_sessDst = false;         // [15] ZONE (P-SESS-15): true = the city's own clock (DST), false = standard time year-round
 static int    g_sessTv = 0; static bool g_sessStrip = true; static int g_sessSrvUtc = -13;   // [15] TV LEVELS (P-SESS-18: 0=off 1=mid 2=mean 3=vwap 4=trend 5=all — OFF is TradingView's own default: Range only) + STRIP (P-SESS-19: the bottom divider) + BROKER UTC (P-SESS-23: -13 = AUTO learn, -12..+14 = hours east of UTC PINNED — the one door that needs no feed)
 static int    g_sessSlotsEdit = 0;       // [15] editor's picked slot (view only)
@@ -1427,15 +1427,12 @@ void RuntimeSettingsLoadOverrides()
    RuntimeSettingsPrimeOverrideShadow();
 }
 
-//--- throttled saver (panel/palette drags fire per mouse-move)
-void RuntimeSettingsSaveOverridesThrottled()
-{
-   static uint s_LastSave = 0;
-   uint now = GetTickCount();
-   if(now - s_LastSave < 500) return;
-   s_LastSave = now;
-   RuntimeSettingsSaveOverrides();
-}
+//--- THE THROTTLED SAVER IS NOT HERE. P-SESS-36 split it out to Runtime_Save.mqh
+//--- (the throttle + the owe it raises + the drain that spends it) and this file
+//--- kept a byte-identical second copy, so the build died on error 165
+//--- («already defined and has body») at Runtime_Save.mqh:34 — measured on
+//--- 2026-10-31, both entries, 1 error. ONE OWNER: the copy is deleted, not
+//--- commented out, and every caller (15 sites) resolves to Runtime_Save.mqh.
 
 //==============================================================================
 // P-UI-131m: THE TRIGGER COLOUR IS A BASE, NOT AN EFFECTIVE COLOUR. The

@@ -46,7 +46,7 @@ void PalDraw()
    // spellings disagreed by 2 px and the button's own bottom edge armed a drag.
    int cseX = 0, cseY = 0, cseW = 0, cseH = 0;
    PalCloseSeat(px, py, w, cseX, cseY, cseW, cseH);
-   PnlSetButton(p+"close", cseX, cseY, cseW, cseH, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);   ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
+   PnlSetButton(p+"close", cseX, cseY, cseW, cseH, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD);   ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
    ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PnlPt(PNL_PT_PAL));   // P-UI-30
    ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
 
@@ -70,7 +70,7 @@ void PalDraw()
       string tb=p+"t"+IntegerToString(i);
       PnlSetButton(tb, px+PAL_PAD+i*(tw2+tgap), ty, tw2, PAL_TABS-6, tabs[i],
                    act?PNL_CLR_SEG_ON:PNL_CLR_SEG_OFF,
-                   act?PNL_CLR_SEG_ON:PNL_CLR_SEG_BD, true);
+                   act?PNL_CLR_SEG_ON:PNL_CLR_SEG_BD);
       ObjectSetInteger(0,tb,OBJPROP_COLOR, act?PNL_CLR_ACCENT_TX:PNL_CLR_SEG_TX);
       ObjectSetInteger(0,tb,OBJPROP_FONTSIZE,PnlPt(8));   // P-UI-30
       ObjectSetInteger(0,tb,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
@@ -96,7 +96,7 @@ void PalDraw()
        {
           string pn=p+"pg"+IntegerToString(k);
           PnlSetButton(pn, pgx+k*20, gy-2, 18, 16, (k==0)?"<":">",
-                       PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+                       PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD);
           ObjectSetInteger(0,pn,OBJPROP_COLOR,PNL_CLR_SEG_TX);
           ObjectSetInteger(0,pn,OBJPROP_FONTSIZE,PnlPt(7));
           ObjectSetInteger(0,pn,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
@@ -118,7 +118,7 @@ void PalDraw()
             int sy=gy0+qj*pitch;
              color sw=PalPickColor(row0+qj,qi);
              PnlSetButton(n, sx, sy, cell, cell, "", sw,
-                          PnlSwatchBorder(sw,PNL_CLR_FIELD), true);
+                          PnlSwatchBorder(sw,PNL_CLR_FIELD));
              ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
              ObjectSetString(0,n,OBJPROP_TOOLTIP, BioPickFamily(row0+qj)+"  ·  #"+PalHexText(sw));
              // TV parity: rounded cell face over the square button (one pair of
@@ -170,7 +170,7 @@ void PalDraw()
          //--- covered both. That is why the `Z_PANEL_POP_FG` write (P-DRAW-64a2)
          //--- never fixed it: it ordered the CLICKS, not the paint.
          //--- THE HOST FIRST, THEN ITS INK — the plate law, applied to a button.
-         PnlSetButton(p+sfx, bx, tgy+3, tw, 20, "", PNL_CLR_SEG_OFF, on ? PNL_CLR_ACCENT : PNL_CLR_SEG_BD, true);
+         PnlSetButton(p+sfx, bx, tgy+3, tw, 20, "", PNL_CLR_SEG_OFF, on ? PNL_CLR_ACCENT : PNL_CLR_SEG_BD);
          ObjectSetInteger(0,p+sfx,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
          ObjectSetString(0,p+sfx,OBJPROP_TOOLTIP,
             isB ? "The drawing's BORDER — click, then pick a colour here"
@@ -202,7 +202,7 @@ void PalDraw()
       ObjectSetInteger(0,p+"tgtc",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       PnlSetLabel(p+"tgtn", px+PAL_PAD+82, tgy+8, PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 8);
       ObjectSetInteger(0,p+"tgtn",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-      PnlSetButton(p+"tgt", px+w-PAL_PAD-64, tgy+3, 64, 20, "cycle  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+      PnlSetButton(p+"tgt", px+w-PAL_PAD-64, tgy+3, 64, 20, "cycle  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD);
       ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_SEG_TX);
       ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(7));   // P-UI-30
       ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
@@ -223,7 +223,7 @@ void PalDraw()
    // so it can never leave the card — the 201px popup's hard-coded 100px track
    // started 5px past the edge and pushed its value 11px onto the chart.
    int fy=py+PalFootY();
-   PnlSetButton(p+"done", px+PAL_PAD, fy+4, PAL_FT_DONE, 22, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
+   PnlSetButton(p+"done", px+PAL_PAD, fy+4, PAL_FT_DONE, 22, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT);
    ObjectSetInteger(0,p+"done",OBJPROP_COLOR,PNL_CLR_DONE_TX);
    ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    int tr0=PaletteKindTransparency(g_PalKind);
@@ -805,6 +805,12 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==15) { kind=4; label="EDGE BOTTOM"; }      // shaded/bottom line
       else if(row==16) { label="TOP OPACITY"; unit="%"; minV=-1; maxV=100; }
       else if(row==17) { label="BOTTOM OPACITY"; unit="%"; minV=-1; maxV=100; }
+      // P-UI-220: the levels' own ANCHOR door. `inpTHStartPointType` (Midpoint|High|
+      // Low|Custom|Prev Close) was settable from the dialog and from the CUSTOM PRICE
+      // card's ANCHOR band, and that card has no ring item of its own — it opens by
+      // HOLDING the PIN item or the custom-price line. So the setting read as missing
+      // («توی پنل ها ندیدم کجاهستش») while it was live the whole time.
+      else if(row==18) { kind=5; label="START POINT"; opts="8"; }   // NAV → custom price card
       else             { kind=5; label="LINES"; opts="7"; }              // NAV → unified lines card
    }
    else if(item==2)   // ATR LABELS — the chart-labels card (High/Low
@@ -1069,10 +1075,17 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==7)  { kind=1; label="OVERLAP"; }
       else if(row==8)  { kind=1; label="COUNTDOWN"; }
       else if(row==9)  { kind=1; label="ALERTS"; }
-      // P-SESS-14 — THE LOOK. One numeric row after the seven switches: how much ink
-      // the filled body keeps. It defaults to the shipped 14 %, so an untouched chart
-      // paints byte-identically.
-      else if(row==10) { label="FILL"; minV=0; maxV=SESS_FILL_MAX; unit="%"; }
+      // P-SESS-14 — THE LOOK. One numeric row after the seven switches.
+      // P-SESS-25 (2026-10-30): THE ROW NOW SAYS WHAT IT DOES. «رنگ‌ها رو هم شفافیت
+      // براش بزار … که کم رنگ بشه» — it was spelled FILL % (ink the body KEEPS), so
+      // the number a user had to reach was the complement of the one he thinks in.
+      // The address (10) and the stored SSFA (ink %) do NOT move; only the face and
+      // the arithmetic: TRANSPARENCY = 100 - ink, and 0 is a solid box.
+      else if(row==10) { label="TRANSPARENCY"; minV=0; maxV=100; unit="%"; }
+      // P-SESS-25 — «یا باکس خالی باشه هر چی کاربر خواستش»: one STYLE row for the
+      // whole family (the editor keeps its per-slot STYLE), APPENDED at 16 so no
+      // address above it moves and no persisted slot re-decodes.
+      else if(row==16) { kind=2; label="STYLE"; opts="Filled|Empty"; minV=0; maxV=1; }
       // P-SESS-15 — THE ZONE LAW. OFF = the classic fixed table every session chart
       // quotes (Tokyo 00-09Z, London 08-17Z, NY 13-22Z, Sydney 21-06Z); ON = each
       // city's OWN clock, so its DST term moves the edge by the hour it really moves.

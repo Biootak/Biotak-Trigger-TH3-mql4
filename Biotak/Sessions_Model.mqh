@@ -123,27 +123,40 @@ void SessSlotFactory(const int idx, SessSlot &s)
 {
    s.zone = SZ_AUTO_SERVER; s.customMin = 0;
    s.startMin = 480; s.endMin = 1020; s.days = SESS_DAYS_WEEKDAYS;
-   // P-SESS-24 (2026-10-30): FILLED ships. MEASURED on the reporting chart's own
-   // saved objects (profiles\default\chart01.chr, 16:53): 367 SESS_ objects for 72
-   // windows, 4 of every 5 being one border SEGMENT (`_BET/_BEB/_BEL/_BER`) plus the
-   // tag — a hairline mesh 23 days deep. A filled body is ONE rectangle (border +
-   // wash, the build-proof P-SESS-05 body) so the same chart carries 145. Hollow is
-   // still a style the editor can pick; it is no longer the shipped stamp.
-   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;
+   // P-SESS-29 (2026-10-30) — EMPTY SHIPS («پیش‌فرض باکس‌ها فیل نداشته باشه»).
+   // P-SESS-24 had shipped FILLED for its object COUNT (367 -> 145 on the reporting
+   // chart); the user's verdict on that picture is that a washed slab over the
+   // candles is not what a session chart should wear by default. The shipped body
+   // is the four-edge hollow frame again, and the wash stays a style the STYLE row
+   // can pick — where P-SESS-28 makes the TRANSPARENCY knob bite (visible ink =
+   // ink^2/100). The flip ships with a ONE-SHOT migration (see
+   // SessSlotsMigrateLegacy / OV_SSDV), or every chart that opened the card would
+   // keep the slab for good.
+   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;
    switch(idx)
    {
       // P-SESS-16 (2026-10-30): THE FOUR SHIPPED PRESETS ARE THE CLASSIC TABLE, so a
-      // fresh chart draws the same four windows a session chart everywhere draws:
-      // Tokyo 00-09Z, London 07-16Z, New York 13-22Z, Sydney 21-06Z. With ZONE LAW
-      // OFF each preset's local hours resolve to exactly those instants (Tokyo +9,
-      // London +0, New York -5, Sydney +10) - measured: 09-18 / 07-16 / 08-17 / 07-16
-      // local. THE LOOK rides the same four: magenta (Tokyo), blue (London), coral
+      // fresh chart draws the same four windows a session chart everywhere draws.
+      // P-SESS-26 (2026-10-30) — THE TABLE IS BABYPIPS', edge for edge
+      // («ساعت‌ها را از اینترنت بگیر و درستش کن» +
+      // https://www.babypips.com/tools/forex-market-hours):
+      //   Tokyo   7:00 pm - 4:00 am ET  =  00:00-09:00Z  =  09:00-18:00 JST  (+9)
+      //   London  3:00 am - 12:00 pm ET =  08:00-17:00Z  =  08:00-17:00 GMT  (+0)
+      //   New York 8:00 am - 5:00 pm ET =  13:00-22:00Z  =  08:00-17:00 EDT-5 (-5)
+      //   Sydney  5:00 pm - 2:00 am ET  =  22:00-07:00Z  =  08:00-17:00 AEST (+10)
+      // Those are the LOCAL hours with ZONE LAW OFF (the standard-time table this
+      // family is measured in), so each preset is written in its own city's clock
+      // and the engine resolves the UTC edge. P-SESS-25 had London 07-16Z and New
+      // York 13:30-20:00Z (TradingView's equity hours) — MEASURED on the live chart's
+      // own flushed witness 2026-10-30 19:48 with bkr=120: `win slot=1 sU=09:00`
+      // (07:00Z) and `slot=2 sU=15:30` (13:30Z), an hour and a half off the table
+      // above. THE LOOK rides the same four: magenta (Tokyo), blue (London), coral
       // (New York), amber (Sydney) - nearest ink in the 8-table to the palette the
       // reference chart wears, and still four different chips.
-      case 0: s.zone = SZ_TOKYO;     s.startMin = 540; s.endMin = 1080; s.col = 6; s.enabled = true;  break;
-      case 1: s.zone = SZ_LONDON;    s.startMin = 420; s.endMin = 960;  s.col = 0; s.enabled = true;  break;
-      case 2: s.zone = SZ_NEWYORK;   s.startMin = 480; s.endMin = 1020; s.col = 4; s.enabled = true;  break;
-      case 3: s.zone = SZ_SYDNEY;    s.startMin = 420; s.endMin = 960;  s.col = 1; s.enabled = true;  break;   // P-SESS-14: Sydney ships ON (the user's ask - 07:00-16:00 Sydney)
+      case 0: s.zone = SZ_TOKYO;     s.startMin = 540; s.endMin = 1080; s.col = 6; s.enabled = true;  break;   // P-SESS-26: 00:00-09:00Z
+      case 1: s.zone = SZ_LONDON;    s.startMin = 480; s.endMin = 1020; s.col = 0; s.enabled = true;  break;   // P-SESS-26: 08:00-17:00Z (London 08-17 local, +0)
+      case 2: s.zone = SZ_NEWYORK;   s.startMin = 480; s.endMin = 1020; s.col = 4; s.enabled = true;  break;   // P-SESS-26: 13:00-22:00Z (New York 08-17 local, -5)
+      case 3: s.zone = SZ_SYDNEY;    s.startMin = 480; s.endMin = 1020; s.col = 1; s.enabled = true;  break;   // P-SESS-26: 22:00-07:00Z (Sydney 08-17 local, +10); ships ON (the user's ask - P-SESS-14)
       case 4: s.zone = SZ_FRANKFURT; s.startMin = 480; s.endMin = 1020; s.col = 4; break;
       case 5: s.zone = SZ_DUBAI;     s.startMin = 540; s.endMin = 1080; s.col = 5; break;
       case 6: s.zone = SZ_CHICAGO;   s.startMin = 480; s.endMin = 1020; s.col = 6; break;
@@ -204,6 +217,31 @@ void SessSlotSet(const int idx, const SessSlot &s)
    g_sessSlot[i] = (double)SessSlotPack(s);
 }
 
+//--- P-SESS-25 — ONE STYLE ROW, ALL SLOTS. The overview card asks "filled or
+//--- empty" for the whole family (the editor still answers per slot); both write
+//--- the SAME encoded field, so a later per-slot pick wins and nothing drifts.
+void SessSetAllStyle(const int style)
+{
+   int st = (int)MathMax(SESS_STYLE_FILLED, MathMin(SESS_STYLE_OUTLINE, style));
+   for(int i = 0; i < SESS_SLOTS; i++)
+   {
+      SessSlot s; SessSlotGet(i, s);
+      s.style = st;
+      SessSlotSet(i, s);
+   }
+}
+
+//--- every ENABLED slot already wears `style` (the row's own read-back)
+bool SessAllStyleIs(const int style)
+{
+   for(int i = 0; i < SESS_SLOTS; i++)
+   {
+      SessSlot s; SessSlotGet(i, s);
+      if(s.enabled && s.style != style) return false;
+   }
+   return true;
+}
+
 //--- P-UI-RESET-ALL (2026-10-30): every slot back to the factory table.
 //--- 0 IS the preset (SessSlotGet falls through to SessSlotFactory), so this
 //--- is the ONE writer that says "no slot has been edited" — the same state a
@@ -232,25 +270,32 @@ bool SessSlotIsLegacyPreset(const int idx, const SessSlot &s)
    if(!zoneOk) return false;
    SessSlot cur; SessSlotFactory(idx, cur);
    if(s.startMin == cur.startMin && s.endMin == cur.endMin) return false;   // already current
-   if(idx == 0) return (s.startMin == 540 && s.endMin == 1080);             // the old Tokyo pair
-   return (s.startMin == 480 && s.endMin == 1020);                          // the old 08-17 pair
+   // P-SESS-26: the OLD pairs, per slot — the table moved to babypips' window, and
+   // a chart still wearing a previous build's hours was never edited (any other
+   // hours are the user's). Tokyo never moved; London and New York moved back to
+   // their own business day, and Sydney's pre-TV pair still migrates.
+   if(idx == 0) return (s.startMin == 540 && s.endMin == 1080);             // Tokyo 09-18 local (never moved)
+   if(idx == 1) return (s.startMin == 420 && s.endMin == 960);              // London 07-16 local (P-SESS-25's table)
+   if(idx == 2) return (s.startMin == 510 && s.endMin == 900);              // New York 08:30-15:00 local (P-SESS-25's table)
+   return (s.startMin == 420 && s.endMin == 960);                           // Sydney 07-16 local (pre-TV)
 }
 
 //+------------------------------------------------------------------+
-//| P-SESS-24 (2026-10-30): THE STYLE STAMP IS NOT A CHOICE.           |
+//| P-SESS-29 (2026-10-30): THE OLD STYLE STAMP IS NOT A CHOICE.      |
 //| A slot whose every field is the CURRENT factory's except a style   |
-//| that equals the OLD factory's (OUTLINE) was never edited — it is   |
-//| the shipped default wearing the old code. MEASURED on the          |
-//| reporting chart: slot 0 packed 1,007,087,707,368,710 — zone 6,     |
-//| 09:00-18:00, weekdays, colour 6, enabled: the current preset to    |
-//| the field, hollow only because the old build stamped it so. It     |
-//| adopts the factory style once, so all four windows are one body.   |
-//| Any OTHER difference (hours, colour, days, zone, custom offset) is |
-//| the user's and is left exactly as it is.                           |
+//| the PREVIOUS build shipped (FILLED) was never edited — it is the   |
+//| default wearing that build. It adopts the factory body (OUTLINE)   |
+//| ONCE. Any OTHER difference (hours, colour, days, zone, offset) is  |
+//| the user's and is left exactly as it is.                          |
+//|                                                                   |
+//| THE ONCE IS STORED (`OV_SSDV` = 2), and that is the whole point:   |
+//| a style-only migration that runs at every attach would also undo a |
+//| FILLED the user picks AFTER the flip, because that slot is the     |
+//| factory's every field again — the choice would never stick.        |
 //+------------------------------------------------------------------+
-bool SessSlotIsStyleStamp(const int idx, const SessSlot &s)
+bool SessSlotIsFilledStamp(const int idx, const SessSlot &s)
 {
-   if(idx > 3 || s.style != SESS_STYLE_OUTLINE) return false;
+   if(idx > 3 || s.style != SESS_STYLE_FILLED) return false;
    SessSlot cur; SessSlotFactory(idx, cur);
    return (s.zone      == cur.zone   && s.customMin == cur.customMin &&
            s.startMin  == cur.startMin && s.endMin == cur.endMin    &&
@@ -261,12 +306,15 @@ bool SessSlotIsStyleStamp(const int idx, const SessSlot &s)
 bool SessSlotsMigrateLegacy(double &slots[])
 {
    bool changed = false;
+   //--- P-SESS-29: the body flip runs ONCE PER CHART, stamped beside the slots.
+   string kVer = g_settingsGVPrefix + "OV_SSDV";
+   int ver = GlobalVariableCheck(kVer) ? (int)GlobalVariableGet(kVer) : 0;
    for(int i = 0; i < ArraySize(slots); i++)
    {
       long L = (long)slots[i];
       if(L == 0) continue;                       // 0 IS the preset already (SessSlotGet)
       SessSlot s; SessSlotUnpack(L, s);
-      if(SessSlotIsStyleStamp(i, s))             // P-SESS-24: the old hollow stamp
+      if(ver < 2 && SessSlotIsFilledStamp(i, s)) // P-SESS-29: the old FILLED stamp
       {
          SessSlot f; SessSlotFactory(i, f);
          slots[i] = (double)SessSlotPack(f);
@@ -274,10 +322,11 @@ bool SessSlotsMigrateLegacy(double &slots[])
          continue;
       }
       if(!SessSlotIsLegacyPreset(i, s)) continue;
-      SessSlot f; SessSlotFactory(i, f);
-      slots[i] = (double)SessSlotPack(f);
+      SessSlot f2; SessSlotFactory(i, f2);
+      slots[i] = (double)SessSlotPack(f2);
       changed = true;
    }
+   if(ver < 2) GlobalVariableSet(kVer, 2.0);     // one write, once per chart
    return changed;
 }
 

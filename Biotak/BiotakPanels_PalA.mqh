@@ -693,7 +693,7 @@ void PalPaintRecents(const int px,const int syTop)
       int sy=syTop;
       if(i == 0) PalHoverRegionAdd(px+PAL_PAD, sy, PAL_RSHOW, 1, cell, pitch, 0, 1);
        PnlSetButton(n, sx, sy, cell, cell, "", g_PalRecent[i],
-                    PnlSwatchBorder(g_PalRecent[i],PNL_CLR_FIELD), true);
+                    PnlSwatchBorder(g_PalRecent[i],PNL_CLR_FIELD));
        ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
        ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
        string nr=n+"G";
@@ -890,7 +890,7 @@ void PalDrawMixer(const int contY)
       int kx=trackX+(int)MathRound(comps[i]/255.0*(trackW-10));
       PnlSetRect(p+"mf"+IntegerToString(i), trackX, y+2, kx-trackX+10, 8, fill[i]);
       ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-       PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], PNL_CLR_TRACK_BD, true);
+       PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], PNL_CLR_TRACK_BD);
       ObjectSetInteger(0,p+"mknb"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_FG);
        PnlSetLabel(p+"mv"+IntegerToString(i), px+PalW()-PAL_PAD, y, IntegerToString(comps[i]), PNL_CLR_VALUE, PNL_PT_PAL);
        // P-UI-26: ANCHOR_RIGHT_UPPER, not ANCHOR_RIGHT (middle-right sat a
@@ -914,7 +914,7 @@ void PalDrawMixer(const int contY)
    int tkx = trackX + (int)MathRound((trOk ? ClampInt(tr,0,100) : 0) / 100.0 * (trackW-10));
    PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, tkx-trackX+10), 8, trFill);
    ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : PNL_CLR_DIS_BD, true);
+   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : PNL_CLR_DIS_BD);
    ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,Z_PANEL_POP_FG);
     PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, PNL_PT_PAL);
     ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);

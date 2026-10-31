@@ -259,7 +259,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       int sy = ry + PNL_QSW_Y;
 
        PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22, "", ccVis,
-                    (g_PalOpen && g_PalKind==kk) ? a1 : PnlSwatchBorder(ccVis,PNL_CLR_CARD), true);
+                    (g_PalOpen && g_PalKind==kk) ? a1 : PnlSwatchBorder(ccVis,PNL_CLR_CARD));
        // RICH-MT4: glass frame over the flat preview block — transparent
        // middle (the colour shows through), baked top-light + bottom-shade.
        // Non-selectable, above the button: clicks still reach CB (footer pattern).
@@ -274,7 +274,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
           color qc = QuickPalColor(qi);
           PnlSetButton(PnlName(item,row,"Q"+IntegerToString(qi)),
                        qx+qi*(PNL_QSW_W+PNL_QSW_GAP), sy, PNL_QSW_W, 22, "", qc,
-                       (qc==cc) ? a1 : PnlSwatchBorder(qc,PNL_CLR_CARD), true);
+                       (qc==cc) ? a1 : PnlSwatchBorder(qc,PNL_CLR_CARD));
           PnlSetBitmap(PnlName(item,row,"GLS"+IntegerToString(qi)),
                        qx+qi*(PNL_QSW_W+PNL_QSW_GAP), sy, PNL_QSW_W, 22,
                        "::Files\\Icons\\pnl_glass22.bmp", Z_PANEL_MARK);   // glass sheen
@@ -304,7 +304,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // the button stays underneath purely as the click target (footer
        // pattern) and is pushed under the skin.
        PnlSetButton(PnlName(item,row,"NAV"), nx, ry+PNL_CTL_Y-1, nw, 26, "",
-                    PNL_CLR_CARD, PNL_CLR_CARD, true);
+                    PNL_CLR_CARD, PNL_CLR_CARD);
        ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_ZORDER,Z_PANEL_BASE);
        PnlSetBitmap(PnlName(item,row,"NAVB"), nx, ry+PNL_CTL_Y-1, nw, 26,
                     "::Files\\Icons\\pnl_nav.bmp", Z_PANEL_SKIN);
@@ -390,7 +390,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
             // P-UI-131d: the seam is 4 (the micro step the pills use), not 2 — a
             // 2px gap reads as one glued control, exactly what the user reported.
              PnlSetButton(PnlName(item,row,"C"+IntegerToString(i)), tx, ry+PNL_CTL_Y,
-                          tw, PNL_CTL_H, "", PNL_CLR_CARD, PNL_CLR_CARD, true);
+                          tw, PNL_CTL_H, "", PNL_CLR_CARD, PNL_CLR_CARD);
              ObjectSetString(0,PnlName(item,row,"C"+IntegerToString(i)),OBJPROP_TOOLTIP,arr[i]);
             if(i<nic)
                PnlSetBitmap(PnlName(item,row,"CI"+IntegerToString(i)), tx+5, ry+PNL_CTL_Y+4,
@@ -421,7 +421,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          int dx,dy,dw,dh;
          PnlDdRect(item,row,dx,dy,dw,dh);
           PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, dh, "",
-                       PNL_CLR_FIELD, PNL_CLR_FIELD_BD, true);
+                       PNL_CLR_FIELD, PNL_CLR_FIELD_BD);
          PnlSetBitmap(PnlName(item,row,"DDI"), dx+7, dy+7, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
                       PnlGlyphRes(item,PnlRowIcon(item,row),true), Z_PANEL_INK);
          PnlSetLabel(PnlName(item,row,"DDT"), dx+24, dy+8, PnlDdOptText(item,row),
@@ -456,7 +456,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
              PnlSetButton(PnlName(item,row,"C"+IntegerToString(j)), sx2, ry+PNL_CTL_Y+1, w, 24,
                           arr[j],
                           (j==idx) ? a1 : PNL_CLR_SEG_OFF,
-                          (j==idx) ? PnlAccentA2(acc) : PNL_CLR_SEG_BD, true);
+                          (j==idx) ? PnlAccentA2(acc) : PNL_CLR_SEG_BD);
              ObjectSetString(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_TOOLTIP,arr[j]);
             ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_COLOR,
                              (j==idx) ? PnlAccentInk(acc) : PNL_CLR_SEG_TX);
@@ -567,7 +567,7 @@ void PnlFooterBtn(const int item,const string tag,const int bx,const int fy,
    int bw  = PnlFootBtnW(label);
    string nm = PnlHead(item,tag);
    PnlSetButton(nm, bx, fy+10, bw, PNL_BTN_H, "",
-                PNL_CLR_FOOTBG, PNL_CLR_FOOTBG, true);
+                PNL_CLR_FOOTBG, PNL_CLR_FOOTBG);
    ObjectSetInteger(0,nm,OBJPROP_ZORDER,Z_PANEL_BASE);
    ObjectSetString(0,nm,OBJPROP_TOOLTIP,label);
    PnlSetBitmap(nm+"bg", bx-PNL_BTN_PAD, fy+10-PNL_BTN_PAD,
@@ -945,7 +945,7 @@ void PnlCreate(const int item)
     // (preview .hd is a flex row — mark, .htxt, .key, .ver, .x). This used to
     // place .ver first, which read "0 T ×" instead of the preview's "T 0 ×".
     PnlSetButton(PnlHead(item,"ver"), hx-vw, py+20, vw, 16, vtxt,
-                 PnlAccentSoft(hacc), PnlAccentBd(hacc), true);
+                 PnlAccentSoft(hacc), PnlAccentBd(hacc));
     ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_COLOR,ha1);
     ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,PnlPt(PNL_PT_VER));   // P-UI-30
     hx -= vw+10;
@@ -964,7 +964,7 @@ void PnlCreate(const int item)
     // actually shows: MT4 buttons are square, the preview's is radius 8.
      int xbx = px+cardW-PNL_PAD_X-PNL_XBTN_VIS;
      PnlSetButton(PnlHead(item,"close"), xbx, py+15, PNL_XBTN_VIS, PNL_XBTN_VIS, "",
-                  C'28,34,44', C'28,34,44', true);   // #1C222C --ghostBg (1 LSB off before)
+                  C'28,34,44', C'28,34,44');   // #1C222C --ghostBg (1 LSB off before)
     ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_ZORDER,Z_PANEL_BASE);
     ObjectSetString(0,PnlHead(item,"close"),OBJPROP_TOOLTIP,"Close");
     PnlSetBitmap(PnlHead(item,"xbg"), xbx-PNL_XBTN_PAD, py+15-PNL_XBTN_PAD,

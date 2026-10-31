@@ -2,6 +2,10 @@
 #ifndef BIOTAK_PANELS_ROUTE_MQH
 #define BIOTAK_PANELS_ROUTE_MQH
 
+//--- P-UI-219 (2026-10-30): the seat door is DEFINED below `PnlHandleClick` (it calls
+//--- that owner) and DECLARED here because the press chain below is its caller.
+bool PnlSeatPressAct(const int mx,const int my,const bool palOnly);
+
 //--- a CONTROL of the open card just acted. The latch is the whole point: the
 //--- twin event of this release must not act a second time. The release claim
 //--- (P-UI-65) is armed on the PRESS channel only — on the click channel the
@@ -71,6 +75,12 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
             return;
          }
       }
+      // P-UI-219: THE PALETTE'S OWN BUTTONS. They are born non-selectable now, so
+      // MT4 sends them no OBJECT_CLICK (P-DRAW-84's law) — the registry answers for
+      // them here, BEFORE the card's controls, exactly as `PalHandleClick` sits at
+      // the head of the name router: the popover floats above the card, so its
+      // pixels are its own and never the row underneath.
+      if(pressStart && PnlSeatPressAct(mx,my,true)) return;
       // fall through: palette open but not on a mixer track → panel drags work
    }
 
@@ -381,6 +391,11 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          if(kf != REFRESH_NONE) RefreshDisplay(kf);
          return;
       }
+      // P-UI-219: the card's buttons with no dedicated hit test of their own (the
+      // C<i> tab and segment pills) are reached off the seat the paint wrote. LAST,
+      // so every specific owner above keeps its precedence — this answers only a
+      // press nothing else claimed.
+      if(PnlSeatPressAct(mx,my,false)) return;
       // The press landed on NO control of this card: the arm above is its whole
       // answer (the header, the card body and the pixels BETWEEN the controls all
       // grab there, P-UI-70a/P-UI-89), and the whole panel then follows the
@@ -392,6 +407,29 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
 
    if(!leftDown)
    {
+      // ══════════════════════════════════════════════════════════════════════
+      // P-UI-221 (2026-10-30) — THE RELEASE IS THE VALUE.
+      //
+      // The move applies below are throttled to one per 30 ms, while the knob and
+      // the value chip follow EVERY event (`PnlSetVisualValue`). So the last thing
+      // a drag APPLIED is the value from up to 30 ms before the hand stopped — and
+      // the control then shows a number the row's owner never received. MEASURED
+      // on the user's own screenshot (2026-10-30 19:19, XAUUSD M15): the SESSIONS
+      // card's TRANSPARENCY chip read 39 % while the four session boxes were
+      // painted at exactly 45 (55 % ink, computed off their pixels) — the value the
+      // last throttled move had stored — and the saved SSFA said 74, i.e. his next
+      // drag to the far right had landed short too. «شفافیت کار نمیکنه» is that
+      // gap: the picture follows the LAST MOVE, never the release.
+      // ONE owner, the gesture's own end: settle the value the cursor stopped on
+      // (the same clamp the moves use), paint the row once, then drop the latch.
+      if(g_PnlDragItem >= 0 && g_PnlDragRow >= 0 && mx > 0 && my > 0)
+      {
+         double vEnd;
+         PnlValueFromX(g_PnlDragItem,g_PnlDragRow,mx,vEnd);
+         int fEnd = PnlApply(g_PnlDragItem,g_PnlDragRow,vEnd);
+         PnlSetVisualValue(g_PnlDragItem,g_PnlDragRow,vEnd);
+         if(fEnd != REFRESH_NONE) RefreshDisplay(fEnd);
+      }
       g_PnlDragItem=-1; g_PnlDragRow=-1;
       DragReleaseIf(DRAG_PANEL_KNOB);
       UIDragBudgetEnd();   // P-UI-33: release settles the tail exactly once
@@ -895,6 +933,59 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    }
 
    return REFRESH_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-219 (2026-10-30) — THE SEAT DOOR                             |
+//|                                                                   |
+//| Every control `PnlSetButton` paints is now born SELECTABLE=false,  |
+//| because a selectable object is GRABBED by MT4 on the press that    |
+//| lands on it (P-UI-48's own law) — that grab spent the press, and   |
+//| the next press on the same pixel opened the terminal's object-     |
+//| properties dialog. «روی ریست ال کلیک میکنم این میاد» is exactly    |
+//| that dialog over `…_Pnl14_ral`, with no act line behind it.        |
+//|                                                                   |
+//| The flag was only ever there so the terminal would SEND OBJECT_CLICK|
+//| (P-DRAW-84), so removing it removes the delivery too. This is the  |
+//| delivery that replaces it: the seat the paint wrote (P-UI-145) is  |
+//| hit-tested in pixels and dispatched through the SAME owner the name|
+//| router used, so no second grid of arithmetic exists (contract      |
+//| item 7). Cost: one walk of the remembered seats, ONLY on a press —|
+//| never on a tick, never on a poll.                                  |
+//|                                                                   |
+//| Newest seat first: MT4 paints in CREATION order (P-LOG-10), so when|
+//| two remembered boxes overlap the later one is on top and owns the  |
+//| pixel.                                                             |
+//+------------------------------------------------------------------+
+bool PnlSeatPressAct(const int mx,const int my,const bool palOnly)
+{
+   const string palPfx = g_UI.btnPrefix + "Pal_";
+   for(int i = PnlSeatCount() - 1; i >= 0; i--)
+   {
+      const string nm = PnlSeatNameAt(i);
+      if(nm == "") continue;
+      const bool isPal = (StringFind(nm, palPfx) == 0);
+      if(isPal != palOnly) continue;
+      int si, sr; string sk;
+      ParsePnlName(nm, si, sr, sk);
+      // A seat of a card that is not the open one is a stale memory, not a
+      // control — the palette's names carry no item (Parse gives -1).
+      if(!isPal && si != g_PnlOpen) continue;
+      if(!PnlCtrlRectHit(nm, mx, my, 0)) continue;
+      // LATCH FIRST: PnlHandleClick's own coordinate fallback is gated on
+      // PnlGestureConsumed(), so the dispatch below can never re-enter this
+      // chain. One gesture, one owner (P-UI-74's rule, unchanged).
+      UIPressAct(sk);
+      //--- P-UI-219's witness, on the FLUSHED channel (AGENTS law 3): «nothing
+      //--- happened» and «nothing was pressed» are different facts, and the MT4
+      //--- journal is a RAM cache (P-DRAW-126) — the file answers in one read.
+      DrawStripDiagEmit("[P-UI-219] seat acted nm=" + nm + " xy=" +
+                        IntegerToString(mx) + "," + IntegerToString(my));
+      const int f = PnlHandleClick(nm, mx, my);
+      if(f != REFRESH_NONE) RefreshDisplay(f);
+      return true;
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+

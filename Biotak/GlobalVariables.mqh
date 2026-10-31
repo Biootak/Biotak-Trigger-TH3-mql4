@@ -938,6 +938,22 @@ bool IsIndicatorHidden() {
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-171 (2026-10-29) — THE MOVE STREAM BELONGS TO ONE GESTURE.  |
+//|                                                                   |
+//| Ported from the MQL5 tree (2026-10-31) so both products carry the  |
+//| same arbiter: a hover owner asks "is this move stream already      |
+//| spoken for?" once per move, and a drag that belongs to a tool      |
+//| stops every other layer's box test. Cost when nobody drags: one    |
+//| compare. It is inert until a caller claims (the claim sites arrive  |
+//| with the tools that own them), so this line changes no behaviour    |
+//| on a chart that never drags.                                      |
+//+------------------------------------------------------------------+
+static string g_moveOwner = "";
+void GestureMoveClaim(const string who) { g_moveOwner = who; }
+void GestureMoveRelease(const string who) { if(g_moveOwner == who) g_moveOwner = ""; }
+bool GestureMoveOwned() { return (g_moveOwner != ""); }
+
+//+------------------------------------------------------------------+
 //| P-UI-93 â€” THE WRITE OWNER FOR THE F MUTE, beside the read owner.  |
 //|                                                                   |
 //| Reported: Â«Ø§ÛŒÙ† Ø±ÙˆØ´Ù† Ùˆ Ø®Ø§Ù…ÙˆØ´ Ú©Ø±Ø¯Ù† Ø³Ø·ÙˆØ­ Ø±ÙˆÛŒ Ø¨Ù‚ÛŒÙ‡ Ù„ÛŒØ¨Ù„Ù‡Ø§ Ú†Ø±Ø§ ØªØ§Ø«ÛŒØ±    |

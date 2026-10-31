@@ -5688,10 +5688,46 @@ function main() {
           broken.push('RingFeatureClick lost the sessions branch — the press cannot flip the master');
         if ((sessFeat.text.match(/g_sessMaster\s*=/g) || []).length !== 1)
           broken.push('g_sessMaster is written more than once in RingFeatureClick — the master must have ONE writer');
-        if (!sessFeat.text.includes('RuntimeSettingsSaveOverridesThrottled()') || !sessFeat.text.includes('SessionsTick()'))
+        // P-SESS-36 (2026-10-31): the key must be PERSISTED by the press, and the
+        // press must own the pixels. WHICH save is the press's own business: the
+        // project's rule is that a SWITCH saves now (P-SESS-34) and this branch took
+        // that rule, so the assertion names both spellings instead of pinning the
+        // throttled one — a gate that demands the dropped-write call would forbid
+        // the fix it exists to protect.
+        if (!/RuntimeSettingsSaveOverrides(Throttled)?\(\)/.test(sessFeat.text) || !sessFeat.text.includes('SessionsTick()'))
           broken.push('the sessions branch lost its persisted key or its render tick — the master flips in RAM only');
         if (!sessFeat.text.includes('familyToggle'))
           broken.push('the sessions branch left the familyToggle fold — a muted press cannot show the family again (P-UI-93)');
+      }
+    }
+    // P-SESS-36 (2026-10-31) — A THROTTLE THAT DROPS IS A LOST CLICK.
+    // The measured shape: a switch inside the 500 ms window was DISCARDED, the store
+    // kept the old value, and the next attach (on MT4, every timeframe change) wiped
+    // the family with the OFF branch and never painted it again. The rule is that the
+    // window DEFERS the write and somebody SPENDS it — otherwise the fix is text.
+    {
+      const saveM = linesOf('Biotak/Runtime_Save.mqh');
+      if (!saveM)
+        broken.push('Biotak/Runtime_Save.mqh is gone — the throttled saver has no owner (P-SESS-36)');
+      else {
+        const sCode = codeOf(saveM);
+        if (!/if\(now - s_saveThrottleMs < RUNTIME_SAVE_THROTTLE_MS\) \{ s_saveOwed = true; return; \}/.test(sCode))
+          broken.push('the throttled saver drops the write again instead of owing it — a switch inside the window is lost (P-SESS-36)');
+        if (!/void RuntimeSettingsSaveDrain\(\)/.test(sCode) || !/s_saveOwed = false;/.test(sCode))
+          broken.push('RuntimeSettingsSaveDrain is gone — the owed write is never spent (P-SESS-36)');
+      }
+      // This gate runs inside ONE tree, so a drain site that this tree does not
+      // carry is not an absence — the sibling tree's own run asserts its entry.
+      const drainSites = [
+        ['Biotak Trigger TH3.mq4', 'the Full entry\'s OnDeinit'],
+        ['Biotak Trigger TH3.mq5', 'the MT5 entry\'s OnDeinit'],
+        ['Biotak/Sessions_Draw.mqh', 'SessionsTick'],
+      ];
+      for (const [rel, who] of drainSites) {
+        const ls = linesOf(rel);
+        if (!ls) continue;
+        if (!codeOf(ls).includes('RuntimeSettingsSaveDrain()'))
+          broken.push('P-SESS-36: ' + who + ' no longer spends the owed save — a timeframe change reads the previous value back and the family never returns');
       }
     }
     const sessRing = linesOf(MENU_RING);
@@ -5728,20 +5764,18 @@ function main() {
     // only body that cannot slab), FILLED = the one rectangle with its fill
     // CLAIMED (FILL written true).
     //
-    // P-SESS-24 (2026-10-30) REVERSES THE SHIPPED STAMP, and the reason is a
-    // COUNT, not a taste: the reporting chart's own profile carried 367 SESS_
-    // objects for 72 windows, four of every five being one border SEGMENT
-    // (`_BET/_BEB/_BEL/_BER`) plus the tag — a hairline mesh 23 days deep. A
-    // filled body is ONE rectangle (border + wash), so the same chart carries
-    // 145. The calm look now rides the wash at 14 % (g_sessFill), which is what
-    // TradingView's own session boxes are (P-SESS-18/19 brought the TV levels
-    // and the divider for the same reason). HOLLOW stays a style the editor can
-    // pick, and it stays the four-edge body when it is picked.
+    // P-SESS-29 (2026-10-30) — EMPTY SHIPS: «پیش‌فرض باکس‌ها فیل نداشته باشه و
+    // اینکه ترنسپی روی فیل هم کار بکنه». P-SESS-24 had shipped FILLED for the
+    // object COUNT (367 -> 145); the user's verdict on that picture is that a
+    // washed slab over the candles is not the default a session chart should
+    // wear. So the factory body is OUTLINE again (four edge segments, the only
+    // body that cannot slab) and the wash is a style the STYLE row can pick —
+    // where P-SESS-28's house curve makes TRANSPARENCY bite (visible ink = ink^2).
     //
-    // The reversal ships with its MIGRATION: a slot that still wears the old
-    // OUTLINE stamp (every other field equal to the current preset) adopts the
-    // factory body once, or every chart that ever opened the sessions card keeps
-    // the mesh for good.
+    // The flip ships with its ONE-SHOT MIGRATION: a slot that still wears the old
+    // FILLED stamp (every other field equal to the current preset) adopts the
+    // factory body once, stamped as OV_SSDV=2 — a migration that ran at EVERY
+    // attach would also undo a Filled the user picked after the flip.
     const sessDraw = linesOf(SESS_DRAW);
     if (!sessDraw) broken.push('Biotak/Sessions_Draw.mqh is gone — the session boxes have no renderer');
     else {
@@ -5755,11 +5789,15 @@ function main() {
     if (!sessModel) broken.push('Biotak/Sessions_Model.mqh is gone — the session factory has no home');
     else {
       const mCode = codeOf(sessModel);
-      if (!/s\.style\s*=\s*SESS_STYLE_FILLED;/.test(mCode))
-        broken.push('the factory session box is not FILLED — P-SESS-24 ships ONE rectangle per window (145 objects on the reporting chart) instead of the four-edge mesh (367), and a fresh chart is back on the mesh');
-      if (!/bool SessSlotIsStyleStamp\(const int idx, const SessSlot &s\)/.test(mCode) ||
-          !/if\(SessSlotIsStyleStamp\(i, s\)\)/.test(mCode))
-        broken.push('a saved slot wearing the OLD hollow stamp never adopts the factory body — every chart that opened the sessions card keeps the four-edge mesh for good (P-SESS-24)');
+      if (!/s\.style\s*=\s*SESS_STYLE_OUTLINE;/.test(mCode))
+        broken.push('the factory session box is FILLED — «پیش‌فرض باکس‌ها فیل نداشته باشه» is the shipped body, and a fresh chart paints a washed slab over the candles again (P-SESS-29)');
+      if (!/bool SessSlotIsFilledStamp\(const int idx, const SessSlot &s\)/.test(mCode) ||
+          !/if\(ver < 2 && SessSlotIsFilledStamp\(i, s\)\)/.test(mCode) ||
+          !/GlobalVariableSet\(kVer, 2\.0\)/.test(mCode))
+        broken.push('a saved slot wearing the OLD filled stamp never adopts the empty body ONCE — either every chart keeps the slab for good, or the flip runs at every attach and undoes a Filled the user picked (P-SESS-29)');
+      const applySrc = codeOf(linesOf(APPLY) || []);
+      if (!/if\(row==16\) return 1\.0;/.test(applySrc))
+        broken.push('the STYLE row no longer DEFAULTS to Empty — the reset and a fresh card both claim Filled while the boxes ship hollow (P-SESS-29)');
     }
 
     // -- the LIVE session is bold, the past ones fade (P-SESS-06, 2026-10-17) -----
@@ -5815,43 +5853,126 @@ function main() {
         !/SessWallTsToUtc\(\(datetime\)wStart,\s*zZone,\s*zOff,/.test(model))
       broken.push('the window edges stopped asking SessEffZone - the switch is stored and never read, so both conventions paint the same boxes (P-SESS-15)');
     const apply = codeOf(linesOf(APPLY) || []);
-    if (!/if\(row==10\)\s*return\s+g_sessFill;/.test(apply))
-      broken.push('the FILL row has no READ - the slider paints 0 whatever the body really keeps (P-SESS-14, the dead-control class)');
-    if (!/else if\(row==10\)\s*\{\s*g_sessFill\s*=/.test(apply))
-      broken.push('the FILL row has no WRITE - the slider moves and no box changes (P-SESS-14)');
+    // P-SESS-25 (2026-10-30): the row speaks TRANSPARENCY while the stored value is
+    // still the ink the body KEEPS — the READ must invert and the WRITE must invert
+    // it back, or the slider moves one way and the box the other (a worse defect
+    // than the dead control this block was built for).
+    if (!/if\(row==10\)\s*return\s+100 - g_sessFill;/.test(apply))
+      broken.push('the TRANSPARENCY row has no READ - the slider paints 0 whatever the body really keeps (P-SESS-25, the dead-control class)');
+    if (!/else if\(row==10\)\s*\{\s*g_sessFill\s*=\s*ClampSettingInt\(100 - \(int\)MathRound\(v\)/.test(apply))
+      broken.push('the TRANSPARENCY row does not invert its WRITE - 20 % would make the box SOLID (P-SESS-25)');
     if (!/if\(row==11\)\s*return\s+g_sessDst\s*\?/.test(apply))
       broken.push('the ZONE LAW row has no READ - the switch paints OFF while the windows wear the city clock (P-SESS-15)');
     if (!/else if\(row==11\)\s*\{\s*g_sessDst\s*=/.test(apply))
       broken.push('the ZONE LAW row has no WRITE - flipping it changes nothing on the chart (P-SESS-15)');
+    // P-SESS-25: the family STYLE row (Filled|Empty) must read back and write through
+    // the model's ONE owner, or it paints one state while the boxes wear another.
+    if (!/if\(row==16\)\s*return\s+SessAllStyleIs\(SESS_STYLE_OUTLINE\)/.test(apply))
+      broken.push('the STYLE row has no READ - a half-empty family paints Filled (P-SESS-25)');
+    if (!/else if\(row==16\)\s*\{\s*SessSetAllStyle\(/.test(apply))
+      broken.push('the STYLE row has no WRITE - Filled/Empty moves and no box changes (P-SESS-25)');
+    // P-SESS-34 (2026-10-31): A ONE-CLICK SWITCH MUST REACH THE DISK. MEASURED on
+    // the live chart: the panel showed STRIP on while OV_SSTS sat at 0 (last write
+    // 20:26) — the 500 ms throttle behind a single click can drop the ONLY write
+    // that click makes, so the next attach came back with the strip off and the
+    // boxes on. Sliders keep the throttle; switches save on the spot.
+    if (!/if\(row==1 \|\| row==2 \|\| row==10 \|\| row==13\) RuntimeSettingsSaveOverridesThrottled\(\);/.test(apply) ||
+        !/else\s+RuntimeSettingsSaveOverrides\(\);/.test(apply))
+      broken.push('the SESSIONS switches share the slider throttle again - one click can be dropped and the card forgets STRIP / STYLE / ZONE LAW at the next attach (P-SESS-34)');
     const rt = codeOf(linesOf(path.join(BIOTAK, 'Runtime_A.mqh')) || []);
     if (!/RSSetNext\(p \+ "SSFA", g_sessFill\);/.test(rt) || !/RSSetNext\(p \+ "SSDZ", g_sessDst \? 1 : 0\);/.test(rt) ||
         !/GlobalVariableCheck\(p \+ "SSFA"\)/.test(rt) || !/GlobalVariableCheck\(p \+ "SSDZ"\)/.test(rt))
       broken.push('a SESSIONS row lost its persistence pair (SSFA / SSDZ) - the card forgets the look and the law at the next attach');
     const palB = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalB.mqh')) || []);
-    // P-SESS-16: the four SHIPPED presets must stay the classic table, or a fresh
-    // chart draws a world nobody else draws. Each line is (local hours, base offset)
-    // that resolves to the quoted UTC window while ZONE LAW is OFF.
+    // P-SESS-16/P-SESS-26: the four SHIPPED presets must stay the table the user
+    // reads off the internet (babypips' forex market hours), or a fresh chart draws
+    // a world nobody else draws. Each line is (local hours, base offset) that
+    // resolves to the quoted UTC window while ZONE LAW is OFF — London 08:00-17:00
+    // local (+0) → 08:00-17:00Z, NY 08:00-17:00 local (-5) → 13:00-22:00Z,
+    // Sydney 08:00-17:00 local (+10) → 22:00-07:00Z, Tokyo 09:00-18:00 (+9) → 00-09Z.
     for (const [re, why] of [
       [/case 0: s\.zone = SZ_TOKYO;\s+s\.startMin = 540; s\.endMin = 1080; s\.col = 6;/, 'Tokyo left 09:00-18:00 local / magenta — it no longer draws 00-09Z'],
-      [/case 1: s\.zone = SZ_LONDON;\s+s\.startMin = 420; s\.endMin = 960;\s+s\.col = 0;/, 'London left 07:00-16:00 local / blue — it no longer draws 07-16Z'],
-      [/case 2: s\.zone = SZ_NEWYORK;\s+s\.startMin = 480; s\.endMin = 1020; s\.col = 4;/, 'New York left 08:00-17:00 local / coral — it no longer draws 13-22Z'],
-      [/case 3: s\.zone = SZ_SYDNEY;\s+s\.startMin = 420; s\.endMin = 960;\s+s\.col = 1;/, 'Sydney left 07:00-16:00 local / amber — it no longer draws 21-06Z'],
+      [/case 1: s\.zone = SZ_LONDON;\s+s\.startMin = 480; s\.endMin = 1020;\s+s\.col = 0;/, 'London left 08:00-17:00 local / blue — it no longer draws 08-17Z (babypips, P-SESS-26)'],
+      [/case 2: s\.zone = SZ_NEWYORK;\s+s\.startMin = 480; s\.endMin = 1020; s\.col = 4;/, 'New York left 08:00-17:00 local / coral — it no longer draws 13:00-22:00Z (babypips, P-SESS-26)'],
+      [/case 3: s\.zone = SZ_SYDNEY;\s+s\.startMin = 480; s\.endMin = 1020; s\.col = 1;/, 'Sydney left 08:00-17:00 local / amber — it no longer draws 22:00-07:00Z (P-SESS-26)'],
     ]) if (!re.test(model)) broken.push(why + ' (P-SESS-16)');
+    // P-SESS-26: the OLD pairs still adopt the new table ONCE (a chart saved by the
+    // previous build draws TradingView's windows without being re-edited) — and the
+    // user's own hours are still left alone. Each pair is asserted on its OWN line:
+    // a bare `return (420 && 960)` also matches London's arm, so the Sydney check
+    // kept passing after Sydney's pair had been deleted (MEASURED: the P-SESS-25-d
+    // mutation SURVIVED on exactly that) — the Sydney arm is matched as the line
+    // that FOLLOWS New York's.
+    if (!/idx == 1\) return \(s\.startMin == 420 && s\.endMin == 960\);/.test(model) ||
+        !/idx == 2\) return \(s\.startMin == 510 && s\.endMin == 900\);\s*return \(s\.startMin == 420 && s\.endMin == 960\);/.test(model))
+      broken.push('the legacy-preset migration no longer knows the old London / New York / Sydney pairs — a chart saved yesterday keeps drawing 13:30-20:00Z forever (P-SESS-26)');
     const draw = codeOf(linesOf(SESS_DRAW) || []);
     if (!/if\(SessSlotsMigrateLegacy\(g_sessSlot\)\)/.test(draw))
       broken.push('the legacy-preset migration lost its one caller — a chart saved by an older build keeps drawing the old table (P-SESS-16)');
     if (!/\[P-SESS\] win slot=%d stamp=%d sU=%s eU=%s/.test(draw))
       broken.push('the session box lost its flushed witness — every edge question goes back to guessing from a screenshot (P-SESS-15)');
-    if (!/label="ZONE LAW"/.test(palB) || !/label="FILL"/.test(palB))
-      broken.push('the two new SESSIONS rows lost their caption - a row with no name is a row nobody can use');
+    // P-SESS-32 (2026-10-31): the tick that DECIDES to paint must name its state
+    // once per attach — «بعد از ریستارت سشن‌ها نیامد» had no witness, so the failing
+    // attach could never be told from a master that loaded OFF.
+    if (!/\[P-SESS\] tick master=%d hidden=%d/.test(draw))
+      broken.push('the session tick lost its once-per-attach witness - a frame that never paints reads as "nothing happened" again (P-SESS-32)');
+    // P-SESS-28: the fill's fade is the HOUSE fade (ZoneFactory's squared curve), and
+    // the paint must spend it — a linear fade keeps twice the ink at the same knob,
+    // which is the reported «شفافیت زیاد نمیشه».
+    if (!/int SessFillVisInk\(\)[\s\S]{0,220}\(ink \* ink\) \/ 100/.test(draw))
+      broken.push('the session fill lost the house fade (visible = ink^2/100) — the TRANSPARENCY row fades half as far as every other band (P-SESS-28)');
+    if (!/fillC = SessBlend\(base, 100 - SessFillVisInk\(\)\);/.test(draw))
+      broken.push('the paint no longer spends SessFillVisInk — the card fades one number and the box paints another (P-SESS-28)');
+    // P-SESS-27/27b: STRIP is the compact mode — the BODY and its CAPTION leave together.
+    // MEASURED on his chart: the boxes were gone and the four floating tags were not.
+    if (!/bool SessBoxBodiesWanted\(\)[\s\S]{0,160}return !g_sessStrip;/.test(draw))
+      broken.push('STRIP stopped owning the box body — a compact chart paints a slab again (P-SESS-27)');
+    if (!/if\(SessBoxBodiesWanted\(\)\)[\s\S]{0,160}SessText\(nmB \+ "L"/.test(draw) ||
+        !/if\(SessBoxBodiesWanted\(\)\)[\s\S]{0,200}SessText\(nmF \+ "T"/.test(draw))
+      broken.push('the box CAPTION ignores the STRIP switch — the boxes leave and the floating TYO/LDN/NY/SYD tags stay on the candles (P-SESS-27b)');
+    // P-SESS-30: a TIMEFRAME switch is a VIEW change. The hash must NOT carry the
+    // period (that was a full wipe + 20 scans for an object nobody draws), the
+    // STRIP's signature must, and the switch has to rebuild only when a painted
+    // number is read off the bars.
+    if (!/bool SessNeedsBars\(\)/.test(draw) || !/\(tfChanged && SessNeedsBars\(\)\)/.test(draw))
+      broken.push('a TF switch lost its own door (SessNeedsBars) — either every switch wipes the family again, or the boxes keep the old timeframe\'s scan (P-SESS-30)');
+    if (/h = h \* 31 \+ \(long\)Period\(\);/.test(draw))
+      broken.push('the view hash carries Period() again — a compact chart pays a full family wipe on every switch (P-SESS-30)');
+    if (!/return \(\(\(long\)Period\(\) \* 131 \+ first\) \* 131 \+ vis\) \* 131 \+ wpx;/.test(draw))
+      broken.push('the STRIP signature forgot the TIMEFRAME — first/vis are bar COUNTS, so M15 -> M5 reads "still frame" and the strip stays on the old axis (P-SESS-30)');
+    if (!/label="ZONE LAW"/.test(palB) || !/label="TRANSPARENCY"/.test(palB) ||
+        !/label="STYLE"; opts="Filled\|Empty"/.test(palB))
+      broken.push('a SESSIONS row lost its caption - a row with no name is a row nobody can use (ZONE LAW / TRANSPARENCY / STYLE)');
     const spec = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalSpec.mqh')) || []);
     if (!/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*11,\s*1,\s*"clock"\);/.test(spec) ||
-        !/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*12,\s*1,\s*"tag"\);/.test(spec))
-      broken.push('card 15 lost a spec row (the ZONE LAW switch or the EDIT SESSIONS nav) - the panel body and the row addresses disagree');
+        !/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*12,\s*1,\s*"tag"\);/.test(spec) ||
+        !/PnlSpecAdd\(15,\s*PNL_K_LEGACY,\s*16,\s*1,/.test(spec))
+      broken.push('card 15 lost a spec row (the ZONE LAW switch, the STYLE segments or the EDIT SESSIONS nav) - the panel body and the row addresses disagree');
     if (broken.length) {
       failures.push('P-SESS-14/15: ' + broken.join('; ') + ' (Biotak/Sessions_Model.mqh + Biotak/BiotakPanels_PalSpec.mqh + Biotak/BiotakPanels_PalB.mqh + Biotak/BiotakPanels_Apply.mqh + Biotak/Runtime_A.mqh)');
     } else {
-      console.log('[PASS] P-SESS-14/15 the SESSIONS card\'s two new rows are end to end: FILL % (read + write + SSFA) and the ZONE LAW switch (SessEffZone\'s two arms, both edges asking it, read + write + SSDZ)');
+      console.log('[PASS] P-SESS-14/15/25/26 the SESSIONS card is end to end: TRANSPARENCY % (read + inverted write + SSFA), the family STYLE row (read + write through SessSetAllStyle), the ZONE LAW switch (SessEffZone\'s two arms, both edges asking it), and the four presets drawing babypips\' windows (London 08-17Z, NY 13-22Z, Tokyo 00-09Z, Sydney 22-07Z) with the old pairs still migrating');
+    }
+  }
+
+  // -- 52a3. P-UI-221 (2026-10-30): A SLIDER'S RELEASE IS ITS VALUE --------------
+  // The move applies are throttled to one per 30 ms while the knob and the value
+  // chip follow EVERY event, so a drag that ends between two throttled ticks kept
+  // the previous value and the control then read a number its owner never got.
+  // MEASURED on the user's screenshot of the SESSIONS card: the TRANSPARENCY chip
+  // said 39 % while the boxes were painted at 45 (PnlApply had last run at 55) and
+  // the saved SSFA said 74 — three numbers, one gesture. The release now settles
+  // the value the cursor stopped on, through the same owner the moves use.
+  {
+    const broken = [];
+    const route = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Route.mqh')) || []);
+    if (!/PnlValueFromX\(g_PnlDragItem,g_PnlDragRow,mx,vEnd\);/.test(route) ||
+        !/int fEnd = PnlApply\(g_PnlDragItem,g_PnlDragRow,vEnd\);/.test(route))
+      broken.push('the slider drag ends without settling its value - the chip shows where the hand stopped while the owner keeps the last throttled move (P-UI-221)');
+    if (broken.length) {
+      failures.push('P-UI-221: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Route.mqh)');
+    } else {
+      console.log('[PASS] P-UI-221 a slider\'s release settles the value it stopped on (a throttled move is no longer the last word)');
     }
   }
 
@@ -5897,6 +6018,14 @@ function main() {
       broken.push('the strip lost its own sweep - its blocks stay on the chart after the sessions are turned off (P-SESS-19)');
     if (!/SessStripTick\(\);/.test(draw))
       broken.push('the strip tick lost its caller - the blocks never lay themselves out against the current view (P-SESS-19)');
+    // P-SESS-35: the healthy-block question asks the name the PAINT wrote, never run
+    // 0's name — run 0 is the earliest window and it is clipped away on every chart
+    // with history, so `ST<slot0>_0` never exists and the tick wiped and rebuilt the
+    // whole strip on every frame (measured: `strip heal=` + `DELFLUSH` per tick).
+    if (!/string nm0 = s_sessStripHealNm;/.test(draw) ||
+        !/if\(s_sessStripHealNm == ""\) s_sessStripHealNm = nmB;/.test(draw) ||
+        /IntegerToString\(s_sessStripSlot\[0\]\) \+ "_0"/.test(draw))
+      broken.push('the strip\'s healthy-block question went back to run 0\'s name - run 0 is clipped away on every chart with history, so the strip is wiped and rebuilt 20 objects per tick (P-SESS-35)');
     if (broken.length) {
       failures.push('P-SESS-18/19: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh + Biotak/BiotakPanels_PalSpec.mqh + Biotak/BiotakPanels_PalB.mqh + Biotak/BiotakPanels_Apply.mqh + Biotak/Runtime_A.mqh)');
     } else {
@@ -6005,9 +6134,17 @@ function main() {
           broken.push(`the ${tag} label stopped using the anchor owner - it is anchored at the window's future END again (P-UI-172)`);
       if (!/SessText\(nmC, SessLabelAnchor\(s_sessCdNext, now\)/.test(sCode))
         broken.push('the countdown stopped using the anchor owner - it is anchored at a future boundary (P-UI-172)');
+      // P-SESS-30 (2026-10-30) MOVED THIS DOOR, it did not close it: the rebuild no
+      // longer rides a `Period()` term in the hash (that wiped the whole family for
+      // a strip-only chart) — the switch now asks `SessNeedsBars()` explicitly, so
+      // the numbers are still the new timeframe's and a compact chart pays nothing.
       const hash = bodyOf(sd, 'long SessViewHash(');
-      if (!hash || !/\(long\)Period\(\)/.test(hash.text))
-        broken.push('the sessions hash lost the chart period - a timeframe switch leaves the numbers on the old timeframe (P-UI-173)');
+      if (!hash || /\(long\)Period\(\)/.test(hash.text))
+        broken.push('the sessions hash carries the chart period again - a strudel of deletes for a switch that only moves pixels; the TF door is SessNeedsBars (P-SESS-30)');
+      const tick = bodyOf(sd, 'void SessionsTick(');
+      const tfDoor = tick && /tfChanged && SessNeedsBars\(\)/.test(tick.text) && /bool SessNeedsBars\(\)/.test(codeOf(sd));
+      if (!tfDoor)
+        broken.push('the sessions lost their timeframe door - a switch leaves the numbers on the old timeframe (P-UI-173 / P-SESS-30)');
     }
     if (broken.length) {
       failures.push('P-UI-172/173: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
@@ -6132,9 +6269,19 @@ function main() {
       const sCode = codeOf(sd);
       if (!/SessText\(nmF \+ "T"/.test(sCode) || /SessText\(nmF \+ "L"/.test(sCode))
         broken.push('the ghost tag is now `_F` + `L` = `_FL` again - that is the fill-child suffix, so the orphan sweep deletes every ghost tag 2 s after paint (P-SESS-08)');
+      // P-SESS-31 (2026-10-30): the oldest-bar read moved into its OWN door —
+      // `SessHistFloor()` probes for the deepest bar the chart can actually read
+      // (iTime() answers 0 while a series is still syncing, which used to read as
+      // "no history at all" and blanked every past window). The RULE is unchanged
+      // and both halves are asserted: the scan takes its floor from that door and
+      // still refuses a window wholly before it, and the door itself answers 0
+      // rather than a bar it cannot prove.
       const scan = bodyOf(sd, 'bool SessHiLoFor(');
-      if (!scan || !/iTime\(NULL, 0, bars - 1\)/.test(scan.text) || !/if\(t2 <= oldestT\) return false;/.test(scan.text))
-        broken.push('the bar scan lost its oldest-bar guard - a window older than the loaded history is clamped onto the oldest bar and wears a FAKE high/low (P-SESS-09)');
+      if (!scan || !/SessHistFloor\(\)/.test(scan.text) || !/if\(t2 <= oldestT\) return false;/.test(scan.text))
+        broken.push('the bar scan lost its oldest-bar guard - a window older than the loaded history is clamped onto the oldest bar and wears a FAKE high/low (P-SESS-09/31)');
+      const floor = bodyOf(sd, 'datetime SessHistFloor()');
+      if (!floor || !/if\(bars <= 0\) return 0;/.test(floor.text) || !/if\(f > 0\) return f;/.test(floor.text) || !/return 0;\)?/.test(floor.text))
+        broken.push('the history floor answers without proving a readable bar - a syncing series blanks (or fakes) every past window (P-SESS-31)');
       if (!scan || !/iBarShift\(NULL, 0, t2 - 1, false\)/.test(scan.text))
         broken.push('the bar scan includes the bar that OPENS at the window end - every past window counts one bar too many (P-SESS-10)');
       const live = bodyOf(sd, 'void SessLiveUpdate(');
@@ -6271,6 +6418,53 @@ function main() {
       failures.push('P-SESS-22: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh)');
     } else {
       console.log('[PASS] P-SESS-22 the session name is painted ABOVE its range box (LEFT_LOWER at the high), the way TradingView\'s range label seats it - never on the candles inside the box');
+    }
+  }
+
+  // -- 52h5. P-SESS-37/43 (2026-10-31): A SESSION PAINT NEVER WIPES, AND NO ----------
+  // OTHER SWEEP MAY DELETE THE FAMILY. «وقتی تایم عوض میکنم این سشن‌ها حذف میشه …
+  // نباید حذف و رسم الکی بشه». The disappearance had TWO writers, both measured
+  // before either was touched: (a) `SessPaintAll` opened with a blanket
+  // `SessWipe()`, so the first tick of every switch — a deinit+init that starts with
+  // `s_sessBuilt=false` while the chart's objects are untouched — deleted the whole
+  // family and re-declared it, and (b) the global age sweep in
+  // `RunIncrementalObjectCleanup` read a session box as garbage, because a box is
+  // anchored at its window's START and is therefore hours old the moment it is
+  // drawn. The repair is one sentence: the family DECLARES what it writes and sweeps
+  // only the surplus, and every other sweep exempts it by name. This entry is that
+  // sentence — and the MT5 tree carries the same anchors (P-SESS-43 ported).
+  {
+    const broken = [];
+    const sd43 = linesOf(SESS_DRAW);
+    const tail43 = linesOf(EVENT_TAIL);
+    if (!sd43) broken.push('Biotak/Sessions_Draw.mqh is gone — the family has no owner');
+    if (!tail43) broken.push('Biotak/EventHandlers_Tail.mqh is gone — the global age sweep has no owner');
+    if (sd43 && tail43) {
+      const paint43 = bodyOf(sd43, 'bool SessPaintAll(');
+      if (!paint43) {
+        broken.push('SessPaintAll no longer answers whether its pass was complete — a cold pass can no longer be told apart from a retired window (P-SESS-40)');
+      } else {
+        const p43 = paint43.text;
+        if (/SessWipe\(\)/.test(p43))
+          broken.push('the paint wipes the family before declaring it again — every timeframe switch deletes ~20 objects and draws them straight back (P-SESS-37)');
+        if (!/s_sessCollect = true;/.test(p43) || !/SessSweepSurplus\(\)/.test(p43))
+          broken.push('the declare-then-sweep pair is gone (s_sessCollect / SessSweepSurplus) — the paint has no way to remove only the names it did not write (P-SESS-37)');
+        if (!/if\(unpriced <= 0\)/.test(p43))
+          broken.push('an incomplete pass sweeps again — every window the cold series could not price is deleted, and stays deleted until a setting moves (P-SESS-40)');
+      }
+      const decl43 = (codeOf(sd43).match(/SessDeclare\(nm\);/g) || []).length;
+      if (decl43 < 4)
+        broken.push('only ' + decl43 + ' of the four ObjectCreate primitives declare the name they write — a tail painted through the other ones is swept away the pass after it was drawn (P-SESS-37)');
+      const t43 = codeOf(tail43);
+      if (!/if\(StringFind\(objName, indicatorPrefix \+ SESS_TAG\) == 0\) continue;/.test(t43))
+        broken.push('the global age sweep owns the session family again — a box older than an hour is deleted on the next cleanup pass (P-SESS-43)');
+      if (!/if\(StringFind\(objName, "TH3_Structure_"\) == 0\) continue;/.test(t43))
+        broken.push('the structure family lost its exemption in the same walk (P-SESS-43)');
+    }
+    if (broken.length) {
+      failures.push('P-SESS-37/43: ' + broken.join('; ') + ' (Biotak/Sessions_Draw.mqh + Biotak/EventHandlers_Tail.mqh)');
+    } else {
+      console.log('[PASS] P-SESS-37/43 a session paint never wipes: it declares every name it writes (four primitives) and sweeps only the surplus, an incomplete (cold) pass skips the sweep, and the global age sweep exempts SESS_ by name — so a timeframe switch costs zero deletes and an old box is never garbage');
     }
   }
 
@@ -10406,7 +10600,13 @@ function main() {
       if (!/if\(item==14\) PnlFooterBtn\(item,"ral"/.test(build))
         broken.push(`${t.tag}: the GENERAL card no longer paints the Reset All pill (item 14) — the global reset has no face`);
       // (2) a painted control no press can reach is not a control (P-DRAW-84)
-      if (!/PnlCtrlRectHit\(PnlHead\(item,"ral"\),mx,my/.test(hit))
+      // The guard is part of the assertion, not decoration: `PnlCtrlRectHit(...)`
+      // surviving inside an `if(false && …)` reads exactly like a working hit test to
+      // a substring test, and that is how this entry shipped SURVIVED in
+      // mutation_gate (P-UI-RESET-ALL-b). The question is the SAME one P-DRAW-84 asks:
+      // can a press on item 14 actually reach this line?
+      if (!/if\(item == 14 && PnlCtrlRectHit\(PnlHead\(item,"ral"\),mx,my/.test(hit) ||
+          /if\s*\(\s*false\s*&&/.test(hit))
         broken.push(`${t.tag}: no coordinate hit test reads the Reset All pill back — the skin swallows the click and the button is dead (P-DRAW-84)`);
       if (!/name == PnlHead\(i, "ral"\)/.test(route))
         broken.push(`${t.tag}: the name router does not answer the Reset All pill — a name-delivered press lands nowhere`);
@@ -10432,6 +10632,128 @@ function main() {
       failures.push('P-UI-RESET-ALL: ' + broken.join('; ') + ' (BiotakPanels_Build/_Hit/_Route/_Apply + Runtime_B, MT4 and MT5)');
     } else {
       console.log('[PASS] P-UI-RESET-ALL one button puts the WHOLE indicator back on the inputs\' own values in both terminals: the GENERAL card paints the pill, the coordinate hit test AND the name router reach the same PnlResetAll, the store is WIPED (OV_ keys DELETED, so a later attach cannot re-apply them), the mirrors are re-seeded, the session slots return to the preset table, and the shadow is primed so the next save writes nothing');
+    }
+  }
+
+  // ── P-UI-219 (2026-10-30) — A PANEL BUTTON IS NEVER SELECTABLE, AND THE SEAT DELIVERS ──
+  // «روی ریست ال کلیک میکنم این میاد» — with a screenshot of MT4's own Button
+  // properties dialog over `…_Pnl14_ral`. The cause is the flag the project chose
+  // FOR the name router: `OBJPROP_SELECTABLE=true` makes MT4 grab the control on
+  // the press that lands on it (P-UI-48 / P-BK-15, quoted in P-UI-145's own
+  // banner), so the first press is spent on SELECTION and the next press on the
+  // same pixel opens the terminal's properties dialog. The whole class — every
+  // card and palette button `PnlSetButton` paints — had it, which is why the
+  // report is about a pill and about «همه دکمه‌ها» at once.
+  // The flag cannot simply be deleted: P-DRAW-84's law is that MT4 fires no
+  // OBJECT_CLICK for a non-selectable object, so removing it removes the delivery.
+  // P-UI-145's seat registry is already the same geometry the paint wrote, so the
+  // door hit-tests THAT and dispatches through `PnlHandleClick` — the one owner,
+  // no second grid (contract item 7). Asserted, in BOTH terminals: the factory
+  // writes false and only false, the door exists and runs on both channels, it
+  // latches before it dispatches (the recursion guard), the registry keeps a read
+  // side, and the reset's witness is the flushed file — never `Print` (law 3).
+  {
+    const broken = [];
+    const MT5 = (...p) => path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', ...p);
+    const trees = [
+      { tag: 'MT4', apply: APPLY, route: path.join(BIOTAK, 'BiotakPanels_Route.mqh') },
+      { tag: 'MT5', apply: MT5('Biotak', 'BiotakPanels.mqh'), route: MT5('Biotak', 'BiotakPanels.mqh') },
+    ];
+    for (const t of trees) {
+      const src = codeOf(linesOf(t.apply) || []);
+      const route = codeOf(linesOf(t.route) || []);
+      // (1) the factory: false, and no true anywhere in its body
+      const btn = bodyOf(linesOf(t.apply) || [], 'void PnlSetButton(');
+      if (!btn) broken.push(`${t.tag}: PnlSetButton is gone — the class this defect is about has no owner`);
+      else {
+        if (!/OBJPROP_SELECTABLE,false/.test(btn.text))
+          broken.push(`${t.tag}: PnlSetButton no longer writes SELECTABLE=false — MT4 grabs the control on the press and the next press opens the object-properties dialog (P-UI-219)`);
+        if (/OBJPROP_SELECTABLE,true/.test(btn.text))
+          broken.push(`${t.tag}: PnlSetButton writes SELECTABLE=true again — the grab is back, and with it the properties dialog on every panel button`);
+      }
+      // (2) the seat registry keeps a READ side — the door may not copy the grid
+      if (!/int PnlSeatCount\(\)/.test(src) || !/string PnlSeatNameAt\(/.test(src))
+        broken.push(`${t.tag}: the seat registry has no read side — the door would need its own copy of the seat list (contract item 7)`);
+      // (3) the door exists, runs on both channels, and answers for both surfaces
+      //     (the DEFINITION, not the forward declaration above the press chain)
+      const rLines = linesOf(t.route) || [];
+      let door = null;
+      for (let k = 0; k < rLines.length; k++) {
+        if (!rLines[k].includes('bool PnlSeatPressAct(')) continue;
+        if (stripComment(rLines[k]).includes(';')) continue;
+        const blk = blockAfter(rLines, k);
+        if (blk) door = { text: codeOf(rLines.slice(blk.from, blk.to + 1)) };
+        break;
+      }
+      if (!door) broken.push(`${t.tag}: the seat door is gone — a non-selectable button now reaches no handler at all (P-DRAW-84's law, inverted)`);
+      else {
+        if (!/if\(!PnlCtrlRectHit\(nm, mx, my/.test(door.text))
+          broken.push(`${t.tag}: the seat door no longer hit-tests the seat by pixels — it is a name list again, and names are not where the press is`);
+        if (!/UIPressAct\(/.test(door.text))
+          broken.push(`${t.tag}: the seat door does not latch the gesture — PnlClickFallback would re-enter it and one press would act twice`);
+        if (!/PnlHandleClick\(nm, mx, my\)/.test(door.text))
+          broken.push(`${t.tag}: the seat door does not dispatch through PnlHandleClick — a second switch of the same controls is a second owner that can disagree`);
+        if (!/DrawStripDiagEmit\("\[P-UI-219\] seat acted/.test(door.text))
+          broken.push(`${t.tag}: the seat door lost its flushed witness — «nothing happened» is again undecidable from a RAM-buffered journal (law 3)`);
+      }
+      if (!/PnlSeatPressAct\(mx, ?my, ?true\)/.test(route))
+        broken.push(`${t.tag}: the palette's press never reaches the seat door — its buttons are born non-selectable and MT4 sends them no click`);
+      if (!/PnlSeatPressAct\(mx, ?my, ?false\)/.test(route))
+        broken.push(`${t.tag}: the card's press chain never reaches the seat door — the C<i> pills, the tabs and the footer pill are unreachable`);
+    }
+    // (4) the reset's witness is the flushed file, not the journal
+    for (const t of trees) {
+      const all = bodyOf(linesOf(t.apply) || [], 'int PnlResetAll()');
+      if (!all) { broken.push(`${t.tag}: PnlResetAll is gone`); continue; }
+      if (!/DrawStripDiagEmit\("\[P-UI-219\] reset ALL keys=/.test(all.text))
+        broken.push(`${t.tag}: the global reset has no flushed witness — the count of deleted keys is the only answer to «کلیک کردم ولی ریست نشد» (law 3)`);
+      if (/Print\("\[UI\] reset ALL/.test(all.text))
+        broken.push(`${t.tag}: the global reset prints its witness to the journal again (P-DRAW-126: MT4 buffers it in RAM, so it reads as «nothing happened»)`);
+    }
+    if (broken.length) {
+      failures.push('P-UI-219: ' + broken.join('; ') + ' (BiotakPanels_Apply/_Route MT4, BiotakPanels.mqh MT5)');
+    } else {
+      console.log("[PASS] P-UI-219 every panel button in both terminals is born non-selectable — no grab, no object-properties dialog — and the press is delivered by the seat the paint itself wrote, latched before it dispatches, witnessed on the flushed channel");
+    }
+  }
+
+  // ── P-UI-220 (2026-10-30) — THE LEVELS' CARD OWNS A DOOR TO THE ANCHOR ──
+  // «این تنظیمات startpoint سطوح رو توی پنل ها ندیدم کجاهستش اثال هستش یا نه» — the
+  // row was live the whole time (card 8, ANCHOR band, `BiotakPanels_PalB.mqh`
+  // START POINT → `PnlApplySet` case 8 row 4 → `g_startPointOverride`, honoured by
+  // the per-frame resolver at `EventHandlers_Calc.mqh:1208`), but its only door was
+  // a HOLD: the CUSTOM PRICE card opens by holding the PIN ring item or holding the
+  // line, and nothing on the levels' own card named the setting. An undiscoverable
+  // live control is, to the user, a missing one. Asserted in BOTH terminals: the
+  // door is in card 1's SUB-CARDS band (its own `.cnt` says 5), the row mints as a
+  // NAV to card 8, and the write witnesses itself on the FLUSHED channel (law 3) so
+  // «اثار هستش یا نه» is a log line and not a screenshot.
+  {
+    const broken = [];
+    const MT5 = (...p) => path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', ...p);
+    const trees = [
+      { tag: 'MT4', spec: path.join(BIOTAK, 'BiotakPanels_PalSpec.mqh'), palb: PAL_B, apply: APPLY },
+      { tag: 'MT5', spec: MT5('Biotak', 'BiotakPanels.mqh'), palb: MT5('Biotak', 'BiotakPanels.mqh'), apply: MT5('Biotak', 'BiotakPanels.mqh') },
+    ];
+    for (const t of trees) {
+      const spec = codeOf(linesOf(t.spec) || []);
+      const palb = codeOf(linesOf(t.palb) || []);
+      const apply = codeOf(linesOf(t.apply) || []);
+      if (!/PnlSpecAdd\(1, PNL_K_SEC, -1, 0, "[^"]*", "", "SUB-CARDS", 5\)/.test(spec))
+        broken.push(`${t.tag}: the SUB-CARDS band does not count its five rows — the pill would print 4 over five, and the door would be invisible in its own band`);
+      if (!/PnlSpecAdd\(1, PNL_K_LEGACY, 18, 1, "target"/.test(spec))
+        broken.push(`${t.tag}: card 1 has no appended row 18 — the ANCHOR's door was dropped, and the only way back to the START POINT is a hold again`);
+      if (!/else if\(row==18\)\s*\{[^}]*kind=5[^}]*opts="8"/.test(palb))
+        broken.push(`${t.tag}: row 18 is not a NAV to card 8 — the door paints but opens nothing (P-DRAW-84's class: painted is not working)`);
+      if (!/DrawStripDiagEmit\("\[P-UI-220\] start point set type=/.test(apply))
+        broken.push(`${t.tag}: the START POINT write lost its flushed witness — the resolver's read-back is the only answer to «اثار هستش یا نه» (law 3)`);
+      if (/Print\("\[UI\] start point/.test(apply))
+        broken.push(`${t.tag}: the START POINT witness went back to the journal (P-DRAW-126: MT buffers it in RAM)`);
+    }
+    if (broken.length) {
+      failures.push('P-UI-220: ' + broken.join('; ') + ' (BiotakPanels_PalSpec/_PalB/_Apply MT4, BiotakPanels.mqh MT5)');
+    } else {
+      console.log("[PASS] P-UI-220 the levels' card carries its own door to the ANCHOR's START POINT in both terminals — appended row 18, a NAV to the CUSTOM PRICE card, counted by the band, and the write proves itself on the flushed channel");
     }
   }
 

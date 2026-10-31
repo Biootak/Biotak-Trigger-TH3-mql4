@@ -272,6 +272,19 @@ void RunIncrementalObjectCleanup()
             if(!isOurs) continue;
             if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: never emergency-wipe user drawings
             if(StringFind(objName, "_HRAY_") >= 0) continue;   // P-HR-05: rays are their own layer, same law
+            //--- P-SESS-43 (2026-10-31) — THE SESSION FAMILY IS SELF-OWNED, AND THIS PASS
+            //--- WAS DELETING IT. The rule below is "everything under inpObjectPrefix that
+            //--- is not the level family and is older than an hour is garbage" — and a
+            //--- session box's own anchor IS its session start, so EVERY box older than
+            //--- one hour (the live one included, once it has run an hour) was deleted on
+            //--- the next timer pass and re-created by the next paint. MEASURED on the
+            //--- live chart after a restart: `attach pre=100 … init menu n=100` and then
+            //--- the first paint `preexist=0`, i.e. the family existed at the end of OnInit
+            //--- and was gone before the first tick painted. That is the flicker and the
+            //--- "حذف و رسم" report: two writers, one family. The family declares and
+            //--- sweeps itself (P-SESS-37), so this pass has no opinion about it — the
+            //--- same exemption `_BK_`, `_HRAY_` and `TH3_Structure_` already carry.
+            if(StringFind(objName, indicatorPrefix + SESS_TAG) == 0) continue;   // P-SESS-43
 
             if(StringFind(objName, "TH3_Structure_") == 0) continue;
             if(StringLen(objName) >= currentPrefixLen && StringSubstr(objName, 0, currentPrefixLen) == objectPrefix) continue;

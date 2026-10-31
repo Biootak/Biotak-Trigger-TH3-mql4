@@ -2933,11 +2933,11 @@ MUTATIONS = [
     {
         "id": "P-SESS-g",
         "gate": "regression",
-        "rule": "P-SESS-24: the factory session box ships FILLED — ONE rectangle per window (145 objects on the reporting chart) instead of the four-edge mesh (367)",
-        "what": "the factory style flips back to the mesh — a fresh chart paints four border segments per window again",
+        "rule": "P-SESS-29: the factory session box ships EMPTY — no fill over the candles by default",
+        "what": "the factory style flips back to the washed slab — a fresh chart paints a fill over every window again",
         "file": "Biotak/Sessions_Model.mqh",
-        "find": "   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;",
-        "replace": "   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;   // MUTATION",
+        "find": "   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;",
+        "replace": "   s.style = SESS_STYLE_FILLED; s.col = 0; s.enabled = false;   // MUTATION",
         "expect": "P-SESS",
     },
     {
@@ -4324,12 +4324,12 @@ MUTATIONS = [
     {
         "id": "P-UI-173",
         "gate": "regression",
-        "rule": "the sessions' hash carries the chart period (the numbers are timeframe-derived)",
-        "what": "the period leaves the hash - a switch leaves the session high/low on the old timeframe",
+        "rule": "the sessions' TF door rebuilds when a painted number is bar-derived (P-UI-173 / P-SESS-30)",
+        "what": "the TF door is cut - the hash no longer carries the period AND the switch asks nothing, so the high/low stays on the old timeframe",
         "file": "Biotak/Sessions_Draw.mqh",
-        "find": "   h = h * 31 + (long)Period();",
-        "replace": "   // MUTATION: the period is gone",
-        "expect": "sessions hash lost the chart period",
+        "find": "      (tfChanged && SessNeedsBars()))",
+        "replace": "      (false))   // MUTATION: the timeframe door is cut",
+        "expect": "lost their timeframe door",
     },
     {
         "id": "P-UI-174",
@@ -6004,7 +6004,7 @@ MUTATIONS = [
         "rule": "the session name is painted above the range box, never on the candles",
         "what": "the tag goes back inside the box (LEFT_UPPER at the high) - the reported mess",
         "file": "Biotak/Sessions_Draw.mqh",
-        "find": "                  ANCHOR_LEFT_LOWER, tip);   // P-SESS-22: the name sits ABOVE the box (TradingView's range label), never on the candles",
+        "find": "                     ANCHOR_LEFT_LOWER, tip);   // P-SESS-22: the name sits ABOVE the box, never on the candles",
         "replace": "                  ANCHOR_LEFT_UPPER, tip);   // MUTATION: the tag is inside the box",
         "expect": "the session name is back inside its box",
     },
@@ -6016,10 +6016,10 @@ MUTATIONS = [
     {
         "id": "P-SESS-24-a",
         "gate": "regression",
-        "rule": "a saved slot wearing the OLD hollow stamp adopts the factory body ONCE (P-SESS-24)",
-        "what": "the style stamp is never migrated - every chart that opened the sessions card keeps the four-edge mesh for good",
+        "rule": "a saved slot wearing the OLD filled stamp adopts the EMPTY factory body ONCE (P-SESS-29)",
+        "what": "the style stamp is never migrated - every chart that opened the sessions card keeps the washed slab for good",
         "file": "Biotak/Sessions_Model.mqh",
-        "find": "      if(SessSlotIsStyleStamp(i, s))             // P-SESS-24: the old hollow stamp",
+        "find": "      if(ver < 2 && SessSlotIsFilledStamp(i, s)) // P-SESS-29: the old FILLED stamp",
         "replace": "      if(false)                                  // MUTATION: the old stamp is never adopted",
         "expect": "P-SESS",
     },
@@ -6066,6 +6066,306 @@ MUTATIONS = [
         "find": "   SessSlotsResetToFactory();                          // (3) sessions back to the preset table",
         "replace": "   // MUTATION: the session slots keep the user's table",
         "expect": "leaves the session slots edited",
+    },
+
+    #--- P-UI-219 - A PANEL BUTTON IS NEVER SELECTABLE, THE SEAT DELIVERS (2026-10-30).
+    #--- «روی ریست ال کلیک میکنم این میاد» with the terminal's own Button-properties
+    #--- window over `…_Pnl14_ral`. `OBJPROP_SELECTABLE=true` made MT spend the press
+    #--- on SELECTION (P-UI-48) and open the dialog on the next one; the flag cannot
+    #--- just go, because P-DRAW-84's law says a non-selectable object gets no
+    #--- OBJECT_CLICK - so P-UI-145's seat registry became the delivery. Each entry
+    #--- below puts ONE half of that pair back and demands the gate name it.
+    {
+        "id": "P-UI-219-a",
+        "gate": "regression",
+        "rule": "PnlSetButton paints every panel button NON-selectable (P-UI-219)",
+        "what": "the flag is back - MT grabs the control on the press and the next press opens the properties dialog",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "   //--- factory paints, off the seat remembered two lines above.\n   ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);",
+        "replace": "   //--- factory paints, off the seat remembered two lines above.\n   ObjectSetInteger(0,n,OBJPROP_SELECTABLE,true);   // MUTATION: the grab is back",
+        "expect": "writes SELECTABLE=true again",
+    },
+    {
+        "id": "P-UI-219-b",
+        "gate": "regression",
+        "rule": "the seat door answers a press by PIXELS off the remembered seat (P-UI-219)",
+        "what": "the hit test is dropped - the door acts on the first remembered name wherever it sits",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "      if(!PnlCtrlRectHit(nm, mx, my, 0)) continue;",
+        "replace": "      if(false && PnlCtrlRectHit(nm, mx, my, 0)) continue;   // MUTATION: names, not pixels",
+        "expect": "no longer hit-tests the seat by pixels",
+    },
+    {
+        "id": "P-UI-219-c",
+        "gate": "regression",
+        "rule": "the seat door dispatches through PnlHandleClick, the one owner (P-UI-219)",
+        "what": "the dispatch is cut - the door latches a press nothing ever acts on",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "      const int f = PnlHandleClick(nm, mx, my);",
+        "replace": "      const int f = REFRESH_NONE;   // MUTATION: no owner answers the seat",
+        "expect": "does not dispatch through PnlHandleClick",
+    },
+    {
+        "id": "P-UI-219-d",
+        "gate": "regression",
+        "rule": "the seat door latches BEFORE it dispatches - the recursion guard (P-UI-219)",
+        "what": "the latch is late - PnlClickFallback re-enters the door and one press acts twice",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "      UIPressAct(sk);\n",
+        "replace": "",
+        "expect": "does not latch the gesture",
+    },
+    {
+        "id": "P-UI-219-e",
+        "gate": "regression",
+        "rule": "the palette's press reaches the seat door before the card's (P-UI-219)",
+        "what": "the palette's buttons are born non-selectable and no channel answers them",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "      if(pressStart && PnlSeatPressAct(mx,my,true)) return;",
+        "replace": "      // MUTATION: the palette's seats are never asked",
+        "expect": "the palette's press never reaches the seat door",
+    },
+    {
+        "id": "P-UI-219-f",
+        "gate": "regression",
+        "rule": "the card's press chain ends at the seat door (P-UI-219)",
+        "what": "the C<i> tab and segment pills have no delivery left - dead on a green compile",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "      if(PnlSeatPressAct(mx,my,false)) return;",
+        "replace": "      // MUTATION: the card's seats are never asked",
+        "expect": "the card's press chain never reaches the seat door",
+    },
+    {
+        "id": "P-UI-219-g",
+        "gate": "regression",
+        "rule": "the global reset's witness is the FLUSHED file, never the journal (law 3)",
+        "what": "the count goes back to Print - MT4 buffers it in RAM and the report reads «nothing happened»",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "   DrawStripDiagEmit(\"[P-UI-219] reset ALL keys=\" + IntegerToString(keys) +\n                     \" open=\" + IntegerToString(g_PnlOpen));",
+        "replace": "   _LOG_GATE_W Print(\"[UI] reset ALL keys=\", keys);   // MUTATION: the witness is a journal line",
+        "expect": "prints its witness to the journal again",
+    },
+
+    #--- P-UI-220 - THE LEVELS' CARD OWNS A DOOR TO THE ANCHOR (2026-10-30).
+    #--- «این تنظیمات startpoint سطوح رو توی پنل ها ندیدم کجاهستش اثال هستش یا نه».
+    #--- The row was LIVE (card 8, ANCHOR band -> `g_startPointOverride` -> the
+    #--- per-frame resolver) and UNREACHABLE: its only door was a hold on the PIN
+    #--- item or the line. The fix is the appended NAV row 18 on the levels' own
+    #--- card plus a flushed read-back of the write. Each entry takes ONE half away.
+    {
+        "id": "P-UI-220-a",
+        "gate": "regression",
+        "rule": "card 1's SUB-CARDS band counts its own rows (P-UI-220)",
+        "what": "the band pill is back to 4 over five rows - the door is invisible in its own band",
+        "file": "Biotak/BiotakPanels_PalSpec.mqh",
+        "find": "      PnlSpecAdd(1, PNL_K_SEC, -1, 0, \"\", \"\", \"SUB-CARDS\", 5);",
+        "replace": "      PnlSpecAdd(1, PNL_K_SEC, -1, 0, \"\", \"\", \"SUB-CARDS\", 4);   // MUTATION: the pill lies",
+        "expect": "does not count its five rows",
+    },
+    {
+        "id": "P-UI-220-b",
+        "gate": "regression",
+        "rule": "card 1 carries the appended door row (P-UI-220)",
+        "what": "the row leaves the spec - the START POINT is a hold-only setting again",
+        "file": "Biotak/BiotakPanels_PalSpec.mqh",
+        "find": "      PnlSpecAdd(1, PNL_K_LEGACY, 18, 1, \"target\", \"\", \"\", 0, \"START POINT\");",
+        "replace": "      // MUTATION: the ANCHOR's door is gone",
+        "expect": "has no appended row 18",
+    },
+    {
+        "id": "P-UI-220-c",
+        "gate": "regression",
+        "rule": "the door row is a NAV to the CUSTOM PRICE card (P-UI-220)",
+        "what": "the row paints as a switch and opens nothing - P-DRAW-84's class, inverted",
+        "file": "Biotak/BiotakPanels_PalB.mqh",
+        "find": "      else if(row==18) { kind=5; label=\"START POINT\"; opts=\"8\"; }   // NAV → custom price card",
+        "replace": "      else if(row==18) { kind=1; label=\"START POINT\"; }   // MUTATION: painted, no door",
+        "expect": "is not a NAV to card 8",
+    },
+    {
+        "id": "P-UI-220-d",
+        "gate": "regression",
+        "rule": "the START POINT write witnesses itself on the flushed channel (P-UI-220, law 3)",
+        "what": "the read-back is a journal line - «اثار هستش یا نه» is unanswerable for minutes",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "                DrawStripDiagEmit(\"[P-UI-220] start point set type=\" +",
+        "replace": "                _LOG_GATE_W Print(\"[UI] start point set type=\", (int)g_thStartPointType);   // MUTATION: the witness is a journal line",
+        "expect": "lost its flushed witness",
+    },
+
+    #--- P-SESS-25 - TRADINGVIEW'S SESSION TABLE + ONE CLEAR TRANSPARENCY ROW (2026-10-30).
+    #--- «شروع و پایین سشن درستش نیست … رنگها رو هم شفافیت براش بزار … یا باکس خالی».
+    #--- The windows were the pre-TV classic table (NY 13-22Z, Sydney 21-06Z) and the
+    #--- look row spoke FILL % — the complement of the number a user thinks in. Each
+    #--- entry below puts ONE half back and demands the gate name it.
+    {
+        "id": "P-SESS-25-a",
+        "gate": "regression",
+        "rule": "New York ships babypips' window (13:00-22:00Z, P-SESS-26)",
+        "what": "the preset is back on TradingView's 08:30-15:00 local - every NY box starts 30 min early and ends 2h late",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "      case 2: s.zone = SZ_NEWYORK;   s.startMin = 480; s.endMin = 1020; s.col = 4; s.enabled = true;  break;   // P-SESS-26: 13:00-22:00Z (New York 08-17 local, -5)",
+        "replace": "      case 2: s.zone = SZ_NEWYORK;   s.startMin = 510; s.endMin = 900; s.col = 4; s.enabled = true;  break;   // MUTATION: 13:30-20Z again",
+        "expect": "no longer draws 13:00-22:00Z",
+    },
+    {
+        "id": "P-SESS-25-b",
+        "gate": "regression",
+        "rule": "the look row is TRANSPARENCY, inverted on read AND write (P-SESS-25)",
+        "what": "the read is the raw ink again - the slider says 86 % while the writer stores 86 % ink (a saturated slab)",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "                if(row==10) return 100 - g_sessFill;",
+        "replace": "                if(row==10) return g_sessFill;   // MUTATION: the face is the stored ink",
+        "expect": "has no READ",
+    },
+    {
+        "id": "P-SESS-25-c",
+        "gate": "regression",
+        "rule": "the family STYLE row writes through SessSetAllStyle (P-SESS-25)",
+        "what": "the write is cut - Filled/Empty moves the pills and every box stays as it was",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "          else if(row==16) { SessSetAllStyle((v > 0.5) ? SESS_STYLE_OUTLINE : SESS_STYLE_FILLED); }",
+        "replace": "          else if(row==16) { }   // MUTATION: painted, no write",
+        "expect": "has no WRITE",
+    },
+    {
+        "id": "P-SESS-25-d",
+        "gate": "regression",
+        "rule": "the old London / New York / Sydney pairs still migrate to the new table (P-SESS-26)",
+        "what": "the migration forgets the pre-TV Sydney pair - a chart saved by an older build keeps drawing 21-06Z for good",
+        "file": "Biotak/Sessions_Model.mqh",
+        "find": "   return (s.startMin == 420 && s.endMin == 960);                           // Sydney 07-16 local (pre-TV)",
+        "replace": "   return false;   // MUTATION: the old Sydney pair never adopts",
+        "expect": "no longer knows the old London / New York / Sydney pairs",
+    },
+
+    #--- P-SESS-30 - A TF SWITCH IS A VIEW CHANGE (2026-10-30).
+    #--- «وقتی باکس‌ها نیستش، تایم عوض میکنم، اپدیت نمیشه» — the strip's signature
+    #--- did not carry the period while the hash did, so the one object that had to
+    #--- move stayed and the whole family was re-declared for nothing.
+    {
+        "id": "P-SESS-30-a",
+        "gate": "regression",
+        "rule": "the STRIP signature carries the TIMEFRAME (P-SESS-30)",
+        "what": "the period leaves the view signature - M15 -> M5 keeps the same bar count and the strip stays on the old axis",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   return (((long)Period() * 131 + first) * 131 + vis) * 131 + wpx;",
+        "replace": "   return (first * 131 + vis) * 131 + wpx;   // MUTATION: the period is gone",
+        "expect": "STRIP signature forgot the TIMEFRAME",
+    },
+
+    #--- P-SESS-35 - A HEALTHY STRIP IS A BLOCK THE PAINT WROTE (2026-10-31).
+    #--- MEASURED on the flushed file: `[P-SESS] strip heal="…ST0_0"` and
+    #--- `[drawstrip] DELFLUSH` on EVERY frame. The heal asked run 0's name; run 0 is
+    #--- the earliest window and every chart with history clips it away, so the family
+    #--- never read healthy and ~20 blocks were wiped and rebuilt per tick.
+    {
+        "id": "P-SESS-35-a",
+        "gate": "regression",
+        "rule": "the strip's healthy-block question names a block the paint wrote (P-SESS-35)",
+        "what": "the heal asks run 0 again - a clipped first run means the strip is rebuilt every tick",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "      string nm0 = s_sessStripHealNm;                      // P-SESS-35: the name the paint WROTE",
+        "replace": "      string nm0 = inpObjectPrefix + SESS_TAG + \"ST\" + IntegerToString(s_sessStripSlot[0]) + \"_0\";   // MUTATION: run 0's name",
+        "expect": "healthy-block question went back to run 0",
+    },
+
+    #--- P-SESS-27b - THE STRIP TAKES THE CAPTION WITH THE BODY (2026-10-30).
+    #--- «توی حالت استریپ این نوشته‌ها هم نباشه» — measured: bodies=0, tags=20.
+    {
+        "id": "P-SESS-27-b",
+        "gate": "regression",
+        "rule": "the box caption follows the STRIP switch (P-SESS-27b)",
+        "what": "the tag is painted unconditionally - the compact mode loses its boxes and keeps four floating names",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "         if(SessBoxBodiesWanted())   // P-SESS-27b: the name IS the box's caption",
+        "replace": "         if(true)   // MUTATION: the caption ignores the strip",
+        "expect": "the box CAPTION ignores the STRIP switch",
+    },
+
+    #--- P-SESS-28 - THE FILL'S FADE IS THE HOUSE FADE (2026-10-30).
+    #--- «شفافیت روی فیل رنگها درستی نیست، زیاد نمیشه» — the row agreed with the
+    #--- paint (47 % -> ink 53) and the pixels still read 53 % ink: the curve was
+    #--- linear while every band in the product fades with ink^2/100.
+    {
+        "id": "P-SESS-28-a",
+        "gate": "regression",
+        "rule": "the session fill fades with the house curve (P-SESS-28)",
+        "what": "the curve is linear again - the strongest settings keep twice the ink of every other band",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   return (ink * ink) / 100;      // the house curve (P-UI-131m / ZoneFactory)",
+        "replace": "   return ink;   // MUTATION: the linear fade",
+        "expect": "lost the house fade",
+    },
+
+    #--- P-UI-221 - A SLIDER'S RELEASE IS ITS VALUE (2026-10-30).
+    #--- The moves are throttled (30 ms) and the chip/knob are not, so the release
+    #--- used to be the one event that never reached the row's owner.
+    {
+        "id": "P-UI-221-a",
+        "gate": "regression",
+        "rule": "a slider's release settles the value it stopped on (P-UI-221)",
+        "what": "the release only drops the latch - the value stays whatever the last throttled move wrote",
+        "file": "Biotak/BiotakPanels_Route.mqh",
+        "find": "         double vEnd;\n         PnlValueFromX(g_PnlDragItem,g_PnlDragRow,mx,vEnd);",
+        "replace": "         double vEnd = 0.0;   // MUTATION: the release no longer reads the cursor",
+        "expect": "ends without settling its value",
+    },
+
+    #--- P-SESS-34 - A ONE-CLICK SWITCH REACHES THE DISK (2026-10-31).
+    #--- MEASURED on the live chart: the panel showed STRIP on while OV_SSTS sat at 0,
+    #--- so the next attach came back with the strip off and the boxes on.
+    {
+        "id": "P-SESS-34-a",
+        "gate": "regression",
+        "rule": "a SESSIONS switch saves on the click, not through the slider throttle (P-SESS-34)",
+        "what": "the switch falls back on the throttled saver - one click can be dropped and the card forgets it",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "          if(row==1 || row==2 || row==10 || row==13) RuntimeSettingsSaveOverridesThrottled();  // days / transparency / TV (drags)\n          else                                        RuntimeSettingsSaveOverrides();            // switches + STYLE: one write, always",
+        "replace": "          RuntimeSettingsSaveOverridesThrottled();   // MUTATION: the switch shares the drag throttle",
+        "expect": "share the slider throttle again",
+    },
+
+    #--- P-SESS-32 - THE TICK THAT DECIDES TO PAINT NAMES ITS STATE (2026-10-31).
+    #--- Without it a frame that never paints is indistinguishable from a master that
+    #--- loaded OFF, which cost a reproduction round every restart.
+    {
+        "id": "P-SESS-32-a",
+        "gate": "regression",
+        "rule": "the session tick emits its once-per-attach state witness (P-SESS-32)",
+        "what": "the witness is gone - a silent attach reads as 'nothing happened' again",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "[P-SESS] tick master=%d hidden=%d bars=%d tf=%d built=%d pfx=%s",
+        "replace": "[P-SESS] tickunk master=%d hidden=%d bars=%d tf=%d built=%d pfx=%s",   # MUTATION: the witness line lost its name
+        "expect": "lost its once-per-attach witness",
+    },
+
+    #--- P-SESS-37/43 - A SESSION PAINT NEVER WIPES (2026-10-31).
+    #--- Two writers deleted the family, and both were measured before either was
+    #--- touched: the paint's own `SessWipe()` at the top of SessPaintAll, and the
+    #--- global age sweep in RunIncrementalObjectCleanup (a box is anchored at its
+    #--- window's START, so it is hours old the moment it is drawn). The first
+    #--- mutation puts the blanket delete back; the second puts the family back under
+    #--- the age rule. Both must FAIL the regression gate by its own message.
+    {
+        "id": "P-SESS-43-a",
+        "gate": "regression",
+        "rule": "a session paint declares then sweeps, never wipes (P-SESS-37)",
+        "what": "the blanket SessWipe() is back at the top of the paint - every timeframe switch deletes and redraws the family",
+        "file": "Biotak/Sessions_Draw.mqh",
+        "find": "   s_sessCollect = true;\n   s_sessDeclaredN = 0;\n   int preexist = SessFamilyCount();   // P-SESS-38: what the chart still held on arrival",
+        "replace": "   SessWipe();   // MUTATION: the blanket delete is back\n   s_sessCollect = true;\n   s_sessDeclaredN = 0;\n   int preexist = SessFamilyCount();",
+        "expect": "the paint wipes the family",
+    },
+    {
+        "id": "P-SESS-43-b",
+        "gate": "regression",
+        "rule": "the global age sweep has no opinion about the session family (P-SESS-43)",
+        "what": "SESS_ loses its exemption - a box older than an hour is garbage to the cleanup pass again",
+        "file": "Biotak/EventHandlers_Tail.mqh",
+        "find": "            if(StringFind(objName, indicatorPrefix + SESS_TAG) == 0) continue;   // P-SESS-43",
+        "replace": "            // MUTATION: the family is back under the age rule",
+        "expect": "the global age sweep owns the session family again",
     },
 ]
 
