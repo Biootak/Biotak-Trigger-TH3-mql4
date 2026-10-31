@@ -12,27 +12,22 @@
 //| rectangles, across timeframes down to M1» and «it will draw your  |
 //| main kink, and all to the pip kinks your history holds».          |
 //|                                                                  |
-//| THE GEOMETRY, measured off the reference drawing (2560x1234, its  |
-//| own price axis ~0.00068/px):                                     |
+//| THE GEOMETRY (P-HRN-06 corrected the DETECTOR, not this):        |
 //|   * a box's NEAR edge is the LEVEL the user dropped — not a       |
 //|     tolerance band; the line runs along/inside the box;           |
-//|   * its FAR edge is the next kink level that rung's history holds |
-//|     (that is why the reference's two boxes share one bottom: both |
-//|     end on the same next kink);                                   |
-//|   * the box starts at the kink's own candle and runs right for a  |
-//|     bounded span (40 bars of ITS timeframe — a monthly box is ~3  |
-//|     years, exactly the reference's width);                        |
+//|   * its FAR edge is THAT KINK'S OWN extreme away from the level;  |
+//|   * it starts at the kink's first touch and ends at the touch that |
+//|     closed it (a still-running kink ends on the last bar);        |
+//|   * the deepest box of a ray is the MAIN kink and wears the thick  |
+//|     border; every other one is a pip kink of its own rung;         |
 //|   * HOLLOW — no fill, the candles stay readable through it.       |
-//|                                                                  |
-//| P-HRN-02 (2026-10-31, MEASURED): the first build asked the TH3    |
-//| six-condition pivot (TH3SixPivotsScanTF) for the kink, and the    |
-//| user's EURUSD monthly chart drew NOTHING — «مال ما چیزی مشخص       |
-//| نمیکنه». That detector is a TRADING gate (master candle + cover + |
-//| final-third close + 0.8 ATR reversal, TH3Pivots_A.mqh:133), not a |
-//| drawing primitive: it is right to refuse most bars, and a chart   |
-//| that must show EVERY kink cannot be built on a filter that says   |
-//| no. The kink is now the swing extreme itself (HRAYN_FRACTAL bars  |
-//| each side), which is also what the reference calls a kink.        |
+//|                                                                  |//| THE TWO WRONG DETECTORS THIS REPLACED, both measured on the user's|
+//| own charts: P-HRN-02 asked the TH3 six-condition pivot (a TRADING   |
+//| gate that is right to refuse most bars — «مال ما چیزی مشخص          |
+//| نمیکنه»), and the fractal swing that followed it asked "is there a |
+//| swing near the level?", which drew a thin column of M1/M5 boxes on  |
+//| the far left of a monthly chart. The level does not need swings NEAR|
+//| it — it needs the TOUCHES of it (P-HRN-06, see the detector).      |
 //|                                                                  |
 //| COST, stated (contract §5): a scan is HRAYN_MAX_TF(4) rungs x up  |
 //| to HRAYN_MAX_BARS(1200) bars of iHigh/iLow reads, and it runs on  |
@@ -47,8 +42,9 @@
 #define HRAYN_MAX_TF     4      // rungs scanned, the chart's own TF first
 #define HRAYN_LOOKBACK   400    // minimum bars handed to the kink walk
 #define HRAYN_MAX_BARS   1200   // ... and the hard cap (the stated cost)
-#define HRAYN_FRACTAL    2      // bars each side that make a swing extreme
-#define HRAYN_TOL_ATR    0.5    // "the level is ON the kink": share of that TF's ATR
+#define HRAYN_TOL_PIPS   0.5    // how close a bar must come to TOUCH the level (in pips)
+#define HRAYN_MIN_PIPS   3.0    // a run away from the level shallower than this is noise
+#define HRAYN_PER_TF     5      // kinks kept per rung (deepest first, bounded)
 #define HRAYN_SPAN_BARS  40     // a zone's width, in ITS OWN tf's bars
 #define HRAYN_FONT       7      // the TF tag's size
 #define HRAYN_W          1      // zone border width
@@ -183,7 +179,9 @@ void HRayNodePaint(const int i)
    ObjectMove(0, s_hrn[i].rect, 1, t2, s_hrn[i].hi);
    ObjectSetInteger(0, s_hrn[i].rect, OBJPROP_COLOR, ink);
    ObjectSetInteger(0, s_hrn[i].rect, OBJPROP_STYLE, STYLE_SOLID);
-   ObjectSetInteger(0, s_hrn[i].rect, OBJPROP_WIDTH, HRAYN_W);
+   // P-HRN-06: the MAIN kink wears the thick border (the reference draws only one
+   // box and calls it the main kink; here the rest are the pip kinks of the rungs).
+   ObjectSetInteger(0, s_hrn[i].rect, OBJPROP_WIDTH, s_hrn[i].base ? 2 : HRAYN_W);
    // P-HRN-04 (MEASURED on the user's chart: a solid block over the candles):
    // FILL false alone is NOT a hollow box — MT4 fills a rectangle that sits in
    // the BACKGROUND. The project's own rule (BaseKnot_Base.mqh:1110, P-BK-23) is
@@ -269,47 +267,121 @@ int HRayNodeBars(const int tf)
    if(bars > HRAYN_MAX_BARS) bars = HRAYN_MAX_BARS;
    return bars;
 }
-// THE KINKS of one rung: swing extremes on COMPLETED bars only. A bar is a kink
-// high when its high is the highest of HRAYN_FRACTAL bars on each side (strictly
-// on the right, so a plateau counts once). Bounded by HRAYN_MAX_KINKS.
-int HRayNodeKinks(const int tf, const int bars,
-                  datetime &kt[], double &kp[], bool &kh[])
+//+------------------------------------------------------------------+
+//| P-HRN-06 (2026-10-31) — A KINK IS A TOUCH AND A TURN, NOT A PIVOT |
+//| THAT HAPPENS TO SIT NEAR THE LINE.                                  |
+//|                                                                   |
+//| «مرجع یک چیز دیگه، منطقش اشتباه هستش». The reference states its own |
+//| rule on the image: «Drag and drop the line (ideally to LS or SR, of |
+//| course), and it will draw your main kink, and all to the pip kinks  |
+//| your history holds.» So the zones are produced BY THE LINE: every   |
+//| place price TOUCHED that level and turned away is a kink, the       |
+//| deepest one is the MAIN kink, and the shallow ones are the pip      |
+//| kinks.                                                             |
+//|                                                                   |
+//| The detector this replaces asked a different question — "is there a |
+//| fractal swing ANYWHERE within half an ATR of the level?" — which is |
+//| why the user's EURUSD monthly chart drew a thin cluster of boxes on |
+//| the far left (the only swings that happened to sit inside an ATR)   |
+//| and nothing at the kinks themselves.                                |
+//|                                                                   |
+//| THE ALGORITHM, one pass per rung over the window the chart covers:  |
+//|   * a bar TOUCHES the level when  low <= P + tol  &&  high >= P - tol;
+//|   * between two touches, the run's excursion away from P is the      |
+//|     kink's DEPTH, and its extreme is the zone's FAR edge (P is the  |
+//|     near edge — the line runs along the box, as in the reference);  |
+//|   * the zone spans [first touch .. the touch that closes it] in     |
+//|     time, [P .. extreme] in price;                                  |
+//|   * a run still open at the last bar closes THERE (the reference     |
+//|     keeps its live zone current, it does not hide it);              |
+//|   * a run shallower than HRAYN_MIN_PIPS is noise, not a kink.       |
+//| Cost: the same walk the fractal version paid — one bar pass per rung.|
+//+------------------------------------------------------------------+
+int HRayNodeKinksAtLevel(const int tf, const int depth, const double P, const double tol,
+                         const double minDepth,
+                         datetime &ks[], datetime &ke[], double &kfar[], double &kdepth[])
 {
-   int have = iBars(NULL, tf);
-   if(have < (2 * HRAYN_FRACTAL + 3)) return 0;
-   int depth = bars;
-   if(depth > have - HRAYN_FRACTAL - 1) depth = have - HRAYN_FRACTAL - 1;
-   if(depth < HRAYN_FRACTAL + 2) return 0;
    int cnt = 0;
-   for(int i = HRAYN_FRACTAL + 1; i <= depth; i++)
+   bool open = false;
+   datetime oStart = 0;
+   double oFar = 0.0;      // the run's extreme price (the far edge once it closes)
+   double oRun = 0.0;      // ... and its distance from the level
+   datetime lastT = 0;
+   for(int i = depth; i >= 1; i--)        // OLDEST .. NEWEST (i = bar index)
    {
       double h = iHigh(NULL, tf, i), l = iLow(NULL, tf, i);
-      if(h <= 0 || l <= 0) continue;
-      bool isHi = true, isLo = true;
-      for(int k = 1; k <= HRAYN_FRACTAL; k++)
+      if(h <= 0.0 || l <= 0.0) continue;
+      datetime bt = iTime(NULL, tf, i);
+      if(bt <= 0) continue;
+      lastT = bt;
+      bool touch = (l <= P + tol && h >= P - tol);
+      if(!open)
       {
-         double hb = iHigh(NULL, tf, i - k), hf = iHigh(NULL, tf, i + k);
-         double lb = iLow(NULL, tf, i - k),  lf = iLow(NULL, tf, i + k);
-         if(!(h >= hb && h > hf)) isHi = false;
-         if(!(l <= lb && l < lf)) isLo = false;
-         if(!isHi && !isLo) break;
+         if(!touch) continue;              // price has not reached the level yet
+         open = true; oStart = bt; oFar = P; oRun = 0.0;
+         continue;
       }
-      if(!isHi && !isLo) continue;
-      ArrayResize(kt, cnt + 1); ArrayResize(kp, cnt + 1); ArrayResize(kh, cnt + 1);
-      kt[cnt] = iTime(NULL, tf, i);
-      kp[cnt] = (isHi ? h : l);
-      kh[cnt] = isHi;
+      // the run grows AWAY from the level — either side is a kink (support or
+      // resistance), and the deeper side of the bar is the one that counts
+      double up = h - P, dn = P - l;
+      if(up > oRun) { oRun = up; oFar = h; }
+      if(dn > oRun) { oRun = dn; oFar = l; }
+      if(!touch) continue;
+      // the level was touched again: the run between the two touches is a kink
+      if(oRun >= minDepth && cnt < HRAYN_MAX_KINKS)
+      {
+         ArrayResize(ks, cnt + 1); ArrayResize(ke, cnt + 1);
+         ArrayResize(kfar, cnt + 1); ArrayResize(kdepth, cnt + 1);
+         ks[cnt] = oStart;
+         ke[cnt] = bt;
+         kfar[cnt] = oFar;
+         kdepth[cnt] = oRun;
+         cnt++;
+      }
+      // and THIS bar opens the next run — the level is being touched again
+      open = true; oStart = bt; oFar = P; oRun = 0.0;
+   }
+   // a run still open at the last bar is the LIVE kink: close it there
+   if(open && oRun >= minDepth && cnt < HRAYN_MAX_KINKS)
+   {
+      ArrayResize(ks, cnt + 1); ArrayResize(ke, cnt + 1);
+      ArrayResize(kfar, cnt + 1); ArrayResize(kdepth, cnt + 1);
+      ks[cnt] = oStart;
+      ke[cnt] = (lastT > oStart ? lastT : oStart);
+      kfar[cnt] = oFar;
+      kdepth[cnt] = oRun;
       cnt++;
-      if(cnt >= HRAYN_MAX_KINKS) break;
    }
    return cnt;
 }
-// THE SCAN — ONE box per rung, built the way the reference draws it:
-//   near edge = THE LEVEL the user dropped, and
-//   far edge  = the next kink level the same rung's history holds below it
-//               (above it, for a kink under the level).
-// That is why the reference's two boxes share one bottom: both end on the same
-// next kink. A rung whose history has no kink at the level draws nothing.
+// P-HRN-06: the MAIN kink is the deepest one of each ray — the reference draws it
+// first and calls it that. One pass over the cache (<= ~20 records), so the paint
+// can read a single flag instead of comparing every box on every frame.
+void HRayNodesMarkMain()
+{
+   int n = ArraySize(s_hrn);
+   for(int i = 0; i < n; i++) s_hrn[i].base = false;
+   for(int i = 0; i < n; i++)
+   {
+      int best = i;
+      for(int k = 0; k < n; k++)
+      {
+         if(s_hrn[k].ray != s_hrn[i].ray) continue;
+         if(MathAbs(s_hrn[k].hi - s_hrn[k].lo) <= MathAbs(s_hrn[best].hi - s_hrn[best].lo)) continue;
+         best = k;
+      }
+      if(best == i) s_hrn[i].base = true;
+   }
+}
+// THE SCAN — one box per KINK, built the way the reference draws it:
+//   near edge = THE LEVEL the user dropped (the line runs along the box), and
+//   far edge  = that kink's own extreme away from the level.
+// Every rung on the ladder answers the SAME question of its own history, so the
+// chart ends up wearing the main kink (the deepest) plus the pip kinks each rung
+// holds — down to M1, which is the whole reason the box is drawn at all: the user
+// must not have to switch the chart to a lower timeframe to see them.
+// P-HRN-06: the deepest of each ray is flagged `base` (HRayNodesMarkMain) and the
+// paint gives it the thick border — the reference's "main kink".
 void HRayNodesScan(const string ray)
 {
    HRayNodesForget(ray);                       // one ray, one answer set
@@ -319,71 +391,66 @@ void HRayNodesScan(const string ray)
    if(!(P > 0)) return;
    int tfs[];
    int nt = HRayNodesTFs(tfs);
+   // P-HRN-06: the level is a PRICE the user dropped; "touching" it is measured in
+   // PIPS (a chart-independent unit), and the same pip decides what is noise.
+   double pip = Point * (((Digits == 3 || Digits == 5) ? 10 : 1));
+   double tol = pip * HRAYN_TOL_PIPS;
+   double minDepth = pip * HRAYN_MIN_PIPS;
    int found = 0;
    string ledger = "";
    uint t0 = GetTickCount();   // the scan's own cost, printed below (contract §5)
    for(int i = 0; i < nt; i++)
    {
       int tf = tfs[i];
-      int bars = HRayNodeBars(tf);
-      datetime kt[]; double kp[]; bool kh[];
-      int n = HRayNodeKinks(tf, bars, kt, kp, kh);
-      double atr = iATR(NULL, tf, 14, 1);
-      double tol = (atr > 0 ? HRAYN_TOL_ATR * atr : 0.0);
-      int hit = 0;
-      for(int k = 0; k < n; k++) if(MathAbs(kp[k] - P) <= tol) hit++;
-      ledger = ledger + " " + HRayNodeTfName(tf) + ":" + IntegerToString(bars) + "b/" +
-               IntegerToString(n) + "k/" + IntegerToString(hit) + "h";
-      // THE nearest kink at the level, one per rung
-      int best = -1;
-      double bestD = 0;
-      for(int k = 0; k < n; k++)
+      int depth = HRayNodeBars(tf);
+      int have = iBars(NULL, tf);
+      if(depth > have - 2) depth = have - 2;
+      if(depth < 10) { ledger = ledger + " " + HRayNodeTfName(tf) + ":cold"; continue; }
+      datetime ks[], ke[];
+      double kfar[], kd[];
+      int n = HRayNodeKinksAtLevel(tf, depth, P, tol, minDepth, ks, ke, kfar, kd);
+      ledger = ledger + " " + HRayNodeTfName(tf) + ":" + IntegerToString(depth) + "b/" +
+               IntegerToString(n) + "k";
+      // KEEP THE DEEPEST HRAYN_PER_TF of this rung — a selection, not a sort, so the
+      // cost is n * HRAYN_PER_TF compares over numbers already in RAM (zero reads).
+      for(int take = 0; take < HRAYN_PER_TF; take++)
       {
-         double d = MathAbs(kp[k] - P);
-         if(d > tol) continue;
-         if(best < 0 || d < bestD) { best = k; bestD = d; }
-      }
-      if(best < 0) continue;
-      // THE far edge = THE SWING'S PARTNER: the next kink IN TIME that turns the
-      // other way. P-HRN-05 (the user: «اون پایینی ... ولی برای ما چی مشخص کرده»):
-      // the price-nearest rule produced a 400-pip sliver where the reference draws
-      // the whole swing (its 2008 high box runs to the 2009 low). Kinks are stored
-      // newest-first, so "later in time" is a LOWER index.
-      double far = 0;
-      datetime tFar = 0;
-      for(int j = best - 1; j >= 0; j--)
-      {
-         if(kh[j] == kh[best]) continue;   // same direction — keep walking
-         far  = kp[j];
-         tFar = kt[j];
-         break;
-      }
-      if(far == 0)   // no partner in the window: fall back to the nearest level
-      {
-         for(int j = 0; j < n; j++)
+         int best = -1;
+         double bestD = 0.0;
+         for(int k = 0; k < n; k++)
          {
-            if(j == best) continue;
-            if(kh[best]) { if(kp[j] < P && (far == 0 || kp[j] > far)) far = kp[j]; }
-            else         { if(kp[j] > P && (far == 0 || kp[j] < far)) far = kp[j]; }
+            if(kd[k] <= 0.0) continue;          // already spent
+            if(kd[k] > bestD) { bestD = kd[k]; best = k; }
          }
+         if(best < 0) break;
+         int r = ArraySize(s_hrn);
+         ArrayResize(s_hrn, r + 1);
+         s_hrn[r].ray  = ray;
+         s_hrn[r].tf   = tf;
+         s_hrn[r].t    = ks[best];                                    // the FIRST touch
+         datetime tEnd = ke[best];
+         if(tEnd <= ks[best]) tEnd = ks[best] + (datetime)(tf * 60);   // a visible width
+         s_hrn[r].tEnd = tEnd;                                        // the closing touch
+         HRayNodeBand(P, kfar[best], s_hrn[r].lo, s_hrn[r].hi);        // near edge = the LEVEL
+         s_hrn[r].base = false;
+         s_hrn[r].rect = HRayNodeName(ray, tf, ks[best], "R");
+         s_hrn[r].text = HRayNodeName(ray, tf, ks[best], "T");
+         found++;
+         kd[best] = 0.0;                       // spend it, so the next take is deeper
       }
-      if(far == 0) continue;
-      int r = ArraySize(s_hrn);
-      ArrayResize(s_hrn, r + 1);
-      s_hrn[r].ray  = ray;
-      s_hrn[r].tf   = tf;
-      s_hrn[r].t    = kt[best];
-      s_hrn[r].tEnd = (tFar > 0 ? tFar + (datetime)(10 * tf * 60)
-                                : kt[best] + (datetime)(HRAYN_SPAN_BARS * tf * 60));
-      HRayNodeBand(P, far, s_hrn[r].lo, s_hrn[r].hi);
-      s_hrn[r].base = false;
-      s_hrn[r].rect = HRayNodeName(ray, tf, kt[best], "R");
-      s_hrn[r].text = HRayNodeName(ray, tf, kt[best], "T");
-      found++;
    }
+   HRayNodesMarkMain();   // P-HRN-06: the deepest box of this ray is the MAIN kink
    HRayNodesPaintRay(ray);
+   double mainPips = 0.0;
+   for(int i = 0; i < ArraySize(s_hrn); i++)
+   {
+      if(s_hrn[i].ray != ray || !s_hrn[i].base) continue;
+      mainPips = (s_hrn[i].hi - s_hrn[i].lo) / pip;
+      break;
+   }
    HRayWitness("nodes \"" + ray + "\" level=" + DoubleToString(P, Digits) +
                " rungs=" + IntegerToString(nt) + " boxes=" + IntegerToString(found) +
+               " main=" + DoubleToString(mainPips, 1) + "p" +
                " ms=" + IntegerToString((int)(GetTickCount() - t0)) + " |" + ledger);
 }
 // P-HRN-03 — ADOPT WHAT THE CHART STILL WEARS. A TF switch is a deinit + init on
@@ -422,6 +489,7 @@ void HRayNodesAdopt()
                                    StringLen(IntegerToString((long)s_hrn[r].t)) + 3);
       s_hrn[r].ray = (cut > 0 ? rp + StringSubstr(body, 0, cut) : "");
    }
+   HRayNodesMarkMain();   // P-HRN-06: the adopted set gets its main kink back too
 }
 // Attach: adopt what the chart still wears (free), then build the rays that own
 // nothing — a ray placed by an OLDER build has no zones at all, and without this
