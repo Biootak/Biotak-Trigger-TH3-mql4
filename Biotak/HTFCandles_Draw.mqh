@@ -774,7 +774,40 @@ int RefreshHTFCandles()
 #define HTF_ENSURE_RETRY_MS 1000
 void HTFEnsureDrawn()
 {
-   if(!g_UI.showHTF || StringLen(g_HTFPrefix) == 0) return;
+   if(StringLen(g_HTFPrefix) == 0) return;
+   // P-HTF-AUDIT-3 (2026-10-31, user: «همه سناریوها رو درستش بکن»): THE INSTANCE
+   // RECONCILES ONCE, BEFORE ANY DRAW DECISION.
+   // The switch is a GlobalVariable and the candles are chart objects; the two
+   // survive an attach INDEPENDENTLY, so every mismatch was reachable:
+   //   * born OFF with a visible family  -> the old code returned right below and
+   //     nothing masked it: candles on screen with the switch off (the report);
+   //   * born ON with a MASKED family    -> the ensure saw "boxes exist", never
+   //     unmasked, and the overlay stayed invisible with the switch on.
+   // The state is the truth, the chart is the copy: one walk per instance (the
+   // toggle keeps owning its own edge), zero per-tick cost. allowBuild=false so
+   // the first build still goes through the staging guard below.
+   static bool s_reconciled = false;
+   if(!s_reconciled)
+   {
+      s_reconciled = true;
+      // The exact probe, not `HTFAnyBoxesExist()`: that one only looks at indices
+      // 0..2, and a family whose head was culled still has to be masked.
+      int vis0 = 0;
+      int fam0 = HTFFamilyCount(vis0);
+      if(fam0 > 0)
+      {
+         HTFApplyVisibleMasks(false);
+         int vis1 = 0;
+         HTFFamilyCount(vis1);
+         // The birth frame is where the mismatch was born (an instance that
+         // opened OFF onto a visible family), so it reports on the same flushed
+         // channel as the toggle: family / visible before -> after.
+         DrawStripDiagEmit("[HTF] reconcile on=" + IntegerToString(g_UI.showHTF ? 1 : 0) +
+                           " family=" + IntegerToString(fam0) +
+                           " visible " + IntegerToString(vis0) + "->" + IntegerToString(vis1));
+      }
+   }
+   if(!g_UI.showHTF) return;
 
    int tf = ResolveHTFPeriod();   // auto mode follows the CURRENT chart TF
    static int s_lastDrawnTf = -1; // TF of the boxes on chart (-1=none yet, 0=hidden-by-design)
@@ -875,10 +908,17 @@ int HTFFamilyCount(int &visible)
 // P-HTF-KEY — the toggle walk: masking, not deleting. OFF hides the family in
 // place (guarded flips only); ON unmasks it — instant both ways, no history
 // re-read, rapid-press safe. First ON with no family builds once, like before.
-void HTFApplyVisibleMasks()
+void HTFApplyVisibleMasks(const bool allowBuild = true)
 {
    if(StringLen(g_HTFPrefix) == 0) return;
-   if(g_UI.showHTF && !HTFAnyBoxesExist()) { RefreshHTFCandles(); return; }
+   if(g_UI.showHTF && !HTFAnyBoxesExist())
+   {
+      // P-HTF-AUDIT-3: only the TOGGLE builds on this path. The instance's own
+      // reconcile calls with allowBuild=false, because HTFEnsureDrawn owns the
+      // first build and its staging guard (P-PERF-06) must not be bypassed.
+      if(allowBuild) RefreshHTFCandles();
+      return;
+   }
    // P-HTF-AUDIT-2 (2026-10-31, user: «چرا کندل‌های htf ... روشن میشه خودکار در
    // صورتی که خاموش بود»): the walk asks the OBJECTS, never `g_HTFDrawnCount`.
    // MEASURED hole: the count is a STATIC that dies with the instance, while the
