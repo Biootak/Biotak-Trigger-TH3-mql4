@@ -38,6 +38,15 @@
 // a Lite chart that opens a Full chart's drawing would otherwise register a
 // rectangle as a RAY and let the hand grab it.
 #define HRAY_NODES_TAG "_HRN_"
+// P-HRN-13 (2026-10-31, user: «این خط ray دیگه باکس اینج نکشنه فقط همون خط باشه»):
+// THE BOXES ARE OFF. The ray is a plain line again — no zone is scanned at
+// placement, none at a drag's release, none at attach. The module stays in the
+// tree behind this switch, so uncommenting the next line restores the whole
+// ladder (every call site below is fenced on it), and while it is undefined the
+// attach sweep deletes whatever an older build left on the chart — an orphan box
+// would otherwise paint beside a ray that no longer owns it.
+// MQL4 has no `#if <macro>`: the switch is its EXISTENCE, so this is a comment.
+//#define HRAY_NODES_ON
 #define HRAY_COLOR clrRed
 #define HRAY_WIDTH 1
 #define HRAY_STYLE STYLE_SOLID
@@ -300,7 +309,9 @@ void HRayPlace(const datetime t, const double price)
       // P-HRN-01: the level is placed -> ask every lower rung what node it holds.
       // ONE scan per placement (never per tick); the answer is cached in HRayNodes.
 #ifndef BUILD_LITE
+#ifdef HRAY_NODES_ON
       HRayNodesScan(ln);
+#endif
 #endif
    }
 }
@@ -401,7 +412,9 @@ void HRayDragEnd()
    // P-HRN-01: the level MOVED, so its nodes did too — one re-scan at the release
    // (the same single moment the drag already pays for), never inside the move stream.
 #ifndef BUILD_LITE
+#ifdef HRAY_NODES_ON
    if(s_hrayMoved) HRayNodesScan(s_hrayDrag);
+#endif
 #endif
    HRayDragRelease();
    ChartRedraw();
@@ -641,7 +654,11 @@ void HRayOnInit()
    // survive. The cache is rebuilt by ADOPTING those objects (one ObjectsTotal
    // walk, zero scan), so the mute and the delete sweep keep working after it.
 #ifndef BUILD_LITE
+#ifdef HRAY_NODES_ON
    HRayNodesAdoptAndFill();
+#else
+   HRayNodesPurge();   // P-HRN-13: the boxes are gone — take the old ones with them
+#endif
 #endif
 }
 // Deinit safety: a remove must never leave a stuck arm; committed rays are

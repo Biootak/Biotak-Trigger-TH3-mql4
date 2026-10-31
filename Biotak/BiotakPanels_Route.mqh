@@ -3,8 +3,10 @@
 #define BIOTAK_PANELS_ROUTE_MQH
 
 //--- P-UI-219 (2026-10-30): the seat door is DEFINED below `PnlHandleClick` (it calls
-//--- that owner) and DECLARED here because the press chain below is its caller.
-bool PnlSeatPressAct(const int mx,const int my,const bool palOnly);
+//--- that owner) while the press chain above is its caller. That ordering is the whole
+//--- point and costs nothing: MQL4 resolves a function defined later in the same
+//--- compilation unit, so no prototype is written — a bare one only earns the
+//--- compiler's «no #import declaration» warning (P-BUILD-11).
 
 //--- a CONTROL of the open card just acted. The latch is the whole point: the
 //--- twin event of this release must not act a second time. The release claim

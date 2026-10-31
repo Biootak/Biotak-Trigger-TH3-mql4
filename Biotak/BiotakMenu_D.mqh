@@ -125,8 +125,22 @@ void SetHTFVisible(const bool on)
    GlobalVariableSet(GetGVName("HTF_EN"), on ? 1.0 : 0.0);
    HTFApplyVisibleMasks();
    RepaintForDiscreteAction();      // P-PERF-24: the press paints NOW
-   Print("[HTF] set on=", (on ? 1 : 0), " drawn=", g_HTFDrawnCount,
-         " ms=", (int)(GetTickCount() - t0));
+   // P-HTF-AUDIT (2026-10-31, user: «چرا کندل‌های htf ... روشن میشه خودکار در
+   // صورتی که خاموش بود»): the OFF edge is the only moment that can answer it,
+   // so the press reports the FAMILY, not just the cached count — `drawn` is the
+   // drawer's own number, `family` is what the chart actually wears under this
+   // chart's prefix, and `visible` is how many of those the mask walk left on
+   // screen. If `visible` is not 0 on an OFF press, the boxes are ours and the
+   // walk missed them; if it IS 0, the candles on screen are another owner's and
+   // this switch was never the one to blame. Flushed channel, never `Print`
+   // (P-DRAW-126 / AGENTS law 3).
+   int vis = 0;
+   int fam = HTFFamilyCount(vis);
+   DrawStripDiagEmit("[HTF] set on=" + IntegerToString(on ? 1 : 0) +
+                     " drawn=" + IntegerToString(g_HTFDrawnCount) +
+                     " family=" + IntegerToString(fam) +
+                     " visible=" + IntegerToString(vis) +
+                     " ms=" + IntegerToString((int)(GetTickCount() - t0)));
 }
 
 //+------------------------------------------------------------------+

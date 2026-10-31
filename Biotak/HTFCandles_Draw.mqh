@@ -853,6 +853,25 @@ void HTFEnsureDrawn()
    ThrottledChartRedraw();
 }
 
+// P-HTF-AUDIT (2026-10-31): how many of OUR family objects the chart wears under
+// this chart's prefix, and how many of them are still VISIBLE. The cached
+// `g_HTFDrawnCount` is the drawer's own bookkeeping and can drift from the chart
+// (a prune that only took the tail, a family inherited from a previous instance),
+// so the OFF press must ask the OBJECTS, not the counter.
+int HTFFamilyCount(int &visible)
+{
+   visible = 0;
+   if(StringLen(g_HTFPrefix) == 0) return 0;
+   int n = 0;
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, 0, -1);
+      if(StringFind(nm, g_HTFPrefix) != 0) continue;
+      n++;
+      if((int)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS) visible++;
+   }
+   return n;
+}
 // P-HTF-KEY — the toggle walk: masking, not deleting. OFF hides the family in
 // place (guarded flips only); ON unmasks it — instant both ways, no history
 // re-read, rapid-press safe. First ON with no family builds once, like before.
@@ -860,22 +879,23 @@ void HTFApplyVisibleMasks()
 {
    if(StringLen(g_HTFPrefix) == 0) return;
    if(g_UI.showHTF && !HTFAnyBoxesExist()) { RefreshHTFCandles(); return; }
-   for(int i = 0; i < g_HTFDrawnCount; i++)
+   // P-HTF-AUDIT-2 (2026-10-31, user: «چرا کندل‌های htf ... روشن میشه خودکار در
+   // صورتی که خاموش بود»): the walk asks the OBJECTS, never `g_HTFDrawnCount`.
+   // MEASURED hole: the count is a STATIC that dies with the instance, while the
+   // family is chart state that survives an attach/TF switch under the same chart
+   // id — so after a re-attach the counter read 0 with a whole family on screen,
+   // the old `for(i < count)` loop ran zero times, and an OFF press masked
+   // NOTHING. Same walk serves ON (a cull-covered box stays hidden, a released
+   // one comes back), so both edges now agree by construction.
+   // Cost: one enumeration per PRESS (the toggle is rare), replacing 5x count
+   // ObjectFind calls — no per-tick work is added.
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)
    {
-      string id = IntegerToString(i);
-      string nm[5];
-      nm[0] = g_HTFPrefix + id;
-      nm[1] = g_HTFPrefix + id + "_F";
-      nm[2] = g_HTFPrefix + id + "_B";
-      nm[3] = g_HTFPrefix + "WU" + id;
-      nm[4] = g_HTFPrefix + "WL" + id;
-      for(int k = 0; k < 5; k++)
-      {
-         if(ObjectFind(0, nm[k]) < 0) continue;
-         long want = HTFBoxMask(HTFCullHas(nm[k]));
-         if((long)ObjectGetInteger(0, nm[k], OBJPROP_TIMEFRAMES) != want)
-            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, want);
-      }
+      string nm = ObjectName(0, i, 0, -1);
+      if(StringFind(nm, g_HTFPrefix) != 0) continue;
+      long want = HTFBoxMask(HTFCullHas(nm));
+      if((long)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != want)
+         ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, want);
    }
 }
 

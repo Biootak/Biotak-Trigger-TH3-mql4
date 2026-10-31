@@ -228,8 +228,9 @@ bool SessNeedsBars()
 //+------------------------------------------------------------------+
 //--- P-SESS-37: the four primitives below are the file's only ObjectCreate sites, so
 //--- each of them DECLARES the name it writes. The list itself is defined further down
-//--- (it needs SESS_TAG and the prefix); this prototype is the whole forward reference.
-void SessDeclare(const string nm);
+//--- (it needs SESS_TAG and the prefix). No forward declaration is written: MQL4
+//--- resolves a function defined LATER IN THE SAME COMPILATION UNIT, and a bare
+//--- prototype only earns the compiler's «no #import declaration» warning (P-BUILD-11).
 
 void SessEdge(const string nm, const datetime t1, const double p1, const datetime t2, const double p2,
               const color clr, const int width, const ENUM_LINE_STYLE style, const string tip)

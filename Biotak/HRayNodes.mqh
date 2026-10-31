@@ -550,6 +550,22 @@ void HRayNodesAdoptAndFill()
       built++;
    }
 }
+// P-HRN-13 (2026-10-31, user: «فقط همون خط باشه»): the boxes are OFF, so every box
+// this build or an older one left on the chart is deleted HERE — the cache is empty
+// after a restart but the objects are not, so the sweep enumerates by NAME (the one
+// owner of "what is a box") and then drops the cache. A box left behind would paint
+// beside a ray that no longer owns it, which is exactly the two-lines report.
+void HRayNodesPurge()
+{
+   HRayNodesForgetAll();
+   string pfx = HRayNodesPfx();
+   if(pfx == "") return;
+   for(int i = ObjectsTotal(0, 0, -1) - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, 0, -1);
+      if(StringFind(nm, pfx) == 0) ObjectDelete(0, nm);
+   }
+}
 // The F mute's show path — cache only, zero reads.
 void HRayNodesShowAll() { HRayNodesPaintAll(); }
 void HRayNodesHideAll() { HRayNodesUnpaint(); }
