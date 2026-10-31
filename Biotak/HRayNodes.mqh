@@ -45,6 +45,9 @@
 #define HRAYN_TOL_PIPS   0.5    // how close a bar must come to TOUCH the level (in pips)
 #define HRAYN_MIN_PIPS   3.0    // a run away from the level shallower than this is noise
 #define HRAYN_PER_TF     5      // kinks kept per rung (deepest first, bounded)
+#define HRAYN_PULL       50.0   // % of the leg price must give back before a kink is CLOSED
+                                // (P-HRN-07: without it a box runs to the last bar — measured
+                                // on the user's EURUSD monthly: 0.8700 -> 1.6069 over 26 years)
 #define HRAYN_SPAN_BARS  40     // a zone's width, in ITS OWN tf's bars
 #define HRAYN_FONT       7      // the TF tag's size
 #define HRAYN_W          1      // zone border width
@@ -297,6 +300,25 @@ int HRayNodeBars(const int tf)
 //|   * a run shallower than HRAYN_MIN_PIPS is noise, not a kink.       |
 //| Cost: the same walk the fractal version paid — one bar pass per rung.|
 //+------------------------------------------------------------------+
+//--- P-HRN-07 (2026-10-31) — A KINK ENDS WHERE THE SWING ENDS, NOT AT THE LAST
+//--- BAR. MEASURED on the user's EURUSD monthly chart against the reference: the
+//--- 0.8700 line produced ONE box 0.8700 -> 1.6069 spanning 26 years, because a
+//--- kink only closed on the next TOUCH of the level and that line was never touched
+//--- again — so the run kept growing to the all-time high and closed at `now`. The
+//--- reference's own box (its 1.5156 line) is a SWING: 1.5156 -> 1.2782 over about
+//--- five years, ending at the reversal, not at the chart edge.
+//---
+//--- So a run is confirmed the way every swing detector in this tree confirms one:
+//--- price must GIVE BACK HRAYN_PULL percent of the leg it printed. The far edge is
+//--- then the leg's extreme and the right edge is the bar that confirmed it. A mouse
+//--- drag or a live market that has not yet pulled back keeps its box open to the
+//--- last bar — the same "degrade to the previous look" the rest of the project
+//--- holds, because hiding it would be a zone that vanishes while price is at it.
+//---
+//--- Two closes, one record shape:
+//---   * TOUCHED AGAIN  — the level itself ended the leg (support/resistance held);
+//---   * PULLED BACK    — HRAYN_PULL % of the leg given back (the swing turned).
+//--- A close never re-opens the next run by itself: a new kink needs a new touch.
 int HRayNodeKinksAtLevel(const int tf, const int depth, const double P, const double tol,
                          const double minDepth,
                          datetime &ks[], datetime &ke[], double &kfar[], double &kdepth[])
@@ -306,7 +328,11 @@ int HRayNodeKinksAtLevel(const int tf, const int depth, const double P, const do
    datetime oStart = 0;
    double oFar = 0.0;      // the run's extreme price (the far edge once it closes)
    double oRun = 0.0;      // ... and its distance from the level
+   bool oUp = true;        // which side of the level the extreme sits on
+   int oExtI = 0;          // the bar INDEX of that extreme (P-HRN-07: a turn needs
+                           // two bars after it, or a long wick closes its own kink)
    datetime lastT = 0;
+   double pull = HRAYN_PULL / 100.0;
    for(int i = depth; i >= 1; i--)        // OLDEST .. NEWEST (i = bar index)
    {
       double h = iHigh(NULL, tf, i), l = iLow(NULL, tf, i);
@@ -318,17 +344,16 @@ int HRayNodeKinksAtLevel(const int tf, const int depth, const double P, const do
       if(!open)
       {
          if(!touch) continue;              // price has not reached the level yet
-         open = true; oStart = bt; oFar = P; oRun = 0.0;
+         open = true; oStart = bt; oFar = P; oRun = 0.0; oUp = true;
          continue;
       }
       // the run grows AWAY from the level — either side is a kink (support or
       // resistance), and the deeper side of the bar is the one that counts
       double up = h - P, dn = P - l;
-      if(up > oRun) { oRun = up; oFar = h; }
-      if(dn > oRun) { oRun = dn; oFar = l; }
-      if(!touch) continue;
-      // the level was touched again: the run between the two touches is a kink
-      if(oRun >= minDepth && cnt < HRAYN_MAX_KINKS)
+      if(up > oRun) { oRun = up; oFar = h; oUp = true;  oExtI = i; }
+      if(dn > oRun) { oRun = dn; oFar = l; oUp = false; oExtI = i; }
+      // --- CLOSE 1: the level was touched again — the leg ended on it -------------
+      if(touch && oRun >= minDepth && cnt < HRAYN_MAX_KINKS)
       {
          ArrayResize(ks, cnt + 1); ArrayResize(ke, cnt + 1);
          ArrayResize(kfar, cnt + 1); ArrayResize(kdepth, cnt + 1);
@@ -337,9 +362,28 @@ int HRayNodeKinksAtLevel(const int tf, const int depth, const double P, const do
          kfar[cnt] = oFar;
          kdepth[cnt] = oRun;
          cnt++;
+         // this same bar starts the NEXT leg (the level is being touched right now)
+         open = true; oStart = bt; oFar = P; oRun = 0.0; oUp = true;
+         continue;
       }
-      // and THIS bar opens the next run — the level is being touched again
-      open = true; oStart = bt; oFar = P; oRun = 0.0;
+      // --- CLOSE 2: the swing gave back HRAYN_PULL % of the leg — it turned ------
+      // (checked AFTER the extreme of this same bar, so the confirming bar can be
+      // the bar that made the high and closed low on a long wick)
+      if(oRun >= minDepth && cnt < HRAYN_MAX_KINKS && (oExtI - i) >= 2)
+      {
+         double giveBack = oUp ? (oFar - l) : (h - oFar);
+         if(giveBack >= oRun * pull)
+         {
+            ArrayResize(ks, cnt + 1); ArrayResize(ke, cnt + 1);
+            ArrayResize(kfar, cnt + 1); ArrayResize(kdepth, cnt + 1);
+            ks[cnt] = oStart;
+            ke[cnt] = bt;          // the bar that confirmed the turn
+            kfar[cnt] = oFar;      // the leg's own extreme
+            kdepth[cnt] = oRun;
+            cnt++;
+            open = false;          // a new kink needs a NEW touch of the level
+         }
+      }
    }
    // a run still open at the last bar is the LIVE kink: close it there
    if(open && oRun >= minDepth && cnt < HRAYN_MAX_KINKS)
