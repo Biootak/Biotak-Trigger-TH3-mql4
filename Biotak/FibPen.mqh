@@ -47,7 +47,7 @@ int FibPenLookNative(const int lk)
 int FibPenLookGet(const string fibo)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return 0;
-   int lk = DrawDescTagValue(ObjectGetString(0, fibo, OBJPROP_TEXT), FIBPEN_LK, 0);
+   int lk = DrawDescTagValue(DrawTagBlob(fibo), FIBPEN_LK, 0);
    if(lk < FIBPEN_LOOK_NEON || lk > FIBPEN_LOOK_WASH) return 0;
    return lk;
 }
@@ -55,14 +55,13 @@ void FibPenLookSet(const string fibo, const int lk)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return;
    if(lk < FIBPEN_LOOK_NEON || lk > FIBPEN_LOOK_WASH) return;
-   string d = ObjectGetString(0, fibo, OBJPROP_TEXT);
-   string nd = DrawDescTag(d, FIBPEN_LK, IntegerToString(lk));
-   if(nd != d) ObjectSetString(0, fibo, OBJPROP_TEXT, nd);
+   string d = DrawTagBlob(fibo);
+   DrawTagPut(fibo, DrawDescTag(d, FIBPEN_LK, IntegerToString(lk)));
 }
 bool FibPenLookDrop(const string fibo)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
-   string d = ObjectGetString(0, fibo, OBJPROP_TEXT);
+   string d = DrawTagBlob(fibo);
    int at = StringFind(d, FIBPEN_LK);
    if(at < 0) return false;
    int e = StringFind(d, "]", at + StringLen(FIBPEN_LK));
@@ -70,7 +69,7 @@ bool FibPenLookDrop(const string fibo)
    string nd = StringSubstr(d, 0, at) + StringSubstr(d, e + 1);
    if(StringLen(nd) > 0 && StringGetCharacter(nd, 0) == ' ') nd = StringSubstr(nd, 1);
    if(nd == d) return false;
-   ObjectSetString(0, fibo, OBJPROP_TEXT, nd);
+   DrawTagPut(fibo, nd);
    return true;
 }
 //--- P-UNIFY-3 (2026-10-19) — WHO THE PEN SERVES. The LEVEL family is wider than the
@@ -586,7 +585,7 @@ int FibPenOffPx(const int w, const int q)
 bool FibPenTagDrop(const string fibo)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
-   string d = ObjectGetString(0, fibo, OBJPROP_TEXT);
+   string d = DrawTagBlob(fibo);
    int at = StringFind(d, FIBPEN_TAG);
    if(at < 0) return false;
    int e = StringFind(d, "]", at + StringLen(FIBPEN_TAG));
@@ -594,7 +593,7 @@ bool FibPenTagDrop(const string fibo)
    string nd = StringSubstr(d, 0, at) + StringSubstr(d, e + 1);
    if(StringLen(nd) > 0 && StringGetCharacter(nd, 0) == ' ') nd = StringSubstr(nd, 1);
    if(nd == d) return false;
-   ObjectSetString(0, fibo, OBJPROP_TEXT, nd);
+   DrawTagPut(fibo, nd);
    return true;
 }
 

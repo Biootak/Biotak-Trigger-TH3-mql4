@@ -621,6 +621,20 @@ int LabelFloorMargin()
    if(bottom > TREX_CARD_MAX_MARGIN_BOTTOM) bottom = TREX_CARD_MAX_MARGIN_BOTTOM;
    return bottom;
 }
+// P-BK-145b (2026-11-01) — ONE CORNER, ONE COORDINATE SYSTEM.
+//
+// The user, with the note sitting ON the candles at the right of the chart: «روی کندله نیافته
+// هوشمند باشه واقعا جای درست خودش [را] اطلاعات پیدا بکنه». MEASURED in this call: it pushed
+// `CORNER_RIGHT_LOWER` with a LEFT-TOP number pair — `inpLabelsMarginLeft` as the X (a distance
+// from the RIGHT edge on a `_RIGHT` corner, so the note landed ~88 px in from the right instead
+// of in the column) and the ATR stack's own top-based Y as a distance from the BOTTOM (so its
+// height was unrelated to where the card is). Two mixed conventions in one push is why the note
+// never found "its own place": it was not the note's arithmetic that was wrong, it was the
+// corner it was told to use.
+// SO: the slot speaks the SAME pair as `LabelPushBaseNoteSlotTop` — LEFT_UPPER with the
+// family's left margin and a top-based Y (right under the ATR stack / the TRex card). No
+// conversion is needed anywhere else, because the note's own window clamps are left-upper too,
+// and a still chart writes nothing: the push only stores three integers.
 void LabelPushBaseNoteSlot(const int stackY, const int stackEm)
 {
    int gap = inpATRTradeLabelRowGap;
@@ -628,7 +642,7 @@ void LabelPushBaseNoteSlot(const int stackY, const int stackEm)
    if(gap > TREX_CARD_MAX_ROW_GAP) gap = TREX_CARD_MAX_ROW_GAP;
    int y = stackY + (stackEm > 0 ? stackEm + gap : 0);
    if(y < 8) y = 8;
-   BaseKnotCornerSlotPush(CORNER_RIGHT_LOWER, MathMax(8, inpLabelsMarginLeft), y);
+   BaseKnotCornerSlotPush(CORNER_LEFT_UPPER, MathMax(8, inpLabelsMarginLeft), y);
 }
 //+------------------------------------------------------------------+
 //| BKCORNER-ON (2026-10-20) — THE NOTE'S SLOT IS TOP-LEFT.           |

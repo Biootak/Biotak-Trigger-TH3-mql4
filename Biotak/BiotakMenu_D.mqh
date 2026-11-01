@@ -18,9 +18,71 @@
 //--- the ring seat's badge likewise. Still ~2-4 ObjectFind/tick, 0 writes whole.
 //--- Parked cells are skipped: a hole off-page is invisible by definition and
 //--- heals the tick it is back on its page.
+// P-UI-207 (2026-11-01) — THE OPEN EDGE HEALS THE WHOLE FAMILY IN ONE PASS.
+//
+// MEASURED (his words: «گاهی اوقات استریپ هیچ آیکونی نداره … و با کلیک جای دیگه درست می‌شه»,
+// against the live frame: `[P-UI-202] bg heal seat=2..13` — TWELVE seats were MISSING at once).
+// The round-robin below walks ONE seat per tick, so a ring whose family was lost comes back a
+// seat every 250 ms — three and a half seconds of a bare column — and every healed seat was
+// created by a pass that never flushed (`ChartRedraw` is not implied by a timer tick). The
+// next unrelated click repainted the chart, which is why «با کلیک درست می‌شه».
+// So the OPEN edge pays one bounded walk (RING_MAX_SEATS, ≈4 reads a seat, only when a hole is
+// seen) and flushes once; the steady state below is untouched — a clean ring still costs the
+// same two ObjectFind a tick and zero writes.
+bool CircHealAllHoles()
+{
+   bool wrote = false;
+   if(g_ToolsOpen)
+   {
+      for(int t = 0; t < CAT_COUNT; t++)
+      {
+         if(!SubItemOnPage(t)) continue;
+         bool hole = (ObjectFind(0, ToolsBg(t)) < 0 || ObjectFind(0, ToolsIcon(t)) < 0 ||
+                      ObjectFind(0, ToolsStar(t)) < 0);
+         if(!hole && CircHasBadge(ToolFeature(t)))
+            hole = (ObjectFind(0, ToolsBadgeBg(t)) < 0 || ObjectFind(0, ToolsBadgeTxt(t)) < 0);
+         if(!hole) continue;
+         ToolsCreateItem(t);
+         DrawStripDiagEmit(StringFormat("[P-UI-207] open-edge tools heal cell=%d", t));
+         wrote = true;
+      }
+      return wrote;
+   }
+   int n = CircPlacedCount();
+   for(int i = 0; i < RING_MAX_SEATS; i++)
+   {
+      if(i >= n)
+      {
+         if(ObjectFind(0, CircIcon(i)) >= 0 || ObjectFind(0, CircBg(i)) >= 0)
+         {
+            ObjectDelete(0, CircIcon(i));    ObjectDelete(0, CircBg(i));
+            ObjectDelete(0, CircBadgeBg(i)); ObjectDelete(0, CircBadgeTxt(i));
+            DrawStripDiagEmit(StringFormat("[P-UI-207] open-edge orphan seat=%d swept", i));
+            wrote = true;
+         }
+         continue;
+      }
+      bool hole = (ObjectFind(0, CircBg(i)) < 0 || ObjectFind(0, CircIcon(i)) < 0);
+      if(!hole && CircHasBadge(RingFeature(i)))
+         hole = (ObjectFind(0, CircBadgeBg(i)) < 0 || ObjectFind(0, CircBadgeTxt(i)) < 0);
+      if(!hole) continue;
+      CircCreateItem(i);
+      DrawStripDiagEmit(StringFormat("[P-UI-207] open-edge ring heal seat=%d", i));
+      wrote = true;
+   }
+   return wrote;
+}
 void CircHealRingStep()
 {
-   if(!g_UI.menuVisible || g_OrbDragging) return;
+   // the open edge: the whole family at once, then ONE flush (a created object is not a
+   // painted object until the terminal is told to redraw).
+   static bool s_healWasVisible = false;
+   if(!g_UI.menuVisible || g_OrbDragging) { s_healWasVisible = false; return; }
+   if(!s_healWasVisible)
+   {
+      s_healWasVisible = true;
+      if(CircHealAllHoles()) { ChartRedraw(); return; }
+   }
    if(g_ToolsOpen)
    {
       if(CAT_COUNT <= 0) return;
@@ -36,6 +98,7 @@ void CircHealRingStep()
       {
          ToolsCreateItem(t);   // the whole cell family; on-page by the gate above
          DrawStripDiagEmit(StringFormat("[P-UI-163] tools heal cell=%d", t));
+         ChartRedraw();        // P-UI-207: a birth is a change, and a tick never repaints
       }
       return;
    }
@@ -64,6 +127,7 @@ void CircHealRingStep()
    {
       CircCreateItem(i);
       DrawStripDiagEmit(StringFormat("[P-UI-163] ring heal seat=%d", i));
+      ChartRedraw();            // P-UI-207: the same law for the one-seat walk
    }
 }
 

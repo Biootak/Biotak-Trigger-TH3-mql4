@@ -165,18 +165,27 @@ bool PnlPointInside(const int mx,const int my)
 // COMPILED here, so every ring pixel read as free chart until the call was added.
 // COST: a handful of int compares on a press/release, never on a hover.
 //+------------------------------------------------------------------+
+// P-UI-208b (2026-11-01) — WHICH SURFACE, NOT JUST "a surface".
+// MEASURED (his frame: `[drawstrip] latch blocked: ui pointer over surface at 252,670` — the
+// press was a CHART click and something claimed it). One bool cannot say whether a card, the
+// mini strip, the ring's bounds, a ring control or the countdown tag took it — and each of the
+// five has a different owner. The door that answers is named in `g_uiSurfaceWhy`, read by the
+// latch's own witness; the return value is unchanged, so no caller moves.
+string g_uiSurfaceWhy = "";
 bool UIPointerOverSurface(const int mx,const int my)
 {
-   if(PnlPointInside(mx,my)) return true;            // open card + the palette popover
-   if(BkMiniStripPointInside(mx,my)) return true;    // floating strip + its STYLE/WIDTH popover
+   g_uiSurfaceWhy = "";
+   if(PnlPointInside(mx,my)) { g_uiSurfaceWhy = "card"; return true; }            // open card + the palette popover
+   if(BkMiniStripPointInside(mx,my)) { g_uiSurfaceWhy = "ministrip"; return true; }// floating strip + its STYLE/WIDTH popover
    if(g_UI.menuVisible)
    {
       int bx = 0, by = 0, bw = 0, bh = 0;
       PnlComputeMenuBounds(bx,by,bw,bh);
-      if(mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) return true;
-      if(CircPointOnMenu(mx,my)) return true;        // P-UI-116: the ring's own controls
+      if(mx >= bx && mx <= bx + bw && my >= by && my <= by + bh)
+      { g_uiSurfaceWhy = StringFormat("menubounds %d,%d %dx%d", bx, by, bw, bh); return true; }
+      if(CircPointOnMenu(mx,my)) { g_uiSurfaceWhy = "ringcontrol"; return true; }  // P-UI-116: the ring's own controls
    }
-   if(LiveCountdownPointInside(mx,my)) return true;  // the countdown tag (a UI-layer object)
+   if(LiveCountdownPointInside(mx,my)) { g_uiSurfaceWhy = "countdown"; return true; }  // the countdown tag (a UI-layer object)
    return false;
 }
 

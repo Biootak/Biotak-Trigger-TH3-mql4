@@ -194,6 +194,17 @@ static string g_s1ClickRow = "";        // the rung-1 line the current press lan
 static int    g_s1ClickRowY = 0;        // its pixel row at the press (the travel test)
 static uint   g_s1ClickLastMs = 0;      // the contract's own double-click stamp
 static uint   g_s1ClickHandledMs = 0;   // the twin-event dedupe (two transports, one click)
+// P-UI-224 (2026-11-01) — THE OPENER WINDOW, ON THE PRESS (P-UI-130's shape).
+// `g_s1HandleShown` is the reveal latch AND the click contract's own "has the user
+// asked yet?" answer, so the press that revealed a pair made the release's click
+// read "asked" -> a SET 300 ms later: the circles parked, the claim refused. This
+// bool spends that click on the reveal; a new press edge disarms it.
+static bool   g_s1PressRevealed = false;  // the CURRENT press turned the circles on
+// TRUE = this click has already been answered by the reveal it caused.
+bool Step1ClickPressRevealed()
+{
+   return g_s1PressRevealed;
+}
 
 void HandsetHandleAtXY(const string hn, const int cx, const int cy, const int half, const string bmp)
 {
@@ -390,15 +401,15 @@ static string g_s1SetPending = "";
 static uint   g_s1SetPendingMs = 0;
 static uint   g_cpJustDraggedMs = 0;       // a drag release that MOVED the line:
 static uint   g_s1JustDraggedMs = 0;       //   its click echo must not set anything
-// P-UI-98m: the re-arm candidate for a SET (masked) custom price line. A masked
-// line fires no OBJECT_CLICK, so the press edge records the row off the line's
-// own grab test and the button-up / CHARTEVENT_CLICK edges ask it - exactly
-// the step-1 click shape, except a single click here is a no-op (already set)
-// and only a double re-arms, so no sweep slot is needed.
+// P-UI-98m/P-UI-225: the re-arm candidate for a SET (masked) custom price line. A
+// masked line fires no OBJECT_CLICK, so the press edge records the row off the
+// line's own grab test and the button-up / CHARTEVENT_CLICK edges ask it - the
+// step-1 click shape. ONE click re-arms (they used to need a double), and the
+// stamp that click writes is what the armed contract refuses a SET for 350 ms
+// against, so a re-arm can never set the line back in the same gesture.
 static bool   g_cpClickArmed = false;      // press landed on the SET line's row
 static int    g_cpClickY = 0;              // its pixel row (the travel test)
-static uint   g_cpClickLastMs = 0;         // double-click window
-static uint   g_cpClickHandledMs = 0;      // twin-transport dedupe
+static uint   g_cpClickHandledMs = 0;      // the twin dedupe AND the re-arm stamp
 // TV-parity 2026-09-07: the Base Box TEXT edit field (card 12, OBJ_EDIT) owns
 // the keyboard while focused â€” letter hotkeys must stay silent or typing box
 // text would toggle indicator state (same pattern as the palette hex field).
@@ -804,8 +815,9 @@ string GestureForeignName() { return g_gestureForeignName; }
 // That is TradingView's own model â€” a drawing tool is a MODE, and inside a mode the
 // hand belongs to the new drawing â€” and it needs nothing from MT4, so it holds even
 // on a terminal that says nothing at all. One state, one question, and every custom
-// drag in the product asks it (the path and the ray today; Base/Knot, TH3 and the
-// leg measure join when their press paths are read).
+// drag in the product asks it (the path, the ray and the leg measure). The BOX stopped
+// asking it on 2026-11-01 (P-BK-146, BaseKnot_Drag.mqh): MT4 drags a rectangle on the press
+// that lands on it, and one slot for every drawing cost a press per box switch and per reinit.
 //
 // Cost per press: one string compare. Nothing per tick, nothing per frame.
 //+------------------------------------------------------------------+

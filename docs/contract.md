@@ -741,6 +741,51 @@ One function over the ceiling stays whole and never grows.
   `r=` per box, so the ratio is read off a frame instead of argued from code; the formula stamp
   is `v10` (a `v9` row of an off-ladder Hunt box read its stop in two regimes and is not scored
   beside it). Gate: `P-BK-135`, mutations `-a..-c`.
+- **The box' note is a two-second glance, and it stops while it is read (P-BK-145, 2026-11-01).**
+  The user: «این باکس اطلاعات از 4 ثانیه به 2 ثانیه … موس که روش رفته تایمرش متوقف بشه … جای
+  دیگه هم کلیک شده سریع بره نیاز نباشه تایمرش تموم بشه … برای همه باکس اطلاعات یک پارچه باشه».
+  ONE number for every box (`BK_INFO_GRACE_MS` = 2000, one `#define`), the countdown STANDS
+  STILL while the pointer is on the note's PLATE (the seat `BaseKnotWriteInfo` already wrote —
+  the screen's own rect, never a second grid, P-DRAW-84), and a click that lands on ANOTHER box
+  is "elsewhere" exactly like a click on the candles (P-BK-110 only ended the note off EVERY
+  box), wiped in that same gesture by one Sync rather than at the next pump. Which note is up is
+  asked of the chart (`BaseKnotInfoShownId`), never of a flag that could disagree with it.
+  **And the seat is one corner in one coordinate system:** the slot pushed `CORNER_RIGHT_LOWER`
+  with a LEFT-TOP number pair, so the note measured its x from the right edge and its y from the
+  bottom and landed on the candles (`inpLabelsMarginLeft` in from the right) instead of in its
+  column — «روی کندله نیافته … جای درست خودش [را] پیدا بکنه». It now speaks the family's own
+  corner (`CORNER_LEFT_UPPER`, left margin, top Y), and the box-side seat (when that home is
+  restored) picks the first FREE column — right of the box, else left, else above — from the
+  box' two projected corners, so a three-bar knot's readout can never cover the band it
+  describes. One projection per write, never per frame, and a still chart writes nothing.
+  Gate: `P-BK-145`, mutations `-a..-e`.
+- **The Leg Measure readout never sits on the leg it measures, and wears the SAME clock
+  (P-LM-26, 2026-11-01).** MEASURED on his own frame (16:03): a leg running down into the
+  newest bars has its tip at the window's edge, so "past the tip" clamps onto the head and
+  P-LM-24's MIRROR put the plate back ALONG the leg, on the candles it was drawn to measure
+  ("این هنوز روی همون میافته"). The tip test could not see it — clear of the tip's 8 px and
+  squarely on the line. So the walk asks the **SEGMENT**: `LegInfoCoversSeg` samples the leg's
+  own two anchors and `LegInfoSeatClear` answers both tests at once, for EVERY candidate but
+  the documented floor; the order is past-the-tip → above → below → **mirror last** (the mirror
+  is the one seat that lands on the leg, so it may never be second). COST: at most `len/8`
+  point tests, only where a placement is already being made, never per frame. And "برای همه
+  باکس اطلاعات یک پارچه باشه" reaches this box too: `LEG_INFO_SHOW_MS` = **2000** (the BK
+  note's own number), the countdown STANDS STILL while the pointer is on the PLATE's painted
+  rect, and a click that is not on it ends the visit in that gesture (`LegInfoHoverAt` /
+  `LegInfoClickAway`, armed by the shared router under `#ifndef BUILD_LITE` — `TH3Tool` is
+  Full-only). **And the pause is a STATE, not a renewal (P-LM-26b):** MEASURED — MT4 sends a
+  `MOUSE_MOVE` only while the HAND moves, so renewing the deadline on every move pauses
+  nothing the moment the cursor rests on the card, and the 2 s ran out under his eyes
+  ("موس روش هستش تایمرش متوقف نمی‌شه"). The enter edge remembers the REMAINING time, the 250 ms
+  sweep skips a paused plate, and the leave edge resumes from that remainder — never a fresh
+  2 s ("بعد که برداشتیم باید تایمرش از همون جا شروع بشه"). Both edges flush a `[P-LM-26]` line.
+  **And MT4's own tooltip is taken off the card while it is read:** the rows carry no
+  description, so the terminal falls back to the object NAME and paints it where the cursor is
+  — over the third row (his 16:36 frame). `CHART_SHOW_OBJECT_DESCR` is chart-scoped and the only
+  switch that suppresses it, so it is turned off for the duration of a read and given back on
+  every door out: the pointer leaving, the click-away, and `LegMeasureHideAll`
+  (`LegInfoDescrRestore`) — a removed indicator never leaves a user chart property switched off.
+  Gate: `P-LM-26`, mutations `-a..-f`.
 
 ## 9. An edit predicts its own consequences, and the register is a gate
 

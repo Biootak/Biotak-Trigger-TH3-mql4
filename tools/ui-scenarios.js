@@ -275,6 +275,37 @@ const SURFACES = [
       S13: NA,
     },
   },
+  // --- P-UI-224 (2026-11-01). The handset circles (the 19 px green dot on the
+  // --- custom price line, the two 15 px red dots on the rung-1 ladder) had NO row
+  // --- here, and that is exactly why both of the user's reports were invisible to
+  // --- every gate: they are chart objects with no popup, no plate and no settings
+  // --- card, so nothing asked them what happens on a reload, a TF switch or a
+  // --- resize — the three moments their reveal latch, their armed flag and their
+  // --- hit band can disagree with what the screen shows.
+  {
+    id: 'handset',
+    title: 'the step-1 red circles and the custom price green circle',
+    files: ['EventHandlers_CustomPrice.mqh', 'EventHandlers_Objects.mqh',
+            'EventHandlers_Router_Gesture.mqh', 'LevelPipe_A.mqh',
+            'EventHandlers_Deinit.mqh', 'EventHandlers_Router.mqh'],
+    close: null,   // a chart-art family: swept by the deinit delete + the render's own park
+    filesM5: ['EventHandlers.mqh', 'LevelPipeline.mqh', 'GlobalVariables.mqh'],
+    answers: {
+      S01: S('CustomPriceMarkerSync', 'Biotak/EventHandlers_CustomPrice.mqh', 'CustomPriceMarkerSync();'),
+      S02: S(null, 'Biotak/EventHandlers_Deinit.mqh', 'ObjectDelete(0, S1MarkName(1));'),
+      S03: S(null, 'Biotak/EventHandlers_Router.mqh', 'ObjectDelete(0, S1MarkName(1));'),
+      S04: S('HandsetHandleAt', 'Biotak/EventHandlers_CustomPrice.mqh', 'HandsetHandleAt(S1MarkName(1), g_s1MarkAbovePrice, S1_HANDLE_RES);'),
+      S05: S('Step1HandleOwnFace', 'Biotak/LevelPipe_A.mqh', 'Step1HandleOwnFace(lines[i].name, lines[i].price, lines[i].direction,'),
+      S06: S(null, 'Biotak/EventHandlers_Router.mqh', 'if(id == CHARTEVENT_CHART_CHANGE) {'),
+      S07: S(null, 'Biotak/EventHandlers_Router.mqh', 'if(id == CHARTEVENT_CHART_CHANGE) {'),
+      S08: S('Step1HandleOwnFace', 'Biotak/EventHandlers_CustomPrice.mqh', 'g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0 && g_linesVisible && !IsIndicatorHidden()'),
+      S09: S(null, 'Biotak/EventHandlers_Router.mqh', 'if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent)'),
+      S10: NA,
+      S11: S('CustomPriceGrabAt', 'Biotak/EventHandlers_Router_Gesture.mqh', 'CustomPriceGrabAt((int)lparam, (int)dparam)'),
+      S12: NA,
+      S13: NA,
+    },
+  },
 ];
 
 // --- THE WHITELIST, PER TREE. A file that creates a UI control type must belong to a

@@ -94,6 +94,9 @@ int LegMeasureHideAll()
         LegMeasurePlateHide(i);
         n++;
     }
+    // P-LM-26b: the read also borrowed the chart's object-description switch (MT4's own
+    // tooltip covers the card); a mute — and the deinit that calls this — gives it back.
+    LegInfoDescrRestore();
     return n;
 }
 

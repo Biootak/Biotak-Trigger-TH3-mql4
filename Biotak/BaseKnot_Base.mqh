@@ -39,7 +39,10 @@
 #define BK_BADGE_W        46   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_BADGE_H        18   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
-#define BK_INFO_GRACE_MS  4000  // Auto INFO: label stays this long after commit, then hides (chart stays clean)
+// P-BK-145 (2026-11-01, user: «این باکس اطلاعات از 4 ثانیه به 2 ثانیه») — TWO SECONDS, the same
+// number on every box: the note is a glance, not a panel, and four seconds of it sat over the
+// candles after the read was over.
+#define BK_INFO_GRACE_MS  2000  // Auto INFO: label stays this long after commit, then hides (chart stays clean)
 //--- P-BK-58 (2026-09-16) — THE NOTE'S THIRD HOME. The Base Box card's INFO row grew a third
 //--- rung (0 = Auto on the box, 1 = Always on the box, 2 = the label family's corner column —
 //--- «تا کاربر بتواند بین «چسبیده به باکس» و «گوشهٔ ثابت» یکی را انتخاب کند»). The rung is the
@@ -99,7 +102,9 @@
 #define BK_CORNER_PAD_X  8         // px of plate on each side of the corner readout's ink
 #define BK_CORNER_PAD_Y  4         // px of plate above and below the corner readout's ink
 #define BK_CORNER_ROW_GAP 4        // px between two corner rows (a toast, not a paragraph)
-#define BK_CORNER_TOAST_MS 3000    // the toast's own life: 3 s, then the family goes
+// P-BK-145 (2026-11-01): ONE clock for the readout — the corner toast reads the same mean
+// number the box-side note does, so no surface can sit for a different time than another.
+#define BK_CORNER_TOAST_MS BK_INFO_GRACE_MS   // the toast's own life (= 2000), then the family goes
 //--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): P-BK-47 below IS RETIRED. It named the type
 //--- by a RUNG DISTANCE, which was a DURATION in disguise; the user replaced it with the
 //--- box' own HEIGHT against the movement abilities (that TF's own TH) — see the

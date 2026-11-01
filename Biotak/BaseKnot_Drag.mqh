@@ -702,7 +702,7 @@ void BaseKnotSyncBadges()
       if(ObjectFind(0, BaseKnotTextName(pfx)) >= 0)   // user text re-glues with the box
          BaseKnotPlaceText(pfx, t1, t2, top, bot, BaseKnotTFMask(tfMin), "");
       if(BaseKnotInfoVisible(g_bkBoxes[i].id))
-         BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, BaseKnotTFMask(tfMin));
+         BaseKnotPlaceBadges(pfx, t1, t2, top, bot, tfMin, BaseKnotTFMask(tfMin));   // P-BK-145b: the far corner names the seat too
       else if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)
       {
          BaseKnotInfoWipe(pfx);   // Auto grace over — hide within 500 ms (P-BK-86: the plate goes with the note)
@@ -901,6 +901,18 @@ void BaseKnotPress(const datetime t, const double praw)
                            GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
                            "Base box sizing — release / second click to commit", BaseKnotTFMask(Period()));
    ChartRedraw();
+}
+
+// P-BK-145 (2026-11-01, user: «جای دیگه هم کلیک شده سریع بره نیاز نباشه تایمرش تموم بشه»):
+// a click on ANOTHER box is "elsewhere" exactly like a click on the candles — P-BK-110 only
+// ended the note when the press landed off EVERY box. Same two hit tests Plan's own click rule
+// already owns, one Sync so the card leaves under the hand instead of at the next pump.
+void BaseKnotInfoClickAway(const int mx, const int my)
+{
+   int sw = 0; datetime ct = 0; double cp = 0;
+   string at = (ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0 ? BaseKnotBoxAt(ct, cp) : "");
+   if(at == "") at = BaseKnotBoxAtPx(mx, my);   // ...or its drawn border (P-BK-24)
+   BaseKnotNoteClickAway(at);   // P-BK-145c: one owner for both homes (the toast AND the box-side note)
 }
 
 //+------------------------------------------------------------------+
@@ -1159,6 +1171,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
     //--- Object* only).
    if(id == CHARTEVENT_MOUSE_MOVE && g_bkState == BK_IDLE)
    {
+      BaseKnotInfoHoverTick((int)lparam, (int)dparam);   // P-BK-145: a card under the pointer does not age
       int sst = (int)StringToInteger(sparam);
       bool sleft = ((sst & 1) != 0);
       bool srising = (sleft && !g_bkLeftPrev);
@@ -1210,18 +1223,18 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
 if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
              {
                 string shbox = BaseKnotBoxName(BaseKnotPrefix(shit));
-                //--- P-UI-144 (2026-10-02): THE HAND IS OURS TO GIVE — the same question
-                //--- the path and the ray ask (the arbiter owns it, GlobalVariables.mqh):
-                //--- a drawing that is not already TAKEN cannot be taken. This press latches
-                //--- a drag of the WHOLE geometry ladder (both anchors + every chip + the
-                //--- follow), so taking it on the first touch is exactly what made «از همون
-                //--- نقطه که یه چیزی میکشم، اینم میاد» possible. The first press now only
-                //--- TAKES the box (and selects it); the second one carries it. Three
-                //--- measurements closed the detection road, so this is DECIDED, not
-                //--- guessed — and it holds even on a terminal that says nothing at all.
-                if(!GestureTakeAllowed(shbox)) { GestureTakeNote(shbox); BaseKnotSelectBox(shit); Print("[BK] press TAKES the box (no carry) box=", shbox); }
+                //--- P-BK-146 (2026-11-01): A BOX PRESS CARRIES ON THE PRESS IT LANDS ON, like MT4's
+                //--- own rectangle. The two-step take is dropped HERE only: ONE slot for every drawing,
+                //--- a static, so a box switch and a reinit each cost a press that moved nothing.
+                //--- MEASURED 20261101.log: 742 `drag latch` vs 428 releases (314 armed, never dragged),
+                //--- 42 refusals, SIX presses on one box before it moved (15:04:36.5→43.7), 57 `drag
+                //--- adopt` — the terminal grabbed the refused press anyway. The permission is now the
+                //--- CHART'S OWN SELECTED bit, granted by BaseKnotSelectBox (writes only when off and
+                //--- unlocked). GestureGrabBlocked (P-UI-130) still refuses a native stroke in flight.
+                if(GestureGrabBlocked()) { DrawStripDiagEmit("[P-BK-146] press refused box=" + shbox); }
                 else if(ObjectFind(0, shbox) >= 0)
                 {
+                   BaseKnotSelectBox(shit);   // the grant IS the grab: MT4 takes the box on this same press
                    s_bkDragId = shit;
                    s_bkDragT0 = sct; s_bkDragP0 = scp;
                    s_bkDragX0 = (int)lparam; s_bkDragY0 = (int)dparam;
@@ -1238,7 +1251,10 @@ if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
                       // only ever fire for a BODY move. BaseKnotGrabRole stays the measurer.
                       s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
                      s_bkSnapTrusted = true;   // P-BK-25: OUR press latched it — the baseline predates any terminal move
-                     Print("[BK] drag latch box=", shit, " why=", GestureTakeWhy());   // diag: press found a box — follow armed (P-UI-144: the carry's own half of the proof)
+                     // P-BK-146: the two numbers that decide whether the terminal grabs on this
+                     // press. `why=` is gone — the arbiter's reason belongs to another tool now.
+                     DrawStripDiagEmit("[BK] drag latch box=" + shit + " sel=" + (string)ObjectGetInteger(0, shbox, OBJPROP_SELECTED) +
+                         " selectable=" + (string)ObjectGetInteger(0, shbox, OBJPROP_SELECTABLE));
                 }
              }
          }
@@ -1361,6 +1377,7 @@ if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
    //--- the click that dismisses them. Right-clicks are left alone (the context
    //--- menu is a different gesture), and the event is NOT consumed: the menu
    //--- and panel halves read it exactly as they did before.
+   if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") < 0) BaseKnotInfoClickAway((int)lparam, (int)dparam);   // P-BK-145: another box is "elsewhere" too
    if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") < 0 &&
       BaseKnotDeselectOnChartClick((int)lparam, (int)dparam))
    {

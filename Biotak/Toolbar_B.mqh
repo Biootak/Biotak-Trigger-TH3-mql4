@@ -170,14 +170,16 @@ void DrawSlotOpacitySet(const string name, const int op, const int slot)
       pure = (color)(int)DrawSlotRead(name, inner ? DRAW_SLOT_FILLCLR : DRAW_SLOT_COLOR);
       havePure = ((int)pure >= 0);
    }
-   string d = ObjectGetString(0, name, OBJPROP_TEXT);
+   string d = DrawTagBlob(name);
    d = DrawDescTag(d, inner ? "[FT" : "[OP", IntegerToString(v));
    //--- the border's `[CL…]` is rewritten from the colour it READ (the healer); the
    //--- interior's is NOT: an interior with no colour of its own keeps following the
    //--- border, which is the state a pre-split drawing is in.
    if(!inner && havePure) d = DrawDescTag(d, "[CL", DrawDescColorHex(pure));
-   if(d != ObjectGetString(0, name, OBJPROP_TEXT))
-      ObjectSetString(0, name, OBJPROP_TEXT, d);
+   //--- P-DRAW-136: on a kind the terminal PAINTS its description for (the fibo family)
+   //--- the tags go to the store and the object keeps only the user's own text. On every
+   //--- other kind this is the same one guarded write it always was.
+   DrawTagPut(name, d);
    if(!havePure) return;   // no colour on the drawing: nothing to blend, nothing written
    if(inner)
    {
@@ -418,10 +420,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          //--- on are two acts in either order.
          color ic = (color)(int)MathRound(v);
          if((int)ic < 0) return false;   // no colour, no write (P-DRAW-48's lesson)
-         string dd = ObjectGetString(0, name, OBJPROP_TEXT);
-         dd = DrawDescTag(dd, "[FL", DrawDescColorHex(ic));
-         if(dd != ObjectGetString(0, name, OBJPROP_TEXT))
-            ObjectSetString(0, name, OBJPROP_TEXT, dd);
+         //--- P-DRAW-136: same carrier as the border's `[CL…]` — a painted description
+         //--- never carries a tag, so this write lands in the store on the fibo family.
+         DrawTagPut(name, DrawDescTag(DrawTagBlob(name), "[FL", DrawDescColorHex(ic)));
          if(remember) s_dkFillClr[k] = ic;   // P-DRAW-130: a preview's fill is not a remembered fill
          if(DrawKindHasFillBody(k)) FillChildSync(name);
          //--- P-PEN-ALL: the interior's own colour is a pick like the FILL switch, and

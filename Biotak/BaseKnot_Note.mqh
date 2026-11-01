@@ -733,5 +733,162 @@ void BaseKnotPipInk(const string id, const double entry, const double sl, const 
       else ObjectDelete(0, nm);
    }
 }
+//+------------------------------------------------------------------+
+//| P-BK-145 (2026-11-01) — THE NOTE'S CLOCK STOPS UNDER THE POINTER, |
+//| AND A CLICK ELSEWHERE ENDS IT WITHOUT WAITING OUT THE TIMER.      |
+//|                                                                  |
+//| The user, on the box' Auto INFO card: «این باکس اطلاعات از 4 ثانیه |
+//| به 2 ثانیه … موس که روش رفته تایمرش متوقف بشه … جای دیگه هم کلیک  |
+//| شده سریع بره نیاز نباشه تایمرش تموم بشه … برای همه باکس اطلاعات    |
+//| یک پارچه باشه». Three halves of ONE readout, one owner each:       |
+//|                                                                  |
+//|  * THE HOVER — `BaseKnotInfoHoverTick` pushes that box' own       |
+//|    deadline (`commitMs`, the Auto grace' ONE base) to now on      |
+//|    every move that lands on the note's PLATE, so the countdown    |
+//|    stands still while the card is being read and a whole          |
+//|    `BK_INFO_GRACE_MS` is left after the pointer leaves. The test  |
+//|    reads the PAINTED seat — the plate's own x/y/w/h, which         |
+//|    `BaseKnotWriteInfo` already wrote (P-BK-86) — so it is the     |
+//|    screen's rect and never a second grid (P-DRAW-84's lesson).    |
+//|  * WHICH NOTE IS UP — `BaseKnotInfoShownId` asks the CHART, not a |
+//|    flag: the box whose INFO object exists is the one on screen.   |
+//|    The click rule (BaseKnot_Drag) uses it to tell "its own press"  |
+//|    from "elsewhere", in the same hit test that already owns every |
+//|    click (P-BK-110), never a second arithmetic of where "elsewhere"|
+//|    is.                                                            |
+//|  * THE NUMBER — `BK_INFO_GRACE_MS` is 2000 for every box (it is   |
+//|    one #define, so no surface can read a different one).          |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-BK-145b (2026-11-01) — THE NOTE FINDS ITS OWN SEAT, AND NEVER    |
+//| COVERS THE BOX IT DESCRIBES.                                     |
+//|                                                                  |
+//| The user: «روی کندله نیافته هوشمند باشه واقعا جای درست خودش [را]   |
+//| اطلاعات پیدا بکنه و سربار اضافی نداشته باشه». The seat used to be |
+//| ONE fixed side — the box' top-left corner projected, then shifted |
+//| up by the plate's height (BaseKnotNotePlateTop) — so a knot three |
+//| bars tall got its whole readout painted over the candles that      |
+//| very band was made of.                                          |
+//|                                                                  |
+//| THE RULE, in the order it is tried: (1) RIGHT of the box' right    |
+//| edge, (2) LEFT of its left edge, (3) above its top edge — the      |
+//| historical seat — and only when the window leaves no free column.  |
+//| A seat is "free" when the whole plate fits between the edge and   |
+//| the label family's own right boundary / the left margin, so the    |
+//| note can never be clipped by the scale either.                    |
+//|                                                                  |
+//| THE COST IS ONE PROJECTION PER WRITE, never per frame: it runs    |
+//| inside the write path and the read-guarded follow (which already   |
+//| pays six terminal reads before it decides to write anything), so   |
+//| a still chart still writes NOTHING and no object is added.        |
+//|                                                                  |
+//| IT IS NOT A SECOND GRID: the box' two corners are the SAME        |
+//| projection the note has always been placed by (t1,top), plus its  |
+//| far corner (t2,bot) — both from the chart, never from arithmetic  |
+//| of the band's own.                                                |
+//+------------------------------------------------------------------+
+void BaseKnotNoteSeat(const int sx, const int sy, const datetime t2, const double bot,
+                      const int pw, const int ph, int &px, int &py, int &tx, int &ty)
+{
+   int ex = sx, ey = sy;
+   if(t2 > 0 && bot > 0.0 && !ChartTimePriceToXY(0, 0, t2, bot, ex, ey)) { ex = sx; ey = sy; }
+   int x1 = MathMin(sx, ex), x2 = MathMax(sx, ex);
+   int y1 = MathMin(sy, ey), y2 = MathMax(sy, ey);
+   int midY = y1 + (y2 - y1) / 2 - ph / 2;
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int right = (cw > 0 ? cw - MathMax(8, inpLabelsMarginLeft) : 0);
+   if(right > 0 && x2 + BK_NOTE_LIFT + pw <= right)             // (1) the free column on the right
+   {
+      px = x2 + BK_NOTE_LIFT; py = midY;
+   }
+   else if(x1 - BK_NOTE_LIFT - pw >= BK_NOTE_EDGE_MARGIN)       // (2) ... or the one on the left
+   {
+      px = x1 - BK_NOTE_LIFT - pw; py = midY;
+   }
+   else                                                        // (3) above it, as it always was
+   {
+      px = sx - BK_NOTE_PAD_X; py = y1 - BK_NOTE_LIFT - ph;
+   }
+   // ... then the same clamps the historical seat had: the label family's right boundary, the
+   // left margin, and the two vertical edges. A seat that fits needs none of them.
+   if(right > 0)
+   {
+      if(px + pw > right) px = right - pw;
+      if(px < BK_NOTE_EDGE_MARGIN) px = BK_NOTE_EDGE_MARGIN;
+   }
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(ch > 0)
+   {
+      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;
+      else if(py + ph > ch - BK_NOTE_BOTTOM_SAFE) py = ch - BK_NOTE_BOTTOM_SAFE - ph;
+      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;   // a window shorter than the plate
+   }
+   tx = px + BK_NOTE_PAD_X;
+   ty = py + BK_NOTE_PAD_Y;
+}
+bool BaseKnotInfoHoverTick(const int mx, const int my)
+{
+   bool hit = false;
+   for(int k = 0; k < ArraySize(g_bkBoxes); k++)
+   {
+      if((int)g_bkBoxes[k].commitMs == 0) continue;   // never committed: nothing armed to pause
+      string pn = BaseKnotInfoPlateName(BaseKnotInfoName(BaseKnotPrefix(g_bkBoxes[k].id)));
+      if(ObjectFind(0, pn) < 0) continue;   // ink without its plate is not a readout (P-BK-86)
+      int x = (int)ObjectGetInteger(0, pn, OBJPROP_XDISTANCE);
+      int y = (int)ObjectGetInteger(0, pn, OBJPROP_YDISTANCE);
+      int w = (int)ObjectGetInteger(0, pn, OBJPROP_XSIZE);
+      int h = (int)ObjectGetInteger(0, pn, OBJPROP_YSIZE);
+      if(w <= 0 || h <= 0) continue;   // a plate nobody measured is not a target
+      if(mx < x || my < y || mx > x + w || my > y + h) continue;
+      g_bkBoxes[k].commitMs = GetTickCount();   // the countdown stands still while it is read
+      hit = true;
+   }
+   return hit;
+}
+string BaseKnotInfoShownId()
+{
+   for(int k = 0; k < ArraySize(g_bkBoxes); k++)
+   {
+      if(ObjectFind(0, BaseKnotInfoName(BaseKnotPrefix(g_bkBoxes[k].id))) >= 0) return g_bkBoxes[k].id;
+   }
+   return "";
+}
+//+------------------------------------------------------------------+
+//| P-BK-145c (2026-11-01) — ONE OWNER FOR BOTH HOMES.                |
+//|                                                                  |
+//| MEASURED (his own report «جای دیگه کلیک میکنم هنوز هستش»): the    |
+//| note on screen was the CORNER TOAST (`BaseKnotNoteAtCorner` is     |
+//| true for the SELECTED box), while the click rule only looked for   |
+//| a box-side `INFO` object — so it answered "no note is up" and the  |
+//| toast ran its clock out. The two homes are one readout (P-BK-58),  |
+//| so the "elsewhere" answer is ONE function that knows both:         |
+//|   * a live TOAST ends here in this gesture — wiped, redrawn, and   |
+//|     forgotten (`BaseKnotCornerToastReset`), unless the click hit  |
+//|     the box that opened it (its own tap re-arms it);              |
+//|   * a box-side note ends the way P-BK-110 always ended it.        |
+//| Nothing new is measured: `boxId` is the click's own answer from    |
+//| the hit tests that already own every click.                        |
+//| AND THE CLOCK IS ONE NUMBER: the toast's window is now             |
+//| `BK_CORNER_TOAST_MS == BK_INFO_GRACE_MS` (2000), so "the note's     |
+//| time" cannot differ between the two homes.                       |
+//+------------------------------------------------------------------+
+void BaseKnotNoteClickAway(const string boxId)
+{
+   if(s_bkToastVisible)
+   {
+      bool own = (boxId != "" && s_bkToastKey == BaseKnotInfoName(BaseKnotPrefix(boxId)));
+      if(!own)
+      {
+         BaseKnotCornerFamilyWipe();
+         BaseKnotCornerToastReset();
+         ChartRedraw();
+      }
+   }
+   string shown = BaseKnotInfoShownId();
+   if(shown == "" || shown == boxId) return;
+   BaseKnotInfoDismiss();
+   BaseKnotInfoWipe(BaseKnotPrefix(shown));   // the PAIR goes now (P-BK-86), not at the next pump
+   ChartRedraw();
+}
 
 #endif // BASE_KNOT_NOTE_MQH

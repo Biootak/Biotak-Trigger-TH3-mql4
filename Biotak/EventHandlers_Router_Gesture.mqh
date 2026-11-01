@@ -32,6 +32,9 @@ void RoutCustomPriceGesture(const int id, const long &lparam, const double &dpar
         static bool s_dragDownSeen = false;
         bool pressEdge = (leftButtonDown && !s_dragDownSeen);
         s_dragDownSeen = leftButtonDown;
+        // P-UI-224: a NEW press opens a new opener window - the reveal the
+        // previous press spent cannot answer this one (P-UI-130's disarm).
+        if(pressEdge) g_s1PressRevealed = false;
         // P-UI-99 (2026-09-21): THE HOLD IS RETIRED — THE CLAIM IS IMMEDIATE.
         // User order: «اون هولد از خط کاستوم پرایس بردار به جاش سلکت و انسلاکت
         // شو درست کن که کاربر راحت باشه و همچنین کلیک شو بقیه ابجکت ها در حین
@@ -53,6 +56,20 @@ void RoutCustomPriceGesture(const int id, const long &lparam, const double &dpar
         // on the line, so a pan or a box drag started elsewhere is never claimed.
         if(leftButtonDown)
         {
+            // P-UI-224 (2026-11-01): THE PRESS THAT CANNOT EVEN ASK. Two live
+            // gesture flags gate the whole claim block below, so a STUCK one
+            // refuses every press (the red circle's and the green line's alike)
+            // until the 1.5 s heal — «باید چندبار تلاش کنم تا یکیش بگیره». One
+            // flushed line per press edge names it, through the diag channel and
+            // never `Print` (P-DRAW-126: the journal is a RAM buffer).
+            #ifndef BUILD_LITE
+            if(pressEdge && (g_customPriceLineDragging || g_s1DragLive))
+                DrawStripDiagEmit("[hs] press SKIP live cp=" +
+                                  IntegerToString(g_customPriceLineDragging ? 1 : 0) +
+                                  " s1=" + IntegerToString(g_s1DragLive ? 1 : 0) +
+                                  " own=" + IntegerToString(g_s1OwnActive ? 1 : 0) +
+                                  " y=" + IntegerToString((int)dparam));
+            #endif
             // P-UI-98e: our own step-1 carry, ONE pass per held event. It runs
             // before the claim below so a press that already belongs to the
             // handle is never re-claimed by the custom-price line (one cursor,
@@ -294,6 +311,24 @@ void RoutCustomPriceGesture(const int id, const long &lparam, const double &dpar
                                       CustomPriceGrabAt((int)lparam, (int)dparam));
                     if(!onLineNow) HandLinesSelectionGuard();
                 }
+                // P-UI-224: THE PRESS IN ONE LINE — every gate that decides it
+                // and the numbers they were tested against. «فعال شدنش سخت است»
+                // is a question about a NUMBER (which gate said no), and this is
+                // that number, on the FLUSHED channel (never Print: P-DRAW-126).
+                #ifndef BUILD_LITE
+                if(pressEdge)
+                    DrawStripDiagEmit("[hs] press y=" + IntegerToString((int)dparam) +
+                                      " onCustom=" + IntegerToString(onCustomLine ? 1 : 0) +
+                                      " s1on=" + IntegerToString(s1OnRow ? 1 : 0) +
+                                      " s1claim=" + IntegerToString(s1Claimed ? 1 : 0) +
+                                      " armed=" + IntegerToString(g_s1LinesArmed ? 1 : 0) +
+                                      " shown=" + IntegerToString(g_s1HandleShown ? 1 : 0) +
+                                      " cparmed=" + IntegerToString(g_cpLineArmed ? 1 : 0) +
+                                      " fdraw=" + IntegerToString(TickDeadlinePending(s_cpForeignDrawUntil) ? 1 : 0) +
+                                      " terminal=" + IntegerToString(terminalGrab ? 1 : 0) +
+                                      " pixel=" + IntegerToString(pixelHit ? 1 : 0) +
+                                      " take=" + IntegerToString(g_customPriceLineDragging ? 1 : 0));
+                #endif
             }
             if(g_customPriceLineDragging)
             {
@@ -483,6 +518,22 @@ void RoutCustomPriceGesture(const int id, const long &lparam, const double &dpar
                 // owed to; nothing touches the line while it is being dragged.
                 UpdateCustomPriceTooltip();
                 }   // P-UI-100b: end of the "this gesture really moved the line" half
+                // P-UI-224 (2026-11-01) — THE GRAB BASE IS SPENT HERE, AND HERE ONLY.
+                //
+                // `s_ownGrabPrice` is read twice above (the draw's rollback and the
+                // settle's echo test), so the clear comes after both. It used to be
+                // written at every claim and never cleared: `CustomPriceForeignDrawSeen`
+                // rolls the line back to it on ANY foreign OBJECT_CREATE and opens the
+                // 600 ms window that refuses every grab — so the next box or fib the
+                // user drew teleported the line to a price from a gesture that ended
+                // hours ago («چندبار تلاش میکنم تا یکیش بگیره»). Zero cost per frame.
+                #ifndef BUILD_LITE
+                DrawStripDiagEmit("[hs] cpsettle grab=" + DoubleToString(s_ownGrabPrice, _Digits) +
+                                  " line=" + DoubleToString(settledPrice, _Digits) +
+                                  " wrote=" + IntegerToString((s_ownLastWrite > 0.0) ? 1 : 0) +
+                                  " armed=" + IntegerToString(g_cpLineArmed ? 1 : 0));
+                #endif
+                CustomPriceGrabBaseClear();
             }
         }
     }

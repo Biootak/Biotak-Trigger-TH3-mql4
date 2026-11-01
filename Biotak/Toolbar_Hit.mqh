@@ -229,6 +229,48 @@ string DrawSelectedObjectAt(const int px, const int py)
    return "";
 }
 
+// P-UI-208 (2026-11-01) — A MISS NAMES ITS NEAREST NEIGHBOUR.
+//
+// MEASURED (his report «روی ابجکت‌ها بعضی وقت‌ها هر‌چی کلیک می‌کنم باز نمی‌شه», against his own
+// frame: `[drawstrip] press named at 411,552 hit=""` — the press reached the latch and the hit
+// test named NOTHING, so no strip was ever asked for). A silent `""` cannot say whether the
+// object's KIND is unmapped (`DrawKindOf` = DK_NONE, so `DrawObjectAt` skips it above) or whether
+// it is mapped and the pixel is a hair outside `DRAW_HIT_PX`. So a missing press names the
+// closest object a press could ever take, its kind, its distance and its tolerance — ONE line,
+// on the flushed channel, only on a press that missed while the strip is shut.
+// Cost: one walk over the chart's objects, on a MISSED PRESS only — never per frame, never per
+// move, and never on a press that named a drawing (the normal case pays nothing).
+void DrawHitMissProbe(const int px, const int py)
+{
+   double best = 1e12;
+   string bestNm = "";
+   int bestType = -1;
+   int total = ObjectsTotal(0, -1, -1);
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(nm == "") continue;
+      int t = (int)ObjectGetInteger(0, nm, OBJPROP_TYPE);
+      bool twoAnchor = (t == OBJ_TREND || t == OBJ_RECTANGLE || t == OBJ_CHANNEL ||
+                        t == OBJ_FIBO || t == OBJ_STDDEVCHANNEL || t == OBJ_PITCHFORK ||
+                        t == OBJ_TRENDBYANGLE);
+      bool oneAnchor = (t == OBJ_HLINE || t == OBJ_VLINE || t == OBJ_TEXT || t == OBJ_ARROW);
+      if(!twoAnchor && !oneAnchor) continue;
+      int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+      if(!DrawAnchorXY(nm, 0, x1, y1)) continue;
+      double d;
+      if(twoAnchor && DrawAnchorXY(nm, 1, x2, y2))
+         d = DrawSegDist(px, py, x1, y1, x2, y2, false, false);
+      else
+         d = MathSqrt((double)(px - x1) * (px - x1) + (double)(py - y1) * (py - y1));
+      if(d < best) { best = d; bestNm = nm; bestType = t; }
+   }
+   DrawStripDiagEmit(StringFormat("[drawstrip] miss at %d,%d nearest=\"%s\" type=%d kind=%d dist=%.1f tol=%d ind=%d",
+                                  px, py, bestNm, bestType, (int)DrawKindOf(bestNm),
+                                  (best > 1e11 ? -1.0 : best), DRAW_HIT_PX,
+                                  (DrawIsIndicatorObject(bestNm) ? 1 : 0)));
+}
+
 string DrawObjectAt(const int px, const int py)
 {
    string sel = DrawSelectedObjectAt(px, py);

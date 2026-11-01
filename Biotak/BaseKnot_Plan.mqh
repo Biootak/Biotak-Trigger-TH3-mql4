@@ -42,44 +42,21 @@ int BaseKnotNotePlateW(const string txt)
    if(pw < 2 * BK_NOTE_PAD_X + 8) pw = 2 * BK_NOTE_PAD_X + 8;   // a not-yet-written note still gets a plate
    return pw;
 }
-//--- the pair's two TOP-LEFT corners, from the projected corner. ONE owner of the offsets:
-//--- the writer and the follower both come through here, so the plate and the ink inside it can
-//--- never be placed by two spellings of the same arithmetic — a plate that drifts off its own
-//--- ink is worse than none.
-//--- `sx,sy` = the box' top-left corner in chart-window pixels (ChartTimePriceToXY); the
-//--- plate's BOTTOM edge sits on that corner, so the note still reads as the box' own caption
-//--- and grows to the RIGHT exactly as the chart-space text it replaced did.
-//--- P-BK-87: and then the pair is FITTED BACK INTO THE WINDOW. `pw` is an input here, not a
-//--- by-product — the right-hand fit cannot be decided without it. A screen object has no chart
-//--- to clip it, so this is the only place the note can be kept on screen at all.
-void BaseKnotNotePlateTop(const int sx, const int sy, const int pw, const int ph,
-                          int &px, int &py, int &tx, int &ty)
-{
-   px = sx - BK_NOTE_PAD_X;
-   py = sy - BK_NOTE_LIFT - ph;
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   if(cw > 0)
-   {
-      int right = cw - MathMax(8, inpLabelsMarginLeft);   // the label family's own right boundary
-      if(px + pw > right) px = right - pw;
-      if(px < BK_NOTE_EDGE_MARGIN) px = BK_NOTE_EDGE_MARGIN;
-   }
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(ch > 0)
-   {
-      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;
-      else if(py + ph > ch - BK_NOTE_BOTTOM_SAFE) py = ch - BK_NOTE_BOTTOM_SAFE - ph;
-      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;   // a window shorter than the plate
-   }
-   tx = px + BK_NOTE_PAD_X;
-   ty = py + BK_NOTE_PAD_Y;
-}
-void BaseKnotNotePlatePx(const int sx, const int sy, const string txt,
+//--- the pair's two TOP-LEFT corners, from the box' TWO projected corners. ONE owner of the
+//--- offsets: the writer and the follower both come through here, so the plate and the ink inside
+//--- it can never be placed by two spellings of the same arithmetic — a plate that drifts off its
+//--- own ink is worse than none.
+//--- P-BK-145b (2026-11-01): the SEAT is `BaseKnotNoteSeat`'s (BaseKnot_Note.mqh) — right of the
+//--- box, else left of it, else above it (the historical caption) — because the one fixed side
+//--- this block used to spell painted a short knot's whole readout over its own candles. Its
+//--- window fit (P-BK-87) moved with it; `pw` is still an input there, not a by-product.
+void BaseKnotNotePlatePx(const int sx, const int sy, const datetime t2, const double bot,
+                         const string txt,
                          int &px, int &py, int &pw, int &ph, int &tx, int &ty)
 {
    ph = BaseKnotNotePlateH(txt);
    pw = BaseKnotNotePlateW(txt);
-   BaseKnotNotePlateTop(sx, sy, pw, ph, px, py, tx, ty);
+   BaseKnotNoteSeat(sx, sy, t2, bot, pw, ph, px, py, tx, ty);
 }
 //--- The plate: the CHART'S OWN background, and no border of its own — invisible over an
 //--- empty chart, an honest cut-out where the candles are (the way MetaTrader's own price
@@ -126,7 +103,8 @@ void BaseKnotNotePlateDraw(const string pn, const int px, const int py, const in
 //--- too narrow for the ink it carries, which is the one thing a plate exists to prevent.
 // P-BK-91: the home is the box' TOP-LEFT corner (was top-right) - the note
 // reads before the price reaches it, and the plate never covers the fresh candles.
-void BaseKnotNotePlateFollow(const string pfx, const datetime t1, const double top)
+void BaseKnotNotePlateFollow(const string pfx, const datetime t1, const datetime t2,
+                             const double top, const double bot)
 {
    string in = BaseKnotInfoName(pfx);
    if(ObjectFind(0, in) < 0) return;   // this box carries no note — the common case
@@ -137,7 +115,7 @@ void BaseKnotNotePlateFollow(const string pfx, const datetime t1, const double t
    int ph = BaseKnotNotePlateH(ObjectGetString(0, in, OBJPROP_TEXT));
    int pw = BaseKnotNotePlateW(ObjectGetString(0, in, OBJPROP_TEXT));
    int px, py, tx, ty;
-   BaseKnotNotePlateTop(sx, sy, pw, ph, px, py, tx, ty);
+   BaseKnotNoteSeat(sx, sy, t2, bot, pw, ph, px, py, tx, ty);   // P-BK-145b: the same seat the writer asked for
    if(hasPlate &&
       (int)ObjectGetInteger(0, pn, OBJPROP_XDISTANCE) == px &&
       (int)ObjectGetInteger(0, pn, OBJPROP_YDISTANCE) == py &&
@@ -406,6 +384,15 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
       if(plateNew)
          for(int d = 0; d < BK_INFO_MAX_ROWS; d++) ObjectDelete(0, BaseKnotCornerRowName(d));
       BaseKnotCornerPlateDraw(pn, px, py, pw, ph); BaseKnotCornerToastRect(px, py, pw, ph);   // plate FIRST: creation order is paint order
+      // P-BK-145c: the READOUT'S OWN WITNESS — which home painted it, where, and on which clock.
+      // A seat argued from code twice was wrong twice («روی کندله» / «جای دیگه کلیک میکنم هنوز
+      // هستش»), so the flushed channel (P-LOG-3, never Print) names it once per change.
+      static string s_bkNoteWit = "";
+      string wit = "home=corner obj=" + in + " px=" + IntegerToString(px) + " py=" + IntegerToString(py) +
+                   " pw=" + IntegerToString(pw) + " ph=" + IntegerToString(ph) + " sx=" + IntegerToString(sx) +
+                   " sy=" + IntegerToString(sy) + " chart=" + IntegerToString(cw) + "x" + IntegerToString(ch) +
+                   " clock=" + IntegerToString(BK_CORNER_TOAST_MS);
+      if(wit != s_bkNoteWit) { s_bkNoteWit = wit; DrawStripDiagEmit("[BK-NOTE] " + wit); }
       for(int r = 0; r < BK_INFO_MAX_ROWS; r++)
       {
          string rn = BaseKnotCornerRowName(r);
@@ -472,7 +459,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
          int px, py, pw, ph, tx, ty;
          // the plate is MEASURED against the very string that was just written — read back off
          // the object, so a width typed here could never disagree with the ink that is drawn.
-          BaseKnotNotePlatePx(sx, sy, ObjectGetString(0, o, OBJPROP_TEXT), px, py, pw, ph, tx, ty);
+          BaseKnotNotePlatePx(sx, sy, t2, bot, ObjectGetString(0, o, OBJPROP_TEXT), px, py, pw, ph, tx, ty);
           string plateName = BaseKnotInfoPlateName(o);
           bool plateNew = (ObjectFind(0, plateName) < 0);
           BaseKnotNotePlateDraw(plateName, px, py, pw, ph);
@@ -609,7 +596,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
 // select + Delete key). TF-hidden boxes stay hidden here even when
 // their corner is on-screen.
 void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
-                          const double top, const int tfMin, const long tfMask)
+                          const double top, const double bot, const int tfMin, const long tfMask)
 {
    bool tfVis = BaseKnotTFVisible(tfMin);
    string in = BaseKnotInfoName(pfx);
@@ -622,7 +609,7 @@ void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
    if(!tfVis) { BaseKnotNotePlateDrop(in); return; }
    // P-BK-86: this is the box-side home's POSITION owner — the note and its plate are screen
    // objects, so the projection (never a time/price write) is what keeps them on the box.
-   BaseKnotNotePlateFollow(pfx, t1, top);
+   BaseKnotNotePlateFollow(pfx, t1, t2, top, bot);
 }
 //+------------------------------------------------------------------+
 //| P-BK-59 (2026-09-16) — THE CENTRE GRIP WEARS THE BORDER'S OWN INK.|
@@ -1339,7 +1326,7 @@ void BaseKnotSync(const string id)
         BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
                           sp, nd, tfMask, riskTag, tradeTip, entryTag, atCorner, tfMin,
                           BaseKnotLegsTag(mTF, hPips, offPips, offIsHunt, nd.anchor));   // P-BK-133: the entry the lines were drawn with, so the Trigger cell is the entry; P-BK-134: under the SAME fence the geometry used (`offIsHunt`)
-      if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
+      if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, bot, tfMin, tfMask);
    }
    else
       BaseKnotInfoWipe(pfx);   // the other home owns it (P-BK-58), or the grace is over — P-BK-86: the PAIR goes, never half of it
@@ -1479,7 +1466,7 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    // BKDOT-OFF:       ObjectSetInteger(0, dn, OBJPROP_YDISTANCE, dcy - BK_DOT_SIZE / 2);
    // BKDOT-OFF:    }
    // BKDOT-OFF: }
-   if((s_bkChildMask & BK_CH_INFO) != 0)   BaseKnotNotePlateFollow(pfx, t1, top);   // P-BK-86: a screen pair is moved by its projection, never by ObjectMove
+   if((s_bkChildMask & BK_CH_INFO) != 0)   BaseKnotNotePlateFollow(pfx, t1, t2, top, bot);   // P-BK-86: a screen pair is moved by its projection, never by ObjectMove
    if((s_bkChildMask & BK_CH_TEXT) != 0)
    {
       string tn = BaseKnotTextName(pfx);

@@ -492,7 +492,9 @@ static bool s_legLastLeft = false;   // edge-detect left button
 // P-LM-09: how long a visit lasts. Four seconds is long enough to read three rows and
 // short enough that the plate is not furniture the candles have to live with; the
 // click that starts another visit is the leg's own line.
-#define LEG_INFO_SHOW_MS    4000               // ms a plate stays on the chart
+#define LEG_INFO_SHOW_MS    2000               // ms a plate stays on the chart — P-LM-26:
+                                               // ONE number with BK_INFO_GRACE_MS, so no
+                                               // readout outlives another («یک پارچه»)
 #define LEG_INFO_MAX        24                 // measurements the follower tracks
 
 int LegInfoLineH() { return TH3ROLineH(LEG_INFO_FONT_PT); }
@@ -525,6 +527,16 @@ color  g_legAccent[LEG_INFO_MAX];
 // measurement whose plate is down costs the follower one bool test and nothing else.
 bool   g_legPlateUp[LEG_INFO_MAX];
 uint   g_legShownUntil[LEG_INFO_MAX];
+// P-LM-26b (2026-11-01) — THE CLOCK STOPS WHILE IT IS READ, AND RESUMES WHERE IT STOPPED.
+// MEASURED (his report: «موس روش هستش تایمرش متوقف نمی‌شه»): renewing the deadline on every
+// MOUSE_MOVE pauses nothing — MT4 sends a move only while the HAND moves, so the moment the
+// cursor rests on the card the renewals stop and the 2 s runs out under his eyes. A pause is
+// therefore a STATE, not a stamp: the remaining time is remembered when the pointer enters,
+// the sweep skips a paused plate, and the clock resumes from that remainder on the way out.
+// Same shape as the BK toast's own pause (P-BK-115a), so the two readouts cannot disagree
+// about what "the pointer is on it" means.
+bool   g_legPaused[LEG_INFO_MAX];
+uint   g_legRemainMs[LEG_INFO_MAX];
 int    g_legCount = 0;
 
 // The registry is keyed by the measurement's base name and walked far more often than
@@ -937,40 +949,44 @@ bool LegInfoCoversTip(const int bx, const int by, const int bw, const int bh,
     return (tipX >= bx - LEG_INFO_CLEAR && tipX <= bx + bw + LEG_INFO_CLEAR &&
             tipY >= by - LEG_INFO_CLEAR && tipY <= by + bh + LEG_INFO_CLEAR);
 }
+// P-LM-26: the seat tests live in TH3Tool_Readout.mqh (P-SIZE-1500 split, zero renames).
 
 void LegInfoBoxTop(const int tipX, const int tipY, const int dirX, const int dirY,
                    const int bw, const int bh, int &bx, int &by)
 {
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
     int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+    // the leg's own first anchor, from the same pair the slot was given
+    int x0 = tipX - dirX, y0 = tipY - dirY;
 
     LegInfoSlotRect(tipX, tipY, dirX, dirY, bw, bh, cw, bx, by);   // 1. past the tip
     LegInfoClampY(ch, bh, by);
-    if(!LegInfoCoversTip(bx, by, bw, bh, tipX, tipY)) return;
+    if(LegInfoSeatClear(bx, by, bw, bh, tipX, tipY, x0, y0, tipX, tipY)) return;
 
-    int mx = 0, my = 0;
-    LegInfoSlotRect(tipX, tipY, -dirX, -dirY, bw, bh, cw, mx, my); // 2. the far side
-    LegInfoClampY(ch, bh, my);
-    if(!LegInfoCoversTip(mx, my, bw, bh, tipX, tipY)) { bx = mx; by = my; return; }
-
-    // 3./4. the clamped X of the preferred side (inside the window by
-    // construction, so it keeps LEG_INFO_MARGIN) with the block moved above /
-    // below the tip's own row — the same gap, spent on the other axis.
+    // 2./3. the clamped X of the preferred side (inside the window by construction, so it
+    // keeps LEG_INFO_MARGIN) with the block moved ABOVE, then BELOW the tip's own row.
+    // P-LM-26: these come BEFORE the mirror — the mirror is the one seat that lands back on
+    // the leg, so it is the last thing tried, never the second.
     int keepX = bx;
     int above = tipY - LEG_INFO_GAP - bh;
-    if(above >= LEG_INFO_MARGIN)
+    if(above >= LEG_INFO_MARGIN &&
+       LegInfoSeatClear(keepX, above, bw, bh, tipX, tipY, x0, y0, tipX, tipY))
     {
-        by = above;
-        if(!LegInfoCoversTip(keepX, by, bw, bh, tipX, tipY)) { bx = keepX; return; }
+        bx = keepX; by = above; return;
     }
     int below = tipY + LEG_INFO_GAP;
-    if(ch <= 0 || below + bh <= ch - LEG_INFO_MARGIN)
+    if((ch <= 0 || below + bh <= ch - LEG_INFO_MARGIN) &&
+       LegInfoSeatClear(keepX, below, bw, bh, tipX, tipY, x0, y0, tipX, tipY))
     {
-        by = below;
-        if(!LegInfoCoversTip(keepX, by, bw, bh, tipX, tipY)) { bx = keepX; return; }
+        bx = keepX; by = below; return;
     }
 
-    // 5. the floor: no placement is clear of the tip — take P-LM-23's own answer.
+    int mx = 0, my = 0;
+    LegInfoSlotRect(tipX, tipY, -dirX, -dirY, bw, bh, cw, mx, my); // 4. the far side
+    LegInfoClampY(ch, bh, my);
+    if(LegInfoSeatClear(mx, my, bw, bh, tipX, tipY, x0, y0, tipX, tipY)) { bx = mx; by = my; return; }
+
+    // 5. the floor: no seat is clear of the leg — P-LM-23's own answer stands (never nothing).
     LegInfoSlotRect(tipX, tipY, dirX, dirY, bw, bh, cw, bx, by);
     LegInfoClampY(ch, bh, by);
 }
@@ -1081,12 +1097,8 @@ bool LegMeasureBoxFromLine(const string base, const bool create)
         ObjectGetDouble(0, ln, OBJPROP_PRICE, 1), create);
 }
 
-void LegMeasurePlateHide(const int idx)
-{
-    if(idx < 0 || idx >= g_legCount) return;
-    g_legPlateUp[idx] = false;
-    LegInfoBoxDelete(g_legBase[idx]);
-}
+// P-LM-26: LegMeasurePlateHide / LegMeasureExpireSweep moved to TH3Tool_Readout.mqh
+// with the pause state they ask (P-SIZE-1500 split, byte-identical bodies).
 
 // Show — or, on a click, show AGAIN: the visit starts over. The deadline is armed
 // BEFORE the rebuild on purpose: a click on a leg whose TF history is not loaded yet
@@ -1101,25 +1113,7 @@ void LegMeasurePlateShow(const string base)
         RepaintForDiscreteAction();       // P-PERF-24: a click is a DISCRETE action
 }
 
-// ── P-LM-09: the visit's end ─────────────────────────────────────────
-// Called from the Full entry's OnTimer (250 ms), i.e. on a chart that may not have
-// ticked at all — which is the point of putting the clock there: the box is a thing
-// you glance at, not furniture the candles have to live with. The deadline is asked
-// through the project's wrap-safe owner, never compared against GetTickCount()
-// directly (P-PERF / [tick-wrap]). Cheap by construction: with no measurement on the
-// chart this is one comparison, a plate already down costs one bool, and a plate that
-// expires costs four deletes exactly once.
-void LegMeasureExpireSweep()
-{
-    if(g_legCount <= 0) return;
-    for(int i = 0; i < g_legCount; i++)
-    {
-        if(!g_legPlateUp[i]) continue;
-        if(TickDeadlinePending(g_legShownUntil[i])) continue;   // the visit is still running
-        LegMeasurePlateHide(i);
-    }
-}
-
+// P-LM-26: the clock hooks live in TH3Tool_Readout.mqh with those tests.
 // Remember one measurement's text/ink for the follower. Oldest first out when the
 // registry is full: its box simply stops tracking (it is still drawn and readable).
 void LegMeasureTrack(const string base, string &txt[], const color accent)
@@ -1138,6 +1132,8 @@ void LegMeasureTrack(const string base, string &txt[], const color accent)
             g_legAccent[j - 1]  = g_legAccent[j];
             g_legPlateUp[j - 1] = g_legPlateUp[j];
             g_legShownUntil[j - 1] = g_legShownUntil[j];
+            g_legPaused[j - 1] = g_legPaused[j];        // P-LM-26b: the pause travels too
+            g_legRemainMs[j - 1] = g_legRemainMs[j];
         }
         g_legCount = LEG_INFO_MAX - 1;
     }
@@ -1148,6 +1144,8 @@ void LegMeasureTrack(const string base, string &txt[], const color accent)
     // start here — the same deadline the click re-arms, so there is only one.
     g_legPlateUp[g_legCount]     = true;
     g_legShownUntil[g_legCount]  = GetTickCount() + LEG_INFO_SHOW_MS;
+    g_legPaused[g_legCount]      = false;   // P-LM-26b: a fresh plate runs its clock
+    g_legRemainMs[g_legCount]    = 0;
     g_legCount++;
 }
 
@@ -1160,6 +1158,8 @@ void LegMeasureForget(const int idx)
         g_legAccent[i - 1]  = g_legAccent[i];
         g_legPlateUp[i - 1] = g_legPlateUp[i];   // P-LM-09: the visit travels with its entry
         g_legShownUntil[i - 1] = g_legShownUntil[i];
+        g_legPaused[i - 1] = g_legPaused[i];     // P-LM-26b
+        g_legRemainMs[i - 1] = g_legRemainMs[i];
     }
     g_legCount--;
 }

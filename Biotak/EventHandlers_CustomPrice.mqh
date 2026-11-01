@@ -171,8 +171,8 @@ void CustomPriceMarkerSync()
     {
         static string s_cpMarkTip = "";
         string tip = g_cpLineArmed
-            ? "Custom price: drag the green circle - click to commit, double-click re-arms"
-            : "Custom price (set) - double-click to re-activate";
+            ? "Custom price: drag the green circle - click to commit"
+            : "Custom price (set) - click the green circle to drag it again";
         if(s_cpMarkTip != tip)
         {
             s_cpMarkTip = tip;
@@ -297,7 +297,7 @@ void HandsetRevealDropOnForeignClick(const int x, const int y)
     // edge, and `shown` is false exactly then. The two hit tests are the price.
     if(HandsetMarkerRevealAt(x, y)) return;           // a marker's own click: nothing is dropped
     if(!g_cpHandleShown && !g_s1HandleShown) return;  // nothing revealed: nothing to drop
-    g_cpHandleShown = false;
+    if(g_cpLineArmed) g_cpHandleShown = false;        // P-UI-225: a SET line keeps its ONLY face
     g_s1HandleShown = false;
     HandsetMarkersRide();   // one ride parks the green dot and both red circles
     ThrottledChartRedraw();
@@ -395,9 +395,17 @@ void CustomPriceLineOwnLock(const bool locked)
 // pair on the mouse stream, the button-up finalize below (a motionless
 // release emits no MOUSE_MOVE, P-BK-03), and the green circle's own
 // OBJECT_CLICK. One physical click can reach it twice; a 60 ms twin guard
-// drops the second. A single click here is a no-op (already set) and only a
-// double re-arms, so no sweep slot is needed - the first click of a double
-// can never commit anything.
+// drops the second.
+//
+// P-UI-225 (2026-11-01) - ONE CLICK, NOT TWO. This owner required a double
+// click, and that requirement WAS the lottery the user named: «باید دابل کلیک
+// بکنم اونم شانسی بگیره فعال بشه که راحت درگه بشه». A SET line has no face to
+// aim at - P-UI-98p never paints it, and SET used to park its green circle as
+// well - so the double had to land on an unseen row inside a 240 ms window. A
+// single click RE-ARMS now, and it is SPENT on that: `g_cpClickHandledMs` is
+// the stamp the armed contract's SET branch refuses for 350 ms
+// (EventHandlers_Router:1213), so the click that frees the line cannot set it
+// straight back.
 //==============================================================================
 void CustomPriceRearmClickAt()
 {
@@ -410,18 +418,18 @@ void CustomPriceRearmClickAt()
     }
     uint now = GetTickCount();
     if(g_cpClickHandledMs != 0 && now - g_cpClickHandledMs < 60) return;   // the same click's twin event
-    g_cpClickHandledMs = now;
-    bool dbl = (g_cpClickLastMs != 0 && now - g_cpClickLastMs < DOUBLE_CLICK_THRESHOLD_MS);
-    g_cpClickLastMs = now;
-    if(!dbl) return;
+    g_cpClickHandledMs = now;   // P-UI-225: AND the re-arm stamp the armed contract reads
     CustomPriceLineOwnArm(true);
     g_cpHandleShown = true;
     CustomPriceMarkerSync();
     ThrottledChartRedraw();
+    #ifndef BUILD_LITE
+    DrawStripDiagEmit("[hs] rearm click -> armed=1 shown=1");
+    #endif
 }
 
 // The button-up that carries no move (P-BK-03): a motionless press/release on
-// the SET line's row is a click, and only a double of those re-arms.
+// the SET line's row is a click, and ONE of those re-arms it (P-UI-225).
 void CustomPriceRearmFinalize()
 {
     if(!UILeftButtonUp()) return;   // the press's own echo (P-UI-73): keep the row for the real release
@@ -448,19 +456,33 @@ void HandsetClickSweep()
         if(g_cpLineArmed)
         {
             CustomPriceLineOwnArm(false);
-            g_cpHandleShown = false;   // P-UI-98g: SET takes the green circle away
+            // P-UI-225: SET KEEPS THE GREEN CIRCLE. The line is never painted
+            // (P-UI-98p), so parking the circle left the placement with NO face at
+            // all - the user's click had to find an invisible row, which is the
+            // «سخت و شانسی» half of the report. P-UI-98m already says it: «وقتی
+            // سلکت نیس فقط همون دایره سبز بمونه». The circle is the re-arm target
+            // now, and its tooltip says one click brings the line back.
             CustomPriceMarkerSync();
         }
     }
     if(g_s1SetPendingMs != 0 && now - g_s1SetPendingMs >= DOUBLE_CLICK_THRESHOLD_MS
        && UILeftButtonUp())
     {
+        // P-UI-224: the row the sweep is about is consumed before this block, so
+        // capture it FIRST - the witness must name what it committed.
+        string s1SetRow = g_s1SetPending;
         g_s1SetPendingMs = 0;
         g_s1SetPending = "";
         if(g_s1LinesArmed && !g_s1DragLive)
         {
             g_s1LinesArmed = false;   // SET: the factor stays, the ladder keeps the step
             g_s1HandleShown = false;  // P-UI-98g: nothing points at a set line
+            // P-UI-224: the transition that used to fire on the REVEAL click.
+            // One flushed line, so «دایره آمد و بلافاصله رفت» is a timestamp.
+            #ifndef BUILD_LITE
+            DrawStripDiagEmit("[hs] SET committed row=" + s1SetRow +
+                              " armed=0 shown=0");
+            #endif
             g_redrawTHLevelsNeeded = true;
             RedrawAllObjects(true);   // the face owner re-owns selectability + parks the dot
         }
@@ -567,6 +589,10 @@ void CustomPriceDragHealStale()
     CustomPriceDragLockOff();
     g_customPriceLineDragging = false;
     g_customPriceDragOwn = false;
+    // P-UI-224: a healed gesture is a SPENT gesture — the base goes with the
+    // flags, or the next foreign create rolls the line back to it (see
+    // CustomPriceGrabBaseClear).
+    CustomPriceGrabBaseClear();
     // P-UI-98: a step-1 gesture whose release never arrived heals the same way —
     // the flags drop and the handle's selection goes (a stuck g_s1DragLive would
     // pin the handle's price forever, since the render skips its writes while the
@@ -753,6 +779,26 @@ static double s_ownGrabCursorPrice = 0.0; // price under that pixel at the grab
 // through the very price-per-pixel the chart is drawn at: the line as drawn plus a
 // few pixels, i.e. what the terminal itself uses - a normal press grabs the line, a
 // press clearly away still pans the chart.
+// P-UI-224 (2026-11-01) — THE GRAB BASE IS SPENT WHEN THE GESTURE ENDS.
+//
+// `s_ownGrabPrice` is "the price the line had when THIS gesture grabbed it". Its
+// two readers both run at the END of the gesture — `CustomPriceRestoreGrabPrice`
+// (P-UI-100b's draw rollback) and the release's echo test — so nothing ever
+// cleared it, and the value outlived the gesture that wrote it. That stale base
+// is what `CustomPriceForeignDrawSeen` then used: the next foreign OBJECT_CREATE
+// (a box, a fib, a trendline the user drew) rolled the line back to a price from
+// a gesture that ended long ago AND opened the 600 ms `s_cpForeignDrawUntil`
+// window, during which the claim is refused — the measured «چندبار تلاش میکنم
+// تا یکیش بگیره». ONE owner, called by both ways a gesture can end: the release
+// latch and the stale-drag heal. Zero cost per frame.
+void CustomPriceGrabBaseClear()
+{
+    s_ownGrabPrice = 0.0;
+    s_ownGrabCursorPrice = 0.0;
+    s_ownGrabX = 0;
+    s_ownGrabY = 0;
+}
+
 bool CustomPriceGrabAt(const int x, const int y)
 {
     if(!g_customPriceLineCreated) return false;
@@ -765,7 +811,15 @@ bool CustomPriceGrabAt(const int x, const int y)
     if(heightPx <= 0 || span <= 0) return false;
     // P-UI-98q: the tolerance covers the visible affordance - the 19 px green
     // circle, not the unpainted line under it.
-    int tolPx = (int)inpCustomPriceLevelWidth + 4 + (CP_HANDLE_HALF - HANDSET_HANDLE_HALF);
+    // P-UI-224 (2026-11-01): IT DID NOT. `width + 4 + (CP_HANDLE_HALF -
+    // HANDSET_HANDLE_HALF)` is `1 + 4 + 2` = 7 px at width 1, while the circle
+    // the user aims at is 19 px (half `CP_HANDLE_HALF` = 9): the raster's own
+    // rim answered "not on the line" to every reader of this test — the reveal
+    // (HandsetMarkerRevealAt), the claim (pixelHit), MT4's-hold recovery
+    // (atLineNow) and the deselect guard — so a press on the outer 3 px of the
+    // circle did nothing at all: «فعال شدن دایره سخت است». Derived from the
+    // raster's half now, widened by the line's own drawn half.
+    int tolPx = CP_HANDLE_HALF + 1 + (int)inpCustomPriceLevelWidth / 2;
     if(tolPx < 5) tolPx = 5;
     double tolPrice = span * ((double)tolPx / (double)heightPx);
     return (MathAbs(linePrice - priceAtCursor) <= tolPrice);

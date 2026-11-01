@@ -164,6 +164,11 @@ void DrawStripHoldLatch(const int mx, const int my)
        return;
     }
     string named = DrawObjectAtCached(mx, my);   // the one hit test this latch pays for
+    // P-UI-208: a press that names NOTHING is invisible in this log ("hit=\"\"" says the case
+    // exists but never which object it was). While the strip is shut — the state a hold opens
+    // from — a miss also names the nearest thing the press could have taken, with its kind and
+    // its distance, so the next report carries the ANSWER instead of a reproduction round.
+    if(named == "" && !s_dsOpen) DrawHitMissProbe(mx, my);
     DrawStripOpenerDisarm();   // P-UI-113c: a new press is never the old gesture
    //--- DIAG-116 (temporary, P-UI-115b). These seven fences return SILENTLY, so
    //--- a press they swallow leaves no line anywhere: the 2026-09-29 log has NO
@@ -173,7 +178,7 @@ void DrawStripHoldLatch(const int mx, const int my)
    //--- the state a hold opens from, and one line per press. Remove with DIAG-113.
    if(BaseKnotSessionActive()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: baseknot session"); return; }
    if(UIPeekClickClaim())      { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: ui peek claim"); return; }
-   if(UIPointerOverSurface(mx, my)) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: ui pointer over surface at " + IntegerToString(mx) + "," + IntegerToString(my)); return; }
+   if(UIPointerOverSurface(mx, my)) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: ui pointer over surface at " + IntegerToString(mx) + "," + IntegerToString(my) + " why=" + g_uiSurfaceWhy); return; }
    if(BaseKnotViewOwned())     { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: baseknot view owned"); return; }
    if(TH3SessionActive() || TH3BaseMarkArmed()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: th3 session"); return; }
    if(LegMeasureSessionActive()) { if(!s_dsOpen) DrawStripDiagEmit("[drawstrip] latch blocked: leg measure session"); return; }

@@ -61,6 +61,16 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 {
     // BKCORNER-TOAST: the note's clock stops while the cursor is on it. One int
     // compare per event; the callee returns on one flag when no toast is up.
+#ifndef BUILD_LITE
+    // P-LM-26: the Leg Measure readout keeps the SAME clock as every other readout — the
+    // countdown stands still under the cursor, and a click that is not on its plate ends the
+    // visit in that gesture (P-BK-145's two halves, one rule). FIRST in the click path, so a
+    // click that lands on the leg itself can re-open the visit in the handlers below.
+    // GUARDED: `TH3Tool` is Full-only (the Lite entry compiles it out), and this router is
+    // shared — a shared module may not call a name Lite does not have (AGENTS.md).
+    if(id == CHARTEVENT_MOUSE_MOVE) LegInfoHoverAt((int)lparam, (int)dparam);
+    else if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") < 0) LegInfoClickAway((int)lparam, (int)dparam);
+#endif
     if(id == CHARTEVENT_MOUSE_MOVE) BaseKnotCornerToastHover((int)lparam, (int)dparam);
     // P-UI-114 (2026-09-23): right-click era deleted — terminal menu untouched,
     // strip toggles on a single click of a drawing (DrawStripClickToggle in DrawStrip.mqh).
@@ -1200,7 +1210,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // first click of a double never sets first. A click that is the ECHO of
             // a drag release (the just-dragged stamp) sets nothing: the line drags
             // freely until the user deliberately clicks it.
-            else if(currentTickCount - g_cpJustDraggedMs > 350)
+            // P-UI-225: AND THE RE-ARM CLICK IS SPENT ON THE RE-ARM. The events of
+            // one press arrive unordered, so the click that wakes a SET line can
+            // also land here - and this branch is what SETs an armed line, which
+            // set it back in the same gesture. `g_cpClickHandledMs` is the re-arm's
+            // own stamp, so this is the same "one press, one meaning" fence the
+            // reveal wears (P-UI-224).
+            else if(currentTickCount - g_cpJustDraggedMs > 350 &&
+                    (g_cpClickHandledMs == 0 || currentTickCount - g_cpClickHandledMs > 350))
             {
                 g_cpSetPending = sparam;
                 g_cpSetPendingMs = currentTickCount;

@@ -942,6 +942,9 @@ void Step1DragSettle()
     // and it runs AFTER the echo stamp (which reads the grab base it clears).
     Step1GestureStateClear();
     CustomPriceDragFrame(true);   // the gesture's last pixel is painted from the final F
+    #ifndef BUILD_LITE
+    DrawStripDiagEmit("[hs] s1settle row=" + name + " moved=" + IntegerToString(s1Moved ? 1 : 0) + " grab=" + DoubleToString(s_s1GrabPrice, _Digits) + " now=" + DoubleToString(settled, _Digits) + " armed=" + IntegerToString(g_s1LinesArmed ? 1 : 0) + " shown=" + IntegerToString(g_s1HandleShown ? 1 : 0));   // P-UI-224: what the echo test read, what the click contract inherits
+    #endif
     CustomPriceDragLockOff();     // the view is the user's again (idempotent)
     // P-UI-45: drop the selection the grab left behind — a SELECTED line is
     // moved by MT4 on every later drag anywhere on the chart. Guarded write.
@@ -1130,9 +1133,9 @@ bool Step1HandleOwnClaim(const string handle, const int x, const int y)
     if(!(linePrice > 0.0) || !MathIsValidNumber(linePrice)) return false;
     g_s1DragLive = true;
     g_s1DragName = handle;
-    // P-UI-98g: a hand on the line IS the request for its handle - the circles
-    // appear while the gesture runs (and stay after it), so a drag started on a
-    // line the user never clicked does not look like nothing happened.
+    // P-UI-98g: a hand on the line IS the request for its handle (the circles stay
+    // after the drag). P-UI-224: that write is a REVEAL - it spends this press's click.
+    if(!g_s1HandleShown) g_s1PressRevealed = true;
     g_s1HandleShown = true;
     g_s1OwnActive = true;
     // P-UI-98h: a hand on the line CANCELS any pending SET - the press echo of
@@ -1241,73 +1244,71 @@ void Step1HandleOwnDragMove(const int x, const int y)
 //
 // User order: «خط کاستوم پرایس و خط step اول وقتی بعد جابجایی روش کلیک شد ست
 // نهایی بشه و با دبل کلیک فعال بشه تا زمانی که ست نهایی نشده آزادانه درگ بشه».
-// The handle's click used to arrive ONLY through MT4's own `OBJECT_CLICK` on the
-// HLINE — the very hit test whose failure is why the drag needed an own channel
-// (`P-UI-49c`), and a 15 px bitmap icon sits exactly where the user clicks. Two
-// more measured MT4 facts narrow the door further: a motionless press/release
-// emits no MOUSE_MOVE at all (P-BK-03, the leg meter's P-LM-13 trap), so the
-// release latch can miss a still click entirely. So the click is ONE owner —
-// `Step1HandleClickAt` — reached from THREE edges:
-//   * our own press/release pair on the mouse stream (row + travel, below),
-//   * `Step1ClickFinalize` from `CHARTEVENT_CLICK` (the button-up that carries
-//     no move), and
-//   * MT4's own `OBJECT_CLICK`, kept as the third opinion it always was.
-// A physical click can reach that owner twice; the FIRST call answers and its
-// twin is dropped inside one short window, so a double-click can never be read
-// as two singles (or a single as a double) because of the transport.
+// The handle's click arrives through MT4's own OBJECT_CLICK on the HLINE — the
+// very hit test whose failure is why the drag needed an own channel (P-UI-49c) —
+// and a motionless press/release emits no MOUSE_MOVE at all (P-BK-03). So the
+// click is ONE owner, `Step1HandleClickAt`, reached from THREE edges: our own
+// press/release pair (row + travel), `Step1ClickFinalize` from CHARTEVENT_CLICK,
+// and the terminal's OBJECT_CLICK. A physical click can reach it twice; the
+// 60 ms twin guard drops the second. (The state lives in GlobalVariables.)
 //==============================================================================
-// (the contract's state lives in GlobalVariables — the heal above has to consume
-// a lost press, and it is defined a hundred lines before this block.)
 
-// THE click. `name` is the rung-1 line the click landed on; the armed state is
-// read as it is NOW, so a click on a SET handle is the double-click that wakes it.
+// THE click. `name` is the rung-1 line the click landed on; the state is read as
+// it is NOW, so a click on a SET handle RE-ARMS it with ONE click (P-UI-225: it
+// needed a double on a parked row - the «شانسی» in «باید دابل کلیک بکنم اونم شانسی بگیره فعال بشه»).
 void Step1HandleClickAt(const string name)
 {
     if(name == "") return;
     uint now = GetTickCount();
     if(g_s1ClickHandledMs != 0 && now - g_s1ClickHandledMs < 60) return;   // the same click's twin event
     g_s1ClickHandledMs = now;
+    if(!g_s1LinesArmed)
+    {
+        g_s1SetPending = "";
+        g_s1SetPendingMs = 0;
+        g_s1LinesArmed = true;     // re-armed: draggable again, the red handle back
+        g_s1HandleShown = true;    // P-UI-98g: and revealed, like the green one
+        g_s1PressRevealed = true;  // P-UI-225: THIS click is spent on the re-arm
+        g_redrawTHLevelsNeeded = true;
+        RedrawAllObjects(true);    // the face owner re-owns the pair + icon
+        #ifndef BUILD_LITE
+        DrawStripDiagEmit("[hs] s1rearm click -> armed=1 shown=1");
+        #endif
+        return;
+    }
     bool dbl = (g_s1ClickLastMs != 0 && now - g_s1ClickLastMs < DOUBLE_CLICK_THRESHOLD_MS);
     g_s1ClickLastMs = now;
     if(dbl)
     {
-        // the second click CANCELS the pending SET and wakes a set handle — the
-        // user's «با دبل کلیک فعال بشه ... و ست نهایی بشه» pair, in one place
+        // the second click CANCELS the pending SET - «با دبل کلیک فعال بشه ... و
+        // ست نهایی بشه»: a double never sets on its first click.
         g_s1SetPending = "";
         g_s1SetPendingMs = 0;
-        if(!g_s1LinesArmed)
-        {
-            g_s1LinesArmed = true;   // re-armed: draggable again, the red handle back
-            g_s1HandleShown = true;  // P-UI-98g: and revealed, like the green one
-            g_redrawTHLevelsNeeded = true;
-            RedrawAllObjects(true);  // the face owner re-owns the pair + icon
-        }
         return;
     }
-    // P-UI-98g: THE FIRST CLICK SHOWS THE RED CIRCLES. The pair is armed from the
-    // placement on (armed = the line answers a grab), but its icon is the answer
-    // to a click — «فقط وقتی روش کلیک کردیم دایره ها بیاد برای درگ کردن» — and
-    // that click must not be spent setting a line the user has not touched yet.
+    // P-UI-98g: THE FIRST CLICK SHOWS THE RED CIRCLES — armed from the placement on,
+    // its icon answers a click («فقط وقتی روش کلیک کردیم دایره ها بیاد برای درگ کردن»), never a SET.
     if(!g_s1HandleShown)
     {
         g_s1HandleShown = true;
-        if(g_s1LinesArmed && !g_s1DragLive)
-        {
-            g_redrawTHLevelsNeeded = true;
-            RedrawAllObjects(true);   // the face owner places the two circles
-        }
+        if(g_s1LinesArmed && !g_s1DragLive) { g_redrawTHLevelsNeeded = true; RedrawAllObjects(true); }   // the face owner places the two circles
         return;
     }
-    // a click that is the ECHO of a drag release sets nothing (the stamp the
-    // settle writes), so a gesture the user DRAGGED never commits under the hand
-    // P-UI-98h: never arm the SET while a gesture is live - OBJECT_CLICK is
-    // delivered on the PRESS, so this line is reached with the hand already
-    // holding the line, and the sweeper would commit it the moment the button
-    // comes up, i.e. right after a drag that worked.
+    // a click that is the ECHO of a drag release sets nothing (the settle's stamp).
+    // P-UI-98h: never arm a SET while a gesture is live. P-UI-224: a click that
+    // REVEALED the pair is spent there (arming SET killed it 300 ms later).
+    if(Step1ClickPressRevealed()) { g_s1PressRevealed = false;   // spent: one press, one answer
+        #ifndef BUILD_LITE
+        DrawStripDiagEmit("[hs] click row=" + name + " -> reveal (spent) armed=" + IntegerToString(g_s1LinesArmed ? 1 : 0));
+        #endif
+        return; }
     if(g_s1LinesArmed && !g_s1DragLive && now - g_s1JustDraggedMs > 350)
     {
         g_s1SetPending = name;
         g_s1SetPendingMs = now;      // HandsetClickSweep commits it past the double window
+        #ifndef BUILD_LITE
+        DrawStripDiagEmit("[hs] click row=" + name + " -> set pending armed=1 shown=" + IntegerToString(g_s1HandleShown ? 1 : 0));
+        #endif
     }
 }
 

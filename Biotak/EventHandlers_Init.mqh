@@ -571,6 +571,17 @@ int OnInitHandler() {
     // instance's "this name is absent" facts are not trustworthy yet.
     CacheAbsentResetAll();
     HRayOnInit(); PathOnInit();   // P-HR-06 / P-UI-136: adopt the chart's drawings into the registry (idempotent)
+    //--- P-DRAW-136: the same adopt pass for the TAG channel — a fibo an older build
+    //--- wrote `[CL…] [OP…]` onto still wears them on its description, where the
+    //--- terminal paints them along the diagonal. One walk per attach, both entries.
+    string healedTags = DrawTagHealAll();
+#ifndef BUILD_LITE
+    if(healedTags != "")   // the witness is the FLUSHED file, never Print (P-LOG-3)
+       DrawStripDiagEmit("[P-DRAW-136] attach heal obj=" + healedTags);
+    //--- P-DRAW-137: a read that a kill interrupted left the chart's description switch
+    //--- where the product put it. Give it back before the first paint.
+    LegInfoDescrRecover();
+#endif
 
     // Restore hidden state
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();

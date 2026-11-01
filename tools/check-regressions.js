@@ -118,6 +118,9 @@ const BUILD_PS1 = path.join(ROOT, 'compile-th3.ps1');
 // path that must witness). The rule: the ATR is read AT THE LEG'S OWN BAR.
 const TH3TOOL_C = path.join(BIOTAK, 'TH3Tool_C.mqh');
 const TH3TOOL_B = path.join(BIOTAK, 'TH3Tool_B.mqh');
+// P-LM-26: the leg readout's SEAT tests and its two clock hooks (P-SIZE-1500 split)
+// plus the shared router that arms them.
+const TH3TOOL_READOUT = path.join(BIOTAK, 'TH3Tool_Readout.mqh');   // ROUTER / BK_BASE: declared at the top
 // P-DRAW-121: the band's own COUNT. The pill's rule lives in DrawStrip_GearB and is
 // mirrored (with its flag READ out of the source) in `sim-gear-panel.band_counts`, so
 // the register can assert both halves: the rule excludes nav, and the gate says so.
@@ -5274,6 +5277,166 @@ function main() {
       failures.push('P-LM-25: ' + broken.join('; ') + ' (Biotak/TH3Tool_C.mqh LegAtr14/LegReadAnchor/TH3LegOwnerTF/LegMeasureReadout/LegReadWitness + Biotak/TH3Tool_B.mqh LegMeasureDragEnd)');
     } else {
       console.log('[PASS] P-LM-25 every leg ATR is read at LegReadAnchor\u2019s bar through CalculateWeightedATRAt (never the live composite), and both commit paths flush the [P-LM-25] anchor witness');
+    }
+  }
+
+  // -- 48b. P-LM-26 (2026-11-01): the leg readout never sits on the leg, and it
+  // wears the SAME clock as every other readout ---------------------------------
+  // MEASURED (his own frame, 16:03): a leg running down into the newest bars has its
+  // tip at the window's edge, so "past the tip" clamps onto the head — and P-LM-24's
+  // MIRROR put the plate back ALONG the leg, on the candles it was drawn to measure.
+  // The tip test could not see it (clear of the tip's 8 px, squarely on the line).
+  // The user: «این هنوز روی همون میافته». Second half: «برای همه باکس اطلاعات یک
+  // پارچه باشه» — one 2000 ms clock, standing still under the cursor, and a click
+  // elsewhere ending the visit in that gesture (P-BK-145's own two halves).
+  {
+    const broken = [];
+    const readout = linesOf(TH3TOOL_READOUT);
+    if (!readout) broken.push('Biotak/TH3Tool_Readout.mqh is gone — the seat tests and the clock hooks have no home');
+    else {
+      const segBody = bodyOf(readout, 'bool LegInfoCoversSeg(');
+      if (!segBody) broken.push('LegInfoCoversSeg() is gone — a seat may sit on the leg again');
+      else if (!/for\(int s = 0; s <= steps; s\+\+\)/.test(segBody.text))
+        broken.push('LegInfoCoversSeg no longer walks the segment — a sampled test replaced by a point test');
+      const clearBody = bodyOf(readout, 'bool LegInfoSeatClear(');
+      if (!clearBody) broken.push('LegInfoSeatClear() is gone — the walk has no single question');
+      else if (!/LegInfoCoversTip\(/.test(clearBody.text) || !/LegInfoCoversSeg\(/.test(clearBody.text))
+        broken.push('LegInfoSeatClear answers only ONE of the two (tip / leg) — the reported defect is back');
+      const hovBody = bodyOf(readout, 'LegInfoHoverAt(');
+      if (!hovBody) broken.push('LegInfoHoverAt() is gone — the clock runs while the card is being read');
+      else {
+        if (!/OBJPROP_XSIZE/.test(hovBody.text) || !/OBJPROP_XDISTANCE/.test(hovBody.text))
+          broken.push('the hover test no longer reads the PAINTED rect — a second grid (P-DRAW-84)');
+        // P-LM-26b: a PAUSE, not a renewal. Renewing the deadline on every move pauses
+        // nothing once the hand rests, which is the reported «تایمرش متوقف نمی‌شه».
+        if (!/g_legPaused\[i\]\s*=\s*true/.test(hovBody.text))
+          broken.push('the enter edge no longer PAUSES — a renewal on every move is the reported defect');
+        if (!/g_legRemainMs\[i\]/.test(hovBody.text))
+          broken.push('the enter edge does not remember the REMAINING time — leaving restarts the visit');
+        if (!/g_legShownUntil\[i\]\s*=\s*now\s*\+\s*g_legRemainMs\[i\]/.test(hovBody.text))
+          broken.push('the leave edge does not resume from the remainder — the clock starts over');
+        if (!/LegInfoDescrOff\(\)/.test(hovBody.text) || !/LegInfoDescrRestore\(\)/.test(hovBody.text))
+          broken.push('the hover no longer drives the chart\u2019s description switch through its capture/restore pair — MT4\u2019s own popup covers the card');
+        if (!/DrawStripDiagEmit\(/.test(hovBody.text))
+          broken.push('the pause has no flushed witness — it cannot be proved from a frame (P-LOG-3)');
+      }
+      // P-DRAW-137: the switch belongs to the USER, so the off edge REMEMBERS what it found
+      // and the restore hands THAT back. The first build wrote a literal `true` here, and
+      // MEASURED: his chart's `descriptions=0` became 1 after one hover and stayed there,
+      // which is how the six `[CL…]` tag blocks of P-DRAW-136 came to be painted at all.
+      const offBody = bodyOf(readout, 'void LegInfoDescrOff(');
+      if (!offBody) broken.push('LegInfoDescrOff() is gone — the switch is written with nothing remembered');
+      else if (!/ChartGetInteger\(0, CHART_SHOW_OBJECT_DESCR/.test(offBody.text))
+        broken.push('the off edge does not READ the chart\u2019s own value — a restore with nothing captured is the reported defect');
+      const restBody = bodyOf(readout, 'void LegInfoDescrRestore(');
+      if (!restBody) broken.push('LegInfoDescrRestore() is gone — the chart property is never given back');
+      else if (!/ChartSetInteger\(0, CHART_SHOW_OBJECT_DESCR, s_roDescrPrev\)/.test(restBody.text))
+        broken.push('the restore no longer gives back the CAPTURED value — a hard-coded true leaves the user\u2019s chart changed');
+      const muteBody = bodyOf(linesOf(path.join(BIOTAK, 'TH3Tool_Mute.mqh')) || [], 'int LegMeasureHideAll(');
+      if (!muteBody || !/LegInfoDescrRestore\(\)/.test(muteBody.text))
+        broken.push('the mute/deinit sweep no longer restores the chart\u2019s object descriptions');
+      const awayBody = bodyOf(readout, 'bool LegInfoClickAway(');
+      if (!awayBody) broken.push('LegInfoClickAway() is gone — a click elsewhere waits out the timer');
+      else if (!/LegMeasurePlateHide\(i\)/.test(awayBody.text))
+        broken.push('the click-away no longer hides the plate it found');
+    }
+    const toolB = linesOf(TH3TOOL_B);
+    const seatBody = toolB ? bodyOf(toolB, 'void LegInfoBoxTop(') : null;
+    if (!seatBody) broken.push('LegInfoBoxTop() is gone — the plate has no seat');
+    else {
+      const asks = (seatBody.text.match(/LegInfoSeatClear\(/g) || []).length;
+      if (asks < 4) broken.push(asks + ' candidate(s) ask LegInfoSeatClear — every one but the floor must');
+      if (/if\(\s*!LegInfoCoversTip\(/.test(seatBody.text))
+        broken.push('a candidate still accepts on the TIP test alone — the mirror lands back on the leg');
+      const mirror = seatBody.text.indexOf('LegInfoSlotRect(tipX, tipY, -dirX, -dirY');
+      const below = seatBody.text.indexOf('int below = tipY + LEG_INFO_GAP');
+      if (below < 0)
+        broken.push('the "below the tip" candidate is gone — the MIRROR is the second thing tried, and it lands on the leg');
+      else if (mirror >= 0 && mirror < below)
+        broken.push('the MIRROR is tried before "below the tip" again — the one seat that lands on the leg is second');
+    }
+    const bkDef = linesOf(BK_BASE) ? (codeOf(linesOf(BK_BASE)).match(/#define BK_INFO_GRACE_MS\s+(\d+)/) || [])[1] : null;
+    const legDef = toolB ? (codeOf(toolB).match(/#define LEG_INFO_SHOW_MS\s+(\d+)/) || [])[1] : null;
+    if (!legDef) broken.push('LEG_INFO_SHOW_MS is gone — the leg readout has no clock');
+    else if (legDef !== '2000') broken.push('LEG_INFO_SHOW_MS is ' + legDef + ' — every readout must wear the same 2000 ms');
+    if (bkDef && legDef && bkDef !== legDef)
+      broken.push('the two readouts disagree (' + bkDef + ' vs ' + legDef + ') — «یک پارچه» broken');
+    const router = linesOf(ROUTER);
+    if (!router) broken.push('Biotak/EventHandlers_Router.mqh is gone');
+    else {
+      const rcode = codeOf(router);
+      const legHook = rcode.indexOf('LegInfoHoverAt((int)lparam, (int)dparam)');
+      const legClick = rcode.indexOf('LegInfoClickAway((int)lparam, (int)dparam)');
+      if (legHook < 0) broken.push('the router never asks LegInfoHoverAt — the clock cannot stand still');
+      if (legClick < 0) broken.push('the router never asks LegInfoClickAway — a click elsewhere waits out the timer');
+      // the LITE rule: TH3Tool is Full-only, so the shared router must guard the calls
+      if (legHook >= 0 || legClick >= 0) {
+        const guard = rcode.lastIndexOf('#ifndef BUILD_LITE', Math.max(legHook, legClick));
+        const end = guard >= 0 ? rcode.indexOf('#endif', guard) : -1;
+        if (guard < 0 || end < 0 || end < Math.max(legHook, legClick))
+          broken.push('the leg hooks are unguarded — Lite compiles TH3Tool out and the router would not build');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-LM-26: ' + broken.join('; ') + ' (Biotak/TH3Tool_Readout.mqh LegInfoCoversSeg/LegInfoSeatClear/LegInfoHoverAt/LegInfoDescrRestore/LegInfoClickAway + Biotak/TH3Tool_B.mqh LegInfoBoxTop/LEG_INFO_SHOW_MS/g_legPaused + Biotak/EventHandlers_Router.mqh)');
+    } else {
+      console.log('[PASS] P-LM-26 the leg readout never sits on the leg it measures (tip AND segment); it wears the one 2000 ms clock, which PAUSES under the cursor and resumes from the remainder, with MT4\u2019s own tooltip suppressed while it is read');
+    }
+  }
+
+  // -- 48c. P-DRAW-136 (2026-11-01): a tag may not ride a description the terminal paints
+  // MEASURED on his own frame (EURUSD M15, `Fibo 16117`): six `[CL…]` blocks painted along
+  // the fibo's diagonal — «این نوشته‌ها چی اومده … خودش اومده روی فیبو». The tag channel IS
+  // `OBJPROP_TEXT`, and the terminal draws that text for the fibo family. A trend line, a
+  // ray and a path already refuse the channel (P-HR-04, P-UI-137); the fibo family is the
+  // fourth: its block lives in a store row (`DrawTagBlob`/`DrawTagPut`), the description
+  // keeps only the user's text, the attach heal cuts what an older build left, and
+  // `DrawDescTag` removes EVERY copy (an orphan `[CL…` that could never be matched is how
+  // six piled up). Both trees — the MT5 unit carries the same one file.
+  {
+    const broken = [];
+    const MT5DIR = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', 'Biotak');
+    const trees = [
+      { tag: 'MT4', toolbar: path.join(BIOTAK, 'Toolbar_A.mqh'), writer: path.join(BIOTAK, 'Toolbar_B.mqh'), fib: path.join(BIOTAK, 'FibPen.mqh'), init: path.join(BIOTAK, 'EventHandlers_Init.mqh') },
+      { tag: 'MT5', toolbar: path.join(MT5DIR, 'DrawToolbar.mqh'), writer: path.join(MT5DIR, 'DrawToolbar.mqh'), fib: path.join(MT5DIR, 'DrawToolbar.mqh'), init: path.join(MT5DIR, 'EventHandlers.mqh') },
+    ];
+    for (const t of trees) {
+      const tb = linesOf(t.toolbar), wr = linesOf(t.writer), fib = linesOf(t.fib), ini = linesOf(t.init);
+      if (!tb) { broken.push(t.tag + ': the toolbar tree is gone'); continue; }
+      if (!wr) { broken.push(t.tag + ': the slot writer file is gone'); }
+      if (!fib) { broken.push(t.tag + ': the fibo pen file is gone'); }
+      if (!ini) { broken.push(t.tag + ': the attach path is gone'); }
+      const has = (lines, sig, re, why) => {
+        const b = lines ? bodyOf(lines, sig) : null;
+        if (!b) { broken.push(t.tag + ': ' + sig + ' is gone — ' + why); return; }
+        if (!re.test(b.text)) broken.push(t.tag + ': ' + sig + ' no longer ' + why);
+      };
+      has(tb, 'bool DrawKindPaintsDesc(', /DK_FIBO\b[\s\S]*DK_FIBOFAN[\s\S]*DK_FIBOCHAN[\s\S]*DK_EXPANSION/,
+        'names the four painted-desc kinds');
+      has(tb, 'string DrawTagBlob(', /DrawTagExtract\(/, 'cuts the tags off the description it was handed');
+      has(tb, 'string DrawTagBlob(', /ObjectSetString\(0, nm, OBJPROP_TEXT, user\)/, 'writes the user\u2019s text back WITHOUT the tags');
+      has(tb, 'void DrawTagPut(', /s_tagBlob\[r\] = blob/, 'stores the block in its row');
+      has(tb, 'string DrawDescTag(', /while\(true\)/, 'removes EVERY copy of its own tag');
+      has(tb, 'bool DrawSlotColorPure(', /DrawTagBlob\(/, 'asks the carrier for the pure ink');
+      has(tb, 'int DrawSlotOpacityGet(', /DrawTagBlob\(/, 'asks the carrier for the alpha');
+      has(tb, 'color DrawSlotColorStore(', /DrawTagPut\(/, 'writes its tag through the carrier');
+      has(wr, 'void DrawSlotOpacitySet(', /DrawTagPut\(/, 'writes its tags through the carrier');
+      has(fib, 'int FibPenLookGet(', /DrawTagBlob\(/, 'asks the carrier for the look');
+      has(fib, 'void FibPenLookSet(', /DrawTagPut\(/, 'writes the look through the carrier');
+      has(fib, 'bool FibPenTagDrop(', /DrawTagPut\(/, 'drops the v2 tag through the carrier');
+      const pure = bodyOf(tb, 'bool DrawSlotColorPure(');
+      if (pure && /OBJPROP_TEXT/.test(pure.text))
+        broken.push(t.tag + ': DrawSlotColorPure reads OBJPROP_TEXT again — a fibo wears its tags on the chart');
+      const store = bodyOf(tb, 'color DrawSlotColorStore(');
+      if (store && /ObjectSetString\(0, name, OBJPROP_TEXT/.test(store.text))
+        broken.push(t.tag + ': DrawSlotColorStore writes OBJPROP_TEXT again — the tag is painted along the drawing');
+      if (ini && !/DrawTagHealAll\(\)/.test(codeOf(ini)))
+        broken.push(t.tag + ': DrawTagHealAll() is not on the attach path — a drawing an older build wrote stays tagged');
+    }
+    if (broken.length) {
+      failures.push('P-DRAW-136: ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh DrawKindPaintsDesc/DrawTagBlob/DrawTagPut/DrawDescTag + Biotak/Toolbar_B.mqh DrawSlotOpacitySet + Biotak/FibPen.mqh + Biotak/EventHandlers_Init.mqh + the MT5 unit)');
+    } else {
+      console.log('[PASS] P-DRAW-136 a tag never rides a description the terminal paints: the fibo family keeps its block in a store row, the description keeps only the user\u2019s text, the attach heal cuts what an older build left, and `DrawDescTag` removes every copy — both trees');
     }
   }
 
@@ -10776,6 +10939,279 @@ function main() {
     } else {
       console.log("[PASS] P-UI-220 the levels' card carries its own door to the ANCHOR's START POINT in both terminals — appended row 18, a NAV to the CUSTOM PRICE card, counted by the band, and the write proves itself on the flushed channel");
     }
+  }
+
+  // P-BK-145 (2026-11-01) — THE BOX' NOTE IS A TWO-SECOND GLANCE THAT STOPS WHILE IT IS READ.
+  //
+  // The user, on the box' Auto INFO card: «این باکس اطلاعات از 4 ثانیه به 2 ثانیه … موس که روش
+  // رفته تایمرش متوقف بشه … جای دیگه هم کلیک شده سریع بره نیاز نباشه تایمرش تموم بشه … برای همه
+  // باکس اطلاعات یک پارچه باشه». Three halves, and each one has an inverse that ships a different
+  // product: a grace that only one surface reads, a hover that pauses nothing, and a click on a
+  // DIFFERENT box read as that box' own press (which is what left the first card up until the
+  // timer ran out — P-BK-110 only ended it off EVERY box).
+  {
+    const broken = [];
+    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+
+    // 1 — ONE number, and it is the user's: two seconds.
+    const grace = base ? /#define BK_INFO_GRACE_MS\s+(\d+)/.exec(base.join('\n')) : null;
+    if (!grace) broken.push('BK_INFO_GRACE_MS is gone — the note has no clock to stop');
+    else if (Number(grace[1]) !== 2000)
+      broken.push('BK_INFO_GRACE_MS reads ' + grace[1] + ' ms, not the 2000 the user asked for (4 s -> 2 s)');
+
+    // 2 — THE HOVER pauses the box' OWN deadline, on the plate's own seat.
+    const hover = note ? bodyOf(note, 'bool BaseKnotInfoHoverTick(') : null;
+    if (!hover) broken.push('BaseKnotInfoHoverTick is gone — the card ages while it is being read');
+    else {
+      const t = hover.text;
+      if (!t.includes('ObjectGetInteger(0, pn, OBJPROP_XDISTANCE)') ||
+          !t.includes('ObjectGetInteger(0, pn, OBJPROP_XSIZE)') ||
+          !t.includes('ObjectGetInteger(0, pn, OBJPROP_YSIZE)'))
+        broken.push('the hover does not read the PAINTED seat — a hit test with its own arithmetic is a second grid (P-DRAW-84)');
+      if (!t.includes('BaseKnotInfoPlateName'))
+        broken.push('the hover no longer targets the note\'s plate — the note and the rect would be two objects');
+      if (!t.includes('commitMs = GetTickCount()'))
+        broken.push('the hover no longer pushes the deadline — the timer keeps running under the pointer');
+      if (/TimeCurrent\(\)|ObjectFind\(0, pn\) >= 0 &&/.test(t) && !t.includes('ObjectFind(0, pn) < 0'))
+        broken.push('the hover fires on a note that is not drawn');
+    }
+
+    // 3 — the DRAG router asks it, on a move, while idle (the only state a reader is in).
+    if (!drag) broken.push('BaseKnot_Drag.mqh is gone');
+    else {
+      const d = drag.join('\n');
+      if (!/if\(id == CHARTEVENT_MOUSE_MOVE && g_bkState == BK_IDLE\)\s*\{\s*BaseKnotInfoHoverTick\(\(int\)lparam, \(int\)dparam\);/.test(d))
+        broken.push('the IDLE move no longer pauses the card — the pause is unreachable');
+    }
+
+    // 4 — A CLICK ON ANOTHER BOX IS "ELSEWHERE": one hit test, one Sync, the chart as the oracle.
+    const shown = note ? bodyOf(note, 'string BaseKnotInfoShownId()') : null;
+    if (!shown || !shown.text.includes('ObjectFind(0, BaseKnotInfoName('))
+      broken.push('BaseKnotInfoShownId no longer asks the CHART which note is up — a flag can disagree with the ink');
+    const away = drag ? bodyOf(drag, 'void BaseKnotInfoClickAway(') : null;
+    if (!away) broken.push('BaseKnotInfoClickAway is gone — another box is that box\' own press again');
+    else {
+      const a = away.text;
+      if (!a.includes('BaseKnotBoxAt(ct, cp)') || !a.includes('BaseKnotBoxAtPx(mx, my)'))
+        broken.push('the click-away invented its own hit test instead of asking the one that owns clicks (P-BK-110)');
+      if (!a.includes('BaseKnotNoteClickAway(at)'))
+        broken.push('the click-away does not hand the answered box to the ONE owner that knows BOTH homes');
+    }
+    // P-BK-145c: ONE owner for BOTH homes — the corner toast IS the note on a selected box, and a
+    // rule that only looked for a box-side INFO answered "no note is up" while the toast sat there.
+    const both = note ? bodyOf(note, 'void BaseKnotNoteClickAway(') : null;
+    if (!both) broken.push('BaseKnotNoteClickAway is gone — the corner toast is invisible to the click rule again');
+    else {
+      const bt = both.text;
+      if (!bt.includes('s_bkToastVisible') || !bt.includes('BaseKnotCornerToastReset()'))
+        broken.push('the click rule no longer ends a live TOAST (the reported «جای دیگه کلیک میکنم هنوز هستش»)');
+      if (!bt.includes('s_bkToastKey == BaseKnotInfoName(BaseKnotPrefix(boxId))'))
+        broken.push('the toast\' own box is no longer exempt from "elsewhere"');
+      if (!bt.includes('if(shown == "" || shown == boxId) return;'))
+        broken.push('a click on the note\'s OWN box now ends its box-side card');
+      if (!bt.includes('BaseKnotInfoDismiss();') || !bt.includes('BaseKnotInfoWipe('))
+        broken.push('the click ends the clock but not the ink — the card waits for the next pump');
+    }
+    // ... and the toast reads the SAME clock as the box-side note: one number for both homes.
+    if (!base || !/#define BK_CORNER_TOAST_MS BK_INFO_GRACE_MS/.test(base.join('\n')))
+      broken.push('the toast kept its own life constant — the same readout can sit for two different times');
+    if (!drag || !/if\(id == CHARTEVENT_CLICK && StringFind\(sparam, "r"\) < 0\) BaseKnotInfoClickAway\(\(int\)lparam, \(int\)dparam\);/.test(drag.join('\n')))
+      broken.push('the click router never calls the click-away — a press on another box leaves the card up');
+
+    // 5 — P-BK-145b: ONE CORNER, ONE COORDINATE SYSTEM. The slot pushed `CORNER_RIGHT_LOWER`
+    //     with a left-top number pair, so the note landed ~88 px from the RIGHT edge at a height
+    //     measured from the BOTTOM — i.e. on the candles, nowhere near its column.
+    const labels = linesOf(path.join(BIOTAK, 'Labels_B.mqh'));
+    const slot = labels ? bodyOf(labels, 'void LabelPushBaseNoteSlot(const int stackY, const int stackEm)') : null;
+    if (!slot) broken.push('LabelPushBaseNoteSlot is gone — the note has no slot to grow into');
+    else {
+      if (!slot.text.includes('BaseKnotCornerSlotPush(CORNER_LEFT_UPPER, MathMax(8, inpLabelsMarginLeft), y)'))
+        broken.push('the note slot is not the label family\'s own corner (LEFT_UPPER with a left margin and a top Y) — a right/lower corner would measure the same numbers from the other two edges');
+      if (/CORNER_RIGHT_LOWER/.test(slot.text))
+        broken.push('the note is pushed to a RIGHT/LOWER corner again — its x and y are read from the opposite edges, which is the mixed convention that put it on the candles');
+    }
+    const seat = note ? bodyOf(note, 'void BaseKnotNoteSeat(') : null;
+    if (!seat) broken.push('BaseKnotNoteSeat is gone — the box-side note went back to one fixed side');
+    else if (!seat.text.includes('ChartTimePriceToXY(0, 0, t2, bot, ex, ey)'))
+      broken.push('the seat no longer projects the box\' FAR corner — one corner cannot tell a free column from the box\' own candles');
+
+    if (broken.length)
+      failures.push('P-BK-145: ' + broken.join('; ') + ' (BaseKnot_Base / BaseKnot_Note / BaseKnot_Drag / Labels_B)');
+    else
+      console.log('[PASS] P-BK-145 the box\' note is a 2000 ms glance for EVERY box: the countdown stands still while the pointer is on the plate it was painted at, a click on another box (or on the candles) wipes the card in that same gesture, and the seat is one corner in one coordinate system — the family\'s column, or the free column beside the box, never a fixed side over its own candles');
+  }
+
+  // ── P-UI-224 (2026-11-01) — ONE PRESS, ONE MEANING, AND A GRAB BASE THAT IS
+  // SPENT WHEN THE GESTURE ENDS ──
+  // The user reported both halves in one sentence: «این دایره قرمز چرا فعال شدنش
+  // اینقدر سخت هستش که برای درگ شدن فعال بشه و ... وقتی این فعال میشه خود خط
+  // کاستوم پرایس هم درگ کردنش فعال نمیشه باید چندبار تلاش بکنم». Read out of the
+  // tree, three causes:
+  //   * the press-edge claim writes `g_s1HandleShown` (P-UI-98g) and the click
+  //     contract reads the SAME latch as "the user asked, so this click is a SET",
+  //     so ONE click REVEALED the pair and 300 ms later `HandsetClickSweep` SET it:
+  //     `g_s1LinesArmed=false`, the circles parked, `Step1HandleOwnClaim` refused
+  //     from then on. Every activation destroyed itself. The fix is the opener
+  //     window of P-UI-130 on the press (`g_s1PressRevealed`), disarmed by the
+  //     next press edge;
+  //   * `s_ownGrabPrice` was written at every claim and NEVER cleared, so
+  //     `CustomPriceForeignDrawSeen` rolled the line back to a price from a dead
+  //     gesture on the next foreign OBJECT_CREATE and opened the 600 ms window
+  //     that refuses every grab. The base is spent at the release now;
+  //   * `CustomPriceGrabAt` read `width + 4 + (CP_HANDLE_HALF - HANDSET_HANDLE_HALF)`
+  //     = 7 px against the 19 px circle its own comment names, so the rim the user
+  //     aims at answered "not on the line" to the reveal, the claim and the guard.
+  {
+    const broken = [];
+    const gv = codeOf(linesOf(path.join(BIOTAK, 'GlobalVariables.mqh')) || []);
+    const ob = linesOf(OBJ) || [];
+    const gs = linesOf(path.join(BIOTAK, 'EventHandlers_Router_Gesture.mqh')) || [];
+    const cp = linesOf(path.join(BIOTAK, 'EventHandlers_CustomPrice.mqh')) || [];
+    if (!/static bool\s+g_s1PressRevealed/.test(gv))
+      broken.push('GlobalVariables.mqh lost g_s1PressRevealed — the press reveal has no owner again (P-UI-224)');
+    if (!/bool Step1ClickPressRevealed\(\)/.test(gv))
+      broken.push('Step1ClickPressRevealed() is gone — the click contract has to guess whether it revealed the pair (P-UI-224)');
+    const claim = bodyOf(ob, 'bool Step1HandleOwnClaim(');
+    if (!claim || !/if\(!g_s1HandleShown\) g_s1PressRevealed = true;/.test(claim.text))
+      broken.push('Step1HandleOwnClaim() stopped stamping the REVEAL — the click that ends that press arms a SET again and the pair dies 300 ms after it appears (P-UI-224)');
+    const click = bodyOf(ob, 'void Step1HandleClickAt(');
+    if (!click) broken.push('Step1HandleClickAt() is gone (P-UI-224)');
+    else {
+      const ask = click.text.indexOf('Step1ClickPressRevealed()');
+      const arm = click.text.indexOf('g_s1SetPending = name;');
+      if (ask < 0) broken.push('Step1HandleClickAt() no longer asks Step1ClickPressRevealed() (P-UI-224)');
+      else if (arm >= 0 && ask > arm)
+        broken.push('the press-revealed ask stands AFTER the SET arm — the revealing click sets the pair again (P-UI-224)');
+    }
+    const rout = bodyOf(gs, 'void RoutCustomPriceGesture(');
+    if (!rout) broken.push('RoutCustomPriceGesture() is gone (P-UI-224)');
+    else {
+      if (!/if\(pressEdge\) g_s1PressRevealed = false;/.test(rout.text))
+        broken.push('the press edge no longer disarms the opener window — a reveal from an OLD press can eat a later click (P-UI-224)');
+      const tip = rout.text.lastIndexOf('UpdateCustomPriceTooltip()');
+      const clearAt = rout.text.lastIndexOf('CustomPriceGrabBaseClear()');
+      if (clearAt < 0)
+        broken.push('the release no longer spends the grab base — CustomPriceForeignDrawSeen rolls the line back to a dead gesture (P-UI-224)');
+      else if (tip >= 0 && clearAt < tip)
+        broken.push('the grab base is cleared BEFORE the settle reads it — the draw rollback and the echo test lose their only reference (P-UI-224)');
+    }
+    const heal = bodyOf(cp, 'void CustomPriceDragHealStale(');
+    if (!heal || !/CustomPriceGrabBaseClear\(\)/.test(heal.text))
+      broken.push('the stale-drag heal leaves the grab base behind — a healed gesture still teleports the line on the next create (P-UI-224)');
+    const clear = bodyOf(cp, 'void CustomPriceGrabBaseClear(');
+    if (!clear || !/s_ownGrabPrice = 0\.0;/.test(clear.text))
+      broken.push('CustomPriceGrabBaseClear() no longer zeroes s_ownGrabPrice (P-UI-224)');
+    const grab = bodyOf(cp, 'bool CustomPriceGrabAt(');
+    if (!grab) broken.push('CustomPriceGrabAt() is gone (P-UI-224)');
+    else {
+      if (/CP_HANDLE_HALF - HANDSET_HANDLE_HALF/.test(grab.text))
+        broken.push('CustomPriceGrabAt() is back to the 7 px band that misses the rim of its own 19 px circle (P-UI-224)');
+      if (!/int tolPx = CP_HANDLE_HALF \+ 1/.test(grab.text))
+        broken.push('CustomPriceGrabAt()\'s tolerance is not derived from CP_HANDLE_HALF — the affordance and the hit test disagree again (P-UI-224)');
+    }
+    if (broken.length)
+      failures.push('P-UI-224: ' + broken.join('; ') + ' (Biotak/GlobalVariables.mqh + EventHandlers_Objects.mqh + EventHandlers_Router_Gesture.mqh + EventHandlers_CustomPrice.mqh)');
+    else
+      console.log('[PASS] P-UI-224 one press one meaning: the reveal spends its click (opener window disarmed on the press edge), the grab base is spent at the release and the heal, and the custom price hit band is the circle it names (CP_HANDLE_HALF)');
+  }
+
+  // ── P-UI-225 (2026-11-01) — A SET HANDSET IS ONE CLICK AWAY FROM ARMED, AND
+  // THAT CLICK IS SPENT ON IT ──
+  // The second report on the same circles: «خط کاستوم پرایس وقتی ست میشه باز
+  // خیلی سخت سلکت و بودنش برای درگ فعال میشه ... باید دابل کلیک بکنم اونم شانسی
+  // بگیره فعال بشه که راحت درگه بشه», then the order that named the fix: «همون
+  // دایره سبز که میاد باید همه چی ازاد بشه دیگه». MEASURED on the live flushed
+  // frame (biotak_diag_EURUSD_134362571361933140, 2026-11-01 20:14): twelve
+  // presses in a row on the SET row read `onCustom=1 pixel=1 cparmed=0 shown=0`
+  // — every press FOUND the line, and nothing answered, because:
+  //   * the re-arm demanded a DOUBLE inside 240 ms, on a row that is never
+  //     painted (P-UI-98p) and whose green circle SET parked (`shown=0` above);
+  //   * nothing spent that click, so the wake and the SET could arrive in either
+  //     order from ONE press — «شانسی» is that race, not the user's aim.
+  // One assertion per law, on BOTH trees:
+  //   1. ONE click re-arms the custom price line (no double test in the owner);
+  //   2. the SET line KEEPS its green circle (P-UI-98m's own order, and the only
+  //      affording pixel the user has);
+  //   3. the re-arm writes the stamp the armed contract's SET branch refuses for
+  //      350 ms (the P-UI-224 fence, spent by one gesture);
+  //   4. the step-1 pair wears the same law: a SET rung-1 row wakes on one click.
+  {
+    const broken = [];
+    const MT5 = (...p) => path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5', ...p);
+    const trees = [
+      {
+        tag: 'MT4',
+        cp: linesOf(path.join(BIOTAK, 'EventHandlers_CustomPrice.mqh')) || [],
+        obj: linesOf(OBJ) || [],
+        rout: linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh')) || [],
+      },
+      {
+        tag: 'MT5',
+        cp: linesOf(MT5('Biotak', 'EventHandlers.mqh')) || [],
+        obj: linesOf(MT5('Biotak', 'EventHandlers.mqh')) || [],
+        rout: linesOf(MT5('Biotak', 'EventHandlers.mqh')) || [],
+      },
+    ];
+    for (const t of trees) {
+      // 1 — ONE click re-arms, and the witness says so on the flushed channel.
+      const rearm = bodyOf(t.cp, 'void CustomPriceRearmClickAt(');
+      if (!rearm) broken.push(`${t.tag}: CustomPriceRearmClickAt() is gone`);
+      else {
+        if (/bool\s+dbl|if\s*\(\s*!dbl\s*\)/.test(rearm.text))
+          broken.push(`${t.tag}: the re-arm requires a DOUBLE again — the user aims at an unseen row twice inside 240 ms`);
+        if (!/CustomPriceLineOwnArm\(true\)/.test(rearm.text))
+          broken.push(`${t.tag}: the re-arm no longer arms the line`);
+        if (!/g_cpClickHandledMs = now;/.test(rearm.text))
+          broken.push(`${t.tag}: the re-arm writes no stamp — the armed contract cannot spend that click`);
+        if (!/DrawStripDiagEmit\("\[hs\] rearm click/.test(rearm.text))
+          broken.push(`${t.tag}: the re-arm has no flushed witness — «فعال شد یا نه» becomes unanswerable (law 3)`);
+      }
+      // 2 — SET keeps the green circle: the commit must not park it, and a chart
+      //     click elsewhere must not take it away from a line that is SET.
+      const sweep = bodyOf(t.cp, 'void HandsetClickSweep(');
+      if (!sweep) broken.push(`${t.tag}: HandsetClickSweep() is gone`);
+      else {
+        const off = sweep.text.indexOf('CustomPriceLineOwnArm(false)');
+        const end = off >= 0 ? sweep.text.indexOf('g_s1SetPendingMs', off) : -1;
+        const seg = off >= 0 ? sweep.text.slice(off, end > off ? end : off + 400) : '';
+        if (off >= 0 && /g_cpHandleShown = false/.test(seg))
+          broken.push(`${t.tag}: the SET commit parks the green circle — the placement is left with no face to click`);
+      }
+      const drop = bodyOf(t.cp, 'void HandsetRevealDropOnForeignClick(');
+      if (!drop || !/if\(g_cpLineArmed\) g_cpHandleShown = false;/.test(drop.text))
+        broken.push(`${t.tag}: a chart click clears the SET line's only face again — nothing is left to aim at`);
+      // 3 — the re-arm click is SPENT: the armed SET branch reads the stamp.
+      const rcode = codeOf(t.rout);
+      const setAt = rcode.indexOf('g_cpSetPending = sparam;');
+      const fenceAt = rcode.indexOf('currentTickCount - g_cpClickHandledMs > 350');
+      if (fenceAt < 0)
+        broken.push(`${t.tag}: the armed custom-price SET branch no longer spends the re-arm click — the click that frees the line sets it back`);
+      else if (setAt >= 0 && fenceAt > setAt)
+        broken.push(`${t.tag}: the re-arm fence stands AFTER the SET arm — it can never refuse it`);
+      // 4 — the step-1 pair: one click on a SET row wakes it, before any double test.
+      const click = bodyOf(t.obj, 'void Step1HandleClickAt(');
+      if (!click) broken.push(`${t.tag}: Step1HandleClickAt() is gone`);
+      else {
+        const re = click.text.indexOf('if(!g_s1LinesArmed)');
+        const dbl = click.text.indexOf('bool dbl');
+        const armed = click.text.indexOf('g_s1LinesArmed = true;');
+        if (re < 0 || armed < re)
+          broken.push(`${t.tag}: Step1HandleClickAt() has no SET re-arm branch`);
+        else if (dbl >= 0 && re > dbl)
+          broken.push(`${t.tag}: the SET re-arm stands AFTER the double-click test — a SET row needs two clicks again`);
+        else if (click.text.indexOf('g_s1PressRevealed = true', re) < 0)
+          broken.push(`${t.tag}: the re-arm does not mark its click spent — the same click arms a SET right after it`);
+      }
+      // A stale tooltip is the same lie in the one place the user reads it.
+      if (/Custom price \(set\) - double-click/.test(codeOf(t.cp)))
+        broken.push(`${t.tag}: the green circle still says "double-click" — the affordance text contradicts the contract`);
+    }
+    if (broken.length)
+      failures.push('P-UI-225: ' + broken.join('; ') + ' (EventHandlers_CustomPrice/_Objects/_Router MT4, EventHandlers.mqh MT5)');
+    else
+      console.log('[PASS] P-UI-225 a SET handset is ONE click from armed on both trees: the re-arm carries no double test, SET keeps its green circle, the click that frees the line cannot set it back (350 ms stamp), and a SET rung-1 row wakes the same way');
   }
 
   if (failures.length) {
