@@ -1175,8 +1175,8 @@ void BaseKnotSync(const string id)
    // the note's own badge all read THIS record, so no two of them can disagree about
    // where the base started, where it ended, or which TF it belongs to.
    BaseKnotSpan sp;
-   int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount(t1, t2, top, bot, sp, baseReadTF);   // P-BK-114: the owner TF is the knot's time
-   if(bars <= 0 && baseReadTF != tfMin) { baseReadTF = tfMin; bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin); } int still = sp.still;
+   int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);   // P-BK-139: the count's grid is the BOX' OWN TF - the owner rung is a height, never the ruler
+   int still = sp.still;   // P-BK-139: the retry on the chart's TF is gone - the count's grid and the box' TF are now the SAME value
    // P-BK-36/38: the CLASS comes first now, because it is also what the node's
    // story is read on — one box, one TF, one story, whichever chart opens it. Both
    // numbers are published on the registry, so the pump's change check reads the

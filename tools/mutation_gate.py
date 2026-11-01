@@ -5666,6 +5666,16 @@ MUTATIONS = [
     #--- the geometry wrote `g` onto the stop only (142.5 / 80.5 = 1.77) while the plan's law is
     #--- 8/3. Each entry puts one half of the one-ruler law back; the owning gate must fail.
     {
+        "id": "P-BK-139-a",
+        "gate": "regression",
+        "rule": "the knot's time is the base's own candle count",
+        "what": "the count is taken on the ATR owner rung again - the same box reads 70m and 320m after a drag",
+        "file": "Biotak/BaseKnot_Plan.mqh",
+        "find": "int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);",
+        "replace": "int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount(   // MUTATION: the height picks the ruler",
+        "expect": "[FAIL] P-BK-126b",
+    },
+    {
         "id": "P-BK-135-a",
         "gate": "regression",
         "rule": "the note's risk asks the SAME pair factor as the geometry",

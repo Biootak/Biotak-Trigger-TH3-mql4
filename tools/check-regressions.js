@@ -9529,8 +9529,14 @@ function main() {
         broken.push('the owner fallback is gone - a box whose M1 story cannot be read names no time at all (P-BK-36)');
       if (walkAt >= 0 && fallAt >= 0 && fallAt < walkAt)
         broken.push('the owner is read BEFORE the walk - the first answer wins and the three candles are never consulted');
-      if (!sync.text.includes('int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount('))
-        broken.push('the count is no longer taken on a declared read TF - `still` and the class would describe two grids');
+      // P-BK-139 (2026-11-01): THE COUNT'S GRID IS THE BOX' OWN TF, NEVER THE OWNER RUNG.
+      // MEASURED on box 15_149567468 (EURUSD M15, band 1.11333..1.11573): moving the left
+      // edge 22:00 -> 23:15 moved the ATR owner from M15 to H1, so 16 candles counted on H1
+      // read 320m where 14 on M15 read 70m - the knot's time jumped x4.6 for a 1-pip drag.
+      // The owner is a HEIGHT (240%..360% of a rung's ATR); a candle count needs a WIDTH, and
+      // the only stable width is the box' own TF.
+      if (!sync.text.includes('int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);'))
+        broken.push('the count is taken on a ruler that can move with the box\' height again - the same knot would read two different times after a drag (70m vs 320m)');
     }
 
     // 2 — THREE IN A ROW, not three anywhere in the story.
@@ -10292,8 +10298,8 @@ function main() {
     for (const s of ['P-BK-133 - 2h20m is NOT a ladder rung',
                      'P-BK-133 - the entry IS the knot\'s own HuntSL (142.5)',
                      'P-BK-133 - the stop IS the knot\'s own EngSL (53.4)',
-                     'P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)',
-                     'P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)',
+                     'P-BK-133 - a rung keeps its OWN legs (H4 entry = Hunt(H4))',
+                     'P-BK-133 - an off-ladder FTR keeps one EngSL (box ignored)',
                      'P-BK-133 - the note\'s Trigger IS the entry (142.5)'])
       if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fix would be arithmetic nobody executes');
 

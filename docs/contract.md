@@ -708,6 +708,15 @@ One function over the ceiling stays whole and never grows.
   a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **The count's WIDTH is the box' own TF, never the ATR owner (P-BK-139, 2026-11-01).** The
+  knot's time is `bars x readTF / 3`, so the count and its candle width must be ONE grid. The
+  width was the owner rung (the ATR band, `h / ATR` in 240 %..360 %), a HEIGHT — so a drag that
+  moved the band across a rung boundary re-chose the ruler and re-counted: MEASURED on box
+  `15_149567468` (EURUSD M15, band 1.11333..1.11573, 24 pips) — left edge 22:00 read 14 M15
+  candles = 70m, the same box at 23:15 read 16 H1 candles = 320m, a x4.6 jump for a 1-pip
+  drag. `baseReadTF` is now the box' own TF; the owner stays information (the note's
+  `TF M3 | Leg 288 %` line) and the ATR-owner fallback still answers only when the walk cannot.
+  Gate: `P-BK-126b` (its needle is the stable-grid line), mutation `P-BK-139-a`.
 - **The TIME rules; the box only names the type (P-BK-138, 2026-11-01).** RETIRED IN
   BEHAVIOUR: the box' power no longer scales a leg. The stop is `EngSL` of the knot's own
   time (the type's rung when the fit rule names one), the entry is `8/3` of it on a Hunt knot
