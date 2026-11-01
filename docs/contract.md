@@ -708,6 +708,18 @@ One function over the ceiling stays whole and never grows.
   a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **The TIME rules; the box only names the type (P-BK-138, 2026-11-01).** RETIRED IN
+  BEHAVIOUR: the box' power no longer scales a leg. The stop is `EngSL` of the knot's own
+  time (the type's rung when the fit rule names one), the entry is `8/3` of it on a Hunt knot
+  and `1` on an FTR, the targets are `{7/3, 5, 31/3}` of the stop, and the height decides the
+  TYPE and the rung - never a multiplier. `BaseKnotPairGrade` answers `1.0` for every knot.
+  WHY: his own two reports chose the SMALLER number both times (the 2h20m box: 142.5 / 53.4,
+  never 214.6 / 80.5; the tall ETR box: Trigger 84.5, never 188.0); and the floor made the
+  knot's TIME irrelevant on a tall box - two knots on different times read the same legs,
+  the opposite of "every knot has its own coordinates". The fit rule (`BaseKnotLadderHopAt`,
+  55/64) is what keeps the pair inside the box, so the floor was never what held it there.
+  Gate: `P-BK-138`, mutation `-a`; the STRUCTURE of P-BK-132/135 (one owner, both legs,
+  no one-sided write) stays gated so a restore cannot reintroduce the split.
 - **A box taller than its rung is priced as the box it is.** The ladder picks a rung; it may
   not price a box that has outgrown that rung. ONE factor, `boxLeg / rungLeg` clamped at 1
   (`BaseKnotLegGrade`), lifts BOTH legs, so the entry and the stop keep their ratio (P-BK-127)

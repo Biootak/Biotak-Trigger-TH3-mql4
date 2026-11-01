@@ -335,7 +335,11 @@ int OnStart()
          " eng=", DoubleToString(p6.eng, 1), " hunter=", DoubleToString(p6.hunter, 1),
          " | H4 read=", DoubleToString(h4Read, 2), " | 6h read=", DoubleToString(TradePlanStripPips(360, 0), 2));
 
-   //---- 9. P-BK-132: THE BOX' OWN POWER IS THE FLOOR OF THE LEG. His 6h FTR box had drifted a
+   //---- 9. P-BK-132 + P-BK-138: THE BOX NAMES THE TYPE, NEVER THE MULTIPLIER. The floor that
+   //---- used to lift a tall box' legs is RETIRED; what this section now pins is the inverse -
+   //---- a box twice its rung must STILL draw the rung's own pair, because the knot's time is
+   //---- what sizes the trade (his 2h20m report kept 53.4, never 80.5). The structure it also
+   //---- guards (one owner, both legs under one guard) is what a restore has to obey. 6h FTR box had drifted a
    //---- short step past its own time's ability but had not reached the next rung's range, and the
    //---- ladder still priced it on its own rung - so its entry, stop and targets kept the size of a
    //---- box it no longer was. The law is the log interpolation's own identity: a leg graded by the
@@ -357,13 +361,12 @@ int OnStart()
    double hC = 86.8 * 4.2667, tC = 3000.0 + hC * g_bkPip, bC = 3000.0;
    double eC = 0.0, sC = 0.0, oC = 0.0, rC = 0.0;
    BaseKnotCalcLevels(tC, bC, +1, BK_NODE_FTR, 5, eC, sC, oC, rC, an);
-   BkCheck("P-BK-132 - a box twice its rung doubles BOTH legs", BkNear(oC, 86.8) && BkNear(rC, 86.8), rC, 86.8);
-   BkCheck("P-BK-132 - the stop line moves with it (entry = top - 86.8)", BkNear(eC, tC - 86.8 * g_bkPip), eC, tC - 86.8 * g_bkPip);
+   BkCheck("P-BK-132 - a box twice its rung KEEPS the rung's legs", BkNear(oC, 43.4) && BkNear(rC, 43.4), rC, 43.4);
+   BkCheck("P-BK-132 - the stop line stays on it (entry = top - 43.4)", BkNear(eC, tC - 43.4 * g_bkPip), eC, tC - 43.4 * g_bkPip);
    double noteC = BaseKnotRiskPips(5, tC, bC, an);
    BkCheck("P-BK-132 - the note's risk IS the drawn stop", BkNear(noteC, rC), noteC, rC);
-   BkCheck("P-BK-132 - the graded pair fills exactly 30/64 of the box (off/risk = 1)", BkNear(oC + rC, 30.0 / 64.0 * hC), oC + rC, 30.0 / 64.0 * hC);
    double tpC = BaseKnotPlanTPPips(5, 1, an, noteC);
-   BkCheck("P-BK-132 - TP1 rides the same ruler (x2)", BkNear(tpC, BkRowTP(5, 1) * 2.0), tpC, BkRowTP(5, 1) * 2.0);
+   BkCheck("P-BK-132 - TP1 is the rung's own leg", BkNear(tpC, BkRowTP(5, 1)), tpC, BkRowTP(5, 1));
    BkCheck("P-BK-132 - an ungraded read keeps the plan's own leg", BkNear(BaseKnotPlanTPPips(5, 1, an), BkRowTP(5, 1)),
            BaseKnotPlanTPPips(5, 1, an), BkRowTP(5, 1));
    BkCheck("P-BK-132 - the R on a tick never moves", BkNear(tpC / noteC, BkRowTP(5, 1) / 43.4), tpC / noteC, BkRowTP(5, 1) / 43.4);
@@ -371,8 +374,8 @@ int OnStart()
    double hE = 2.0 * 73.3 * 4.2667, tE = 3000.0 + hE * g_bkPip, bE = 3000.0;
    double eE = 0.0, sE = 0.0, oE = 0.0, rE = 0.0;
    BaseKnotCalcLevels(tE, bE, +1, BK_NODE_ETR, 5, eE, sE, oE, rE, an);
-   BkCheck("P-BK-132 - an ETR grades its entry AND its stop (off 91.6 / risk 146.6)",
-           BkNear(oE, 2.0 * BkRowHunt(15)) && BkNear(rE, 2.0 * BkRowEng(15)), rE, 2.0 * BkRowEng(15));
+   BkCheck("P-BK-132 - an ETR keeps its own Hunt/Eng (box ignored)",
+           BkNear(oE, BkRowHunt(15)) && BkNear(rE, BkRowEng(15)), rE, BkRowEng(15));
    BkCheck("P-BK-132 - the grade preserves the entry/stop ratio", BkNear(oE / rE, BkRowHunt(15) / BkRowEng(15)), oE / rE, BkRowHunt(15) / BkRowEng(15));
    // the product's real Hunt/Eng is 8/3 (5/8 of the ATR against 15/64 of it), so the deepest graded
    // pair fills 55/64 of the box - the SAME constant the hop test reserves (BK_AB_FIT_NUM/DEN).
@@ -394,16 +397,16 @@ int OnStart()
       double en = 0.0, st = 0.0, off = 0.0, risk = 0.0;
       BaseKnotCalcLevels(top, bot, +1, kind, 5, en, st, off, risk, an);
       string typeName = BaseKnotNodeShort(kind);
-      double wantOff = 2.0 * (kind == BK_NODE_FTR ? eng : BkRowHunt(tf));
+      double wantOff = (kind == BK_NODE_FTR ? eng : BkRowHunt(tf));
       BkCheck("P-BK-132 " + typeName + " - entry follows the shared grade",
               BkNear(off, wantOff), off, wantOff);
-      BkCheck("P-BK-132 " + typeName + " - stop follows the shared grade",
-              BkNear(risk, 2.0 * eng), risk, 2.0 * eng);
+      BkCheck("P-BK-132 " + typeName + " - stop is the rung's leg",
+              BkNear(risk, eng), risk, eng);
       BkCheck("P-BK-132 " + typeName + " - note risk matches the drawn stop",
               BkNear(BaseKnotRiskPips(tf, top, bot, an), risk), BaseKnotRiskPips(tf, top, bot, an), risk);
-      BkCheck("P-BK-132 " + typeName + " - TP1 follows the same grade",
-              BkNear(BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1)),
-              BaseKnotPlanTPPips(tf, 1, an, risk), 2.0 * BkRowTP(tf, 1));
+      BkCheck("P-BK-132 " + typeName + " - TP1 is the plan's own leg",
+              BkNear(BaseKnotPlanTPPips(tf, 1, an, risk), BkRowTP(tf, 1)),
+              BaseKnotPlanTPPips(tf, 1, an, risk), BkRowTP(tf, 1));
    }
 
    //---- 10. P-BK-133: AN OFF-LADDER KNOT'S OWN TIME IS ITS RUNG. His 2h20m box (h = 343.3 pips,
@@ -461,8 +464,8 @@ int OnStart()
    double hS = 343.3, tS = 5000.0 + hS * g_bkPip, bS = 5000.0;
    double eS = 0.0, sS = 0.0, oS = 0.0, rS = 0.0;
    BaseKnotCalcLevels(tS, bS, +1, BK_NODE_ETR, 240, eS, sS, oS, rS, an2);
-   double wantS = 194.4 * (hS / BK_NODE_POWER_DIV) / 72.9;
-   BkCheck("P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)", BkNear(oS, wantS), oS, wantS);
+   double wantS = 194.4;   // P-BK-138: the box no longer scales a leg - the rung's own Hunt(H4)
+   BkCheck("P-BK-133 - a rung keeps its OWN legs (H4 entry = Hunt(H4))", BkNear(oS, wantS), oS, wantS);
    string tagS = BaseKnotLegsTag(240, rS, oS, BaseKnotOffsetIsHunt(BK_NODE_ETR, 240, an2), an2);
    BkCheckHas("P-BK-133 - a rung's Trigger is still the entry", tagS, "Trigger " + BaseKnotLegPipsText(oS), true);
 
@@ -475,7 +478,7 @@ int OnStart()
    double hF = 2.0 * 87.6 * BK_NODE_POWER_DIV, tF = 6000.0 + hF * g_bkPip, bF = 6000.0;
    double eF = 0.0, sF = 0.0, oF = 0.0, rF = 0.0;
    BaseKnotCalcLevels(tF, bF, +1, BK_NODE_FTR, 360, eF, sF, oF, rF, an2);
-   BkCheck("P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)", BkNear(oF, rF) && BkNear(oF, 2.0 * 87.6), oF, rF);
+   BkCheck("P-BK-133 - an off-ladder FTR keeps one EngSL (box ignored)", BkNear(oF, rF) && BkNear(oF, 87.6), oF, rF);
 
    Print("[BKLINES] DONE pass=", g_bkPass, " fail=", g_bkFail);
    return (g_bkFail == 0 ? 0 : 1);

@@ -179,6 +179,15 @@ int OnStart()
    LaCheck("no upper row keeps sqrt", BaseKnotEngPips(20, 0), 30.0 * MathSqrt(20.0 / 15.0));
    BaseKnotEngPush(mA, aA, eA, hA, tA, tA, tA, 5);
 
+   //--- 8. P-BK-138: THE BOX NAMES THE TYPE, NEVER THE MULTIPLIER. A 400-pip box on an
+   //---    FTR knot at H1 used to grade the pair to 400/4.2667 = 93.75 pips; the hour's own
+   //---    EngSL is 60, and 60 is what the lines must be drawn at (the 2h20m report).
+   double top = 1.10000, bot = top - 400.0 * BaseKnotPipSize();
+   double offP = 0.0, riskP = 0.0;
+   BaseKnotLegPair(top, bot, BK_NODE_FTR, 60, offP, riskP, 0, -1);
+   LaCheck("P-BK-138 - a 400 pips box keeps the hour's EngSL (60)", riskP, 60.0);
+   LaCheck("P-BK-138 - and the entry is the same leg on an FTR", offP, 60.0);
+
    Print("[LEGAT] DONE pass=", g_laPass, " fail=", g_laFail);
    int h = FileOpen("biotak_legat_test.txt", FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(h != INVALID_HANDLE)

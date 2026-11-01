@@ -10151,7 +10151,11 @@ function main() {
       console.log('[PASS] P-BK-131 no series is not no answer: a length MT4 has no bar for (700m / 45m / 8m) is scaled from the rung below by the project\'s √-law - the same arithmetic BaseKnotRungScale applies to the type\'s row - so the plan\'s price is ONE continuous monotone function of the knot\'s own minutes (H4 324.9 -> 700m 554.9 -> D1 999.3) and two knots can be compared');
   }
 
-  // P-BK-132 (2026-10-27) — THE BOX' OWN POWER IS THE FLOOR OF THE LEG.
+  // P-BK-132 (2026-10-27) — THE STRUCTURE OF THE GRADE. RETIRED IN BEHAVIOUR by P-BK-138
+  // (2026-11-01): the factor now answers 1.0 for every knot, so no box moves a leg. What stays
+  // asserted here is the SHAPE a restore must still obey - one owner asked once, both legs under
+  // one guard, every reader (note, targets, card) off the drawn pair - plus the harness pin that
+  // a box twice its rung now draws the rung's own legs.
   //
   // The user's own case: an FTR box that drifts a short step (or a C step) past its own time's
   // ability but never reaches the next rung's range. The type ladder still prices it on its own
@@ -10225,10 +10229,10 @@ function main() {
     const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
     const hText = harness ? harness.join('\n') : '';
     for (const s of ['P-BK-132 - a box under its rung is untouched',
-                     'P-BK-132 - a box twice its rung doubles BOTH legs',
+                     'P-BK-132 - a box twice its rung KEEPS the rung',
                      'P-BK-132 - the note\'s risk IS the drawn stop',
                      'P-BK-132 - the grade preserves the entry/stop ratio',
-                     'P-BK-132 - the graded pair fills exactly 30/64 of the box (off/risk = 1)',
+                     'P-BK-132 - a box twice its rung KEEPS the rung\'s legs',
                      'P-BK-132 - the product\'s Hunt/Eng fills 55/64 of the box (the ladder\'s own fit)'])
       if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the grade would be arithmetic nobody executes');
 
@@ -10366,10 +10370,12 @@ function main() {
     if (!pairG)
       broken.push('BaseKnotPairGrade is gone - the factor is written per leg again, and the 2h20m box reads 1.77');
     else {
-      if (!pairG.text.includes('if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;'))
-        broken.push('the pair factor lost its fence - an off-ladder Hunt rides the box\' power (214.6) or a rung stops riding it');
-      if (!pairG.text.includes('return BaseKnotLegGrade(boxEngPips, legEngPips);'))
-        broken.push('the pair factor is not BaseKnotLegGrade - a second ratio is back');
+      // P-BK-138 RETIRED THE FLOOR: the pair factor now answers 1.0 for every knot, and the
+      // inverse (a grade back inside this body) is what fails this gate.
+      if (!pairG.text.includes('return 1.0;'))
+        broken.push('the pair factor no longer answers 1.0 - the box is scaling a leg again');
+      if (pairG.text.includes('return BaseKnotLegGrade(boxEngPips, legEngPips);'))
+        broken.push('the box grade is back inside the pair factor - the 2h20m box would read 80.5 again');
     }
     const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
     if (!pair || !pair.text.includes('double g = BaseKnotPairGrade(hunt, stf, capE, riskPips);'))
@@ -10399,7 +10405,49 @@ function main() {
     if (broken.length)
       failures.push('P-BK-135: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Shot / the harness)');
     else
-      console.log('[PASS] P-BK-135 the factor belongs to the pair: BaseKnotPairGrade is the ONE answer (a rung or an FTR rides the box, an off-ladder Hunt does not), the geometry multiplies BOTH legs or neither, the note\'s risk and the card\'s cells ask the same factor - so every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) and the 2h20m box reads 142.5 / 53.4, not 142.5 / 80.5 = 1.77');
+      console.log('[PASS] P-BK-135 the factor belongs to the pair, and P-BK-138 makes that factor 1.0: BaseKnotPairGrade is still the ONE answer the geometry, the note\'s risk and the card ask, the geometry still multiplies BOTH legs or neither - so a restore can never split the pair again, and every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) with no box in between');
+  }
+
+  // -- 94. P-BK-138 (2026-11-01): THE TIME RULES, THE BOX ONLY NAMES THE TYPE --
+  //
+  // MEASURED in his own two reports, in opposite places: the 2h20m box read 214.6 / 80.5
+  // because `h / 4.2667` beat its own EngSL, and the tall ETR box read Trigger 188.0 because
+  // the graded pair filled the box. He kept the SMALLER number both times. The floor had a
+  // second cost: on a box taller than 4.2667 x EngSL the knot's TIME stopped entering the
+  // subset at all, so two knots on different times read the same legs. The fit rule
+  // (BaseKnotLadderHopAt, 55/64) is what keeps the pair inside the box, so the floor was
+  // never what held it there. The STRUCTURE of P-BK-132/135 stays asserted above: a restore
+  // must still lift BOTH legs under one guard, and must still be asked once.
+  {
+    const broken = [];
+    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    const pairG = ab ? bodyOf(ab, 'double BaseKnotPairGrade(') : null;
+    if (!pairG)
+      broken.push('BaseKnotPairGrade is gone - the floor and the fence would both be written per leg');
+    else {
+      if (!/^\s*return 1\.0;\s*$/m.test(pairG.text))
+        broken.push('the pair factor is not 1.0 - the box scales a leg again (the 2h20m 214.6 / 80.5)');
+      if (/return\s+BaseKnotLegGrade\(/.test(pairG.text))
+        broken.push('the box grade answers the pair again - the box is a multiplier, not a name');
+    }
+    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
+    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
+    if (!pair || !pair.text.includes('BaseKnotPairGrade(hunt, stf, capE, riskPips)'))
+      broken.push('the geometry stopped asking the one owner - a second factor could appear beside it');
+    if (!pair || !pair.text.includes('if(g > 1.0)'))
+      broken.push('the one-guard shape is gone - a restore could write one leg without the other');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    if (!hText.includes('P-BK-138 - a 400 pips box keeps the hour'))
+      broken.push('the harness no longer pins the 400-pip box - a floor would come back unwitnessed');
+    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
+    if (!doc || !doc.join('\n').includes('P-BK-138'))
+      broken.push('the contract no longer carries the rule');
+
+    if (broken.length)
+      failures.push('P-BK-138: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
+    else
+      console.log('[PASS] P-BK-138 the time rules and the box only names the type: BaseKnotPairGrade answers 1.0 for every knot, so the stop is the knot\'s own EngSL (never h/4.2667), the entry is 8/3 of it on a Hunt and 1 on an FTR, and the targets ride the drawn stop - the 2h20m box reads 142.5 / 53.4 and a 400-pip box on an hour still draws 60');
   }
 
   // -- 92. P-BK-136 (2026-11-01): A LEG IS READ AT A TIME, NEVER AT A RUNG --
@@ -10466,7 +10514,7 @@ function main() {
     }
     const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
     const hText = harness ? harness.join('\n') : '';
-    for (const s of ['log-linear through the', '35.7664', '54.6232', 'a 1m step at the rung'])
+    for (const s of ['log-linear through the', '35.7671', '54.6351', 'a 1m step at the rung'])
       if (!hText.includes(s))
         broken.push('the harness no longer pins `' + s + '` - a sqrt-shaped table cannot tell the two laws apart');
     const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));

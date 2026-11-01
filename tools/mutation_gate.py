@@ -5559,6 +5559,16 @@ MUTATIONS = [
         "expect": "[FAIL] P-BK-136",
     },
     {
+        "id": "P-BK-138-a",
+        "gate": "regression",
+        "rule": "the time rules, the box only names the type",
+        "what": "the box grade is back in the pair factor - a tall box scales both legs again (the 2h20m box reads 214.6 / 80.5)",
+        "file": "Biotak/BaseKnot_Ability.mqh",
+        "find": "   // the four parameters stay because the caller set is frozen (contract \u00a711).\r\n   return 1.0;",
+        "replace": "   if(boxEngPips <= legEngPips) return 1.0;   // MUTATION: the floor is back\r\n   return BaseKnotLegGrade(boxEngPips, legEngPips);",
+        "expect": "[FAIL] P-BK-138",
+    },
+    {
         "id": "P-BK-137-a",
         "gate": "regression",
         "rule": "a leg between two rows rides the band's own slope",
