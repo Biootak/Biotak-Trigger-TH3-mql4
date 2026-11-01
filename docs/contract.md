@@ -708,6 +708,14 @@ One function over the ceiling stays whole and never grows.
   a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **A box IN MOTION keeps the length it was committed with (P-BK-140, 2026-11-01).**
+  "Inside the band" is a per-candle yes/no, so `still` is a STEP: MEASURED on box
+  `15_151797125` (EURUSD M15, 24 pips) — three drag frames moved the top 0.8 pip and the
+  count read 15 / 14 / 12, so the knot's time read 75m / 70m / H1 and the TYPE printed blank
+  on two of them while the box on the screen never changed. `BaseKnotBoxInMotion()` (the same
+  400 ms heartbeat P-UI-130 uses) holds `still` and `bars` at the last commit' values while a
+  box is under the mouse; a real resize commits a new pair. One compare per Sync, zero per
+  frame. Gate: `P-BK-140`, mutation `-a`.
 - **The count's WIDTH is the box' own TF, never the ATR owner (P-BK-139, 2026-11-01).** The
   knot's time is `bars x readTF / 3`, so the count and its candle width must be ONE grid. The
   width was the owner rung (the ATR band, `h / ATR` in 240 %..360 %), a HEIGHT — so a drag that

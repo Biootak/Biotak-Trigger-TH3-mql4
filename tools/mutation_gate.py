@@ -5666,6 +5666,16 @@ MUTATIONS = [
     #--- the geometry wrote `g` onto the stop only (142.5 / 80.5 = 1.77) while the plan's law is
     #--- 8/3. Each entry puts one half of the one-ruler law back; the owning gate must fail.
     {
+        "id": "P-BK-140-a",
+        "gate": "regression",
+        "rule": "a box in motion keeps the length it was committed with",
+        "what": "every drag frame re-derives the length - the same 24-pip box reads 75m / 70m / H1",
+        "file": "Biotak/BaseKnot_Plan.mqh",
+        "find": "if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }",
+        "replace": "if(false) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }   // MUTATION: the drag re-derives",
+        "expect": "[FAIL] P-BK-140",
+    },
+    {
         "id": "P-BK-139-a",
         "gate": "regression",
         "rule": "the knot's time is the base's own candle count",

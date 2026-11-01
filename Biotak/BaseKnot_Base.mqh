@@ -221,6 +221,13 @@ struct BaseKnotBox
    int    baseTFMin; // P-BK-36/38: the class LAST published (0 = legacy/unset) — the TF the
                      //              note names, the TF the node's LENGTH is classed by AND the
                      //              TF the break's story is read on
+   // P-BK-140 (2026-11-01): THE LENGTH A BOX WAS COMMITTED WITH, kept so a drag frame
+   // cannot re-derive it. MEASURED on box 15_151797125 (EURUSD M15): the band' top moved
+   // 0.8 pip across three drag frames and the count went 15 -> 14 -> 12, so the knot's
+   // time read 75m -> 70m -> H1 while the box on the screen was the same 24-pip box. The
+   // count is a per-candle yes/no, so it CANNOT be smooth - it is held still instead.
+   int    baseStill; // the stand-still count the published class was computed from (0 = unset)
+   int    baseBars;  // ... and the base's own candle count beside it (the note's number)
    int    ownerTFMin; // P-BK-114: the ruler's owner TF from the box height (240%..360% of
                       //              that TF's ATR); 0 = not measured yet
    int    nodeSide;  // P-BK-47/46: the SIDE the break's story names (0 = none) — published so
@@ -521,6 +528,12 @@ static bool        s_bkDragMoved = false;
 static uint        s_bkDragMs = 0;        // single follow budget: moves + paint (30ms)
 static uint        s_bkDragPaintMs = 0;   // shared drag-paint budget (all painters)
 static uint        s_bkDragActMs = 0;     // last drag activity — the stuck-lock watchdog (below) only fires when silent
+// P-BK-140 (2026-11-01): IS A BOX IN MOTION RIGHT NOW? The same 400 ms heartbeat the click
+// toggle uses (P-UI-130): a box that is still under the mouse has not been committed yet, so
+// the length it had at commit stands until the drag ends. Zero cost per frame (one compare).
+#define BK_BOX_MOTION_MS 400
+bool BaseKnotBoxInMotion()
+{ return (s_bkDragActMs > 0 && GetTickCount() - s_bkDragActMs < BK_BOX_MOTION_MS); }
 static datetime    s_bkFolT1 = 0;         // last-followed BOX anchors — anchor-exact
 static datetime    s_bkFolT2 = 0;         // source wins while the terminal moves them
 static double      s_bkFolP1 = 0.0;

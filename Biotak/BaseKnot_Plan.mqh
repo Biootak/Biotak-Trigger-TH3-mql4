@@ -1176,7 +1176,7 @@ void BaseKnotSync(const string id)
    // where the base started, where it ended, or which TF it belongs to.
    BaseKnotSpan sp;
    int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);   // P-BK-139: the count's grid is the BOX' OWN TF - the owner rung is a height, never the ruler
-   int still = sp.still;   // P-BK-139: the retry on the chart's TF is gone - the count's grid and the box' TF are now the SAME value
+   int still = sp.still; if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }   // P-BK-140: a box IN MOTION keeps the length it was committed with (the count is a per-candle yes/no and cannot be smooth)
    // P-BK-36/38: the CLASS comes first now, because it is also what the node's
    // story is read on — one box, one TF, one story, whichever chart opens it. Both
    // numbers are published on the registry, so the pump's change check reads the
@@ -1195,7 +1195,7 @@ void BaseKnotSync(const string id)
    datetime bs1, bs2;
    BaseKnotClassSpan(sp, t1, t2, bs1, bs2);
    int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF); if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;   // P-BK-126b: THE THREE STAND-STILL CANDLES DECIDE THE KNOT'S TIME and the ATR owner is the FALLBACK only (P-BK-114 read it first, so the M5 band — 119.9 / 34.6 = 3.47 — beat the three M30 candles the user drew: 119.2 pips = 99.4 % of the box, 32m already 123.4; docs/bk-dataset.md §11)
-   g_bkBoxes[k].baseTFMin = baseTF;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces
+   g_bkBoxes[k].baseTFMin = baseTF; g_bkBoxes[k].baseStill = still; g_bkBoxes[k].baseBars = bars;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces; P-BK-140: and the pair is stored so a drag frame cannot re-derive it
    g_bkBoxes[k].storyT = sp.tLast; if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);   // P-BK-41: the same story the pump re-reads; P-ANCHOR-LAST: the active owner follows the story it just published
    g_bkBoxes[k].exitT  = sp.tExit;   // P-BK-81: the base's OWN exit candle — the ONE candle the
                                      //          direction is read from, published so the pump's

@@ -10414,6 +10414,41 @@ function main() {
       console.log('[PASS] P-BK-135 the factor belongs to the pair, and P-BK-138 makes that factor 1.0: BaseKnotPairGrade is still the ONE answer the geometry, the note\'s risk and the card ask, the geometry still multiplies BOTH legs or neither - so a restore can never split the pair again, and every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) with no box in between');
   }
 
+  // -- 95. P-BK-140 (2026-11-01): A BOX IN MOTION KEEPS THE LENGTH IT WAS COMMITTED WITH --
+  //
+  // MEASURED on box 15_151797125 (EURUSD M15, band 1.11331..1.1158x): three drag frames
+  // moved the top 0.8 pip and the count read 15 -> 14 -> 12, so the knot's time read
+  // 75m -> 70m -> H1 and the TYPE printed blank on two of the three, while the box on the
+  // screen was the same 24-pip box. "Inside the band" is a per-candle yes/no, so the count
+  // is a STEP and cannot be smoothed - it is HELD instead: while a box is under the mouse
+  // (the same 400 ms heartbeat P-UI-130 uses), the length the last commit published stands,
+  // and a real resize commits a new one. Zero cost per frame (one compare).
+  {
+    const broken = [];
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
+    if (!sync)
+      broken.push('BaseKnotSync is gone');
+    else {
+      if (!sync.text.includes('if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }'))
+        broken.push('the drag no longer holds the committed length - the same box reads 75m / 70m / H1 in three frames');
+      if (!sync.text.includes('g_bkBoxes[k].baseStill = still; g_bkBoxes[k].baseBars = bars;'))
+        broken.push('nothing is stored to hold - every frame would re-derive the length');
+    }
+    if (!base || !base.join('\n').includes('bool BaseKnotBoxInMotion()') ||
+        !base.join('\n').includes('#define BK_BOX_MOTION_MS 400'))
+      broken.push('BaseKnotBoxInMotion is gone - "in motion" has no owner and a guess would hold a box forever');
+    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
+    if (!doc || !doc.join('\n').includes('P-BK-140'))
+      broken.push('the contract no longer carries the rule');
+
+    if (broken.length)
+      failures.push('P-BK-140: ' + broken.join('; ') + ' (BaseKnot_Plan / BaseKnot_Base / docs/contract.md)');
+    else
+      console.log('[PASS] P-BK-140 a box in motion keeps its committed length: BaseKnotBoxInMotion is the ONE 400 ms owner, BaseKnotSync holds still/bars from the last commit while it answers true, and a real resize stores a new pair - so the same 24-pip box reads 75m in every drag frame instead of 75m / 70m / H1');
+  }
+
   // -- 94. P-BK-138 (2026-11-01): THE TIME RULES, THE BOX ONLY NAMES THE TYPE --
   //
   // MEASURED in his own two reports, in opposite places: the 2h20m box read 214.6 / 80.5
