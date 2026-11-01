@@ -708,6 +708,16 @@ One function over the ceiling stays whole and never grows.
   a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **The owner's tolerance is HALF THE ATR STEP, not a fixed percentage (P-BK-141, 2026-11-01).**
+  The owner rung is the rung the box is nearest `3 x ATR` of, so the edge to a neighbour is the
+  geometric midpoint `3 x sqrt(aNeighbour / aThis)`. MEASURED on his own EURUSD M15 ATR table
+  (M1 1.2 · M5 3.6 · M15 6.7 · H1 12.7 · H4 25.5 · D1 59.6 · W1 137.7): a fixed `2.40..3.60`
+  leaves a hole between EVERY pair of rungs (4.32 pips at M1→M5, 6.36 at M15→H1, 51.24 at
+  H4→D1, 115.92 at D1→W1) and a box in one of them names NO owner, which is why the note's
+  `TF .. | Leg .. %` line came and went on boxes of one size. The geometric edges meet exactly
+  (M15 27.67 = H1 27.67) and the tolerance grows with the knot's own time — nothing is tuned.
+  `BK_OWNER_LO/HI` survive as the fallback for a rung whose neighbour has no ATR. Gate:
+  `P-BK-141`, mutation `-a` (the note and the pump must both test the same band).
 - **A box IN MOTION keeps the length it was committed with (P-BK-140, 2026-11-01).**
   "Inside the band" is a per-candle yes/no, so `still` is a STEP: MEASURED on box
   `15_151797125` (EURUSD M15, 24 pips) — three drag frames moved the top 0.8 pip and the

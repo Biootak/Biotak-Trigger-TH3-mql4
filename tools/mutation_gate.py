@@ -5666,6 +5666,16 @@ MUTATIONS = [
     #--- the geometry wrote `g` onto the stop only (142.5 / 80.5 = 1.77) while the plan's law is
     #--- 8/3. Each entry puts one half of the one-ruler law back; the owning gate must fail.
     {
+        "id": "P-BK-141-a",
+        "gate": "regression",
+        "rule": "the owner's tolerance is half the ATR step",
+        "what": "the fixed +/-20 % band is back - a box between 24.12 and 30.48 pips (M15->H1) names no owner at all",
+        "file": "Biotak/BaseKnot_Owner.mqh",
+        "find": "      double rLo = BaseKnotOwnerBandLo(aDn, a), rHi = BaseKnotOwnerBandHi(aUp, a);",
+        "replace": "      double rLo = BK_OWNER_LO, rHi = BK_OWNER_HI;   // MUTATION: one band for every knot",
+        "expect": "[FAIL] P-BK-141",
+    },
+    {
         "id": "P-BK-140-a",
         "gate": "regression",
         "rule": "a box in motion keeps the length it was committed with",

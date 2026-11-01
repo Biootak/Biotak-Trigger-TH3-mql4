@@ -204,8 +204,22 @@ int BaseKnotPrevTFMin(const int tfMin)
    }
    return prev;
 }
-#define BK_OWNER_LO 2.40
+#define BK_OWNER_LO 2.40   // P-BK-141: the FALLBACK only (a rung whose neighbour has no ATR)
 #define BK_OWNER_HI 3.60
+// P-BK-141 (2026-11-01) — THE TOLERANCE IS HALF THE ATR STEP, ASKED OF THE NEIGHBOURS.
+// A fixed +/-20 % around 300 % does not TILE: the rungs' ATRs step by ~1.9 (a x4 in time), so
+// 2.40..3.60 leaves 2.40/1.9 = 1.26 .. 2.40 and 3.60 .. 3.60*1.9 uncovered — a box in one of
+// those holes has NO owner at all, which is why the note's `TF .. | Leg .. %` line vanishes on
+// some knots and not others (his own EURUSD M15: M15 ATR 6.7, H1 12.7, a 15-pip box sits at
+// 2.24 and 1.18 — both outside). The owner is where the box is NEAREST 3 x ATR in LOG space,
+// so the edge to a neighbour is the geometric midpoint: 3 x sqrt(aNeighbour / aThis). Nothing
+// is guessed and nothing is tuned: the tolerance IS the real step between the two rungs, which
+// is exactly "as big as the trigger time makes it".
+#define BK_OWNER_UNIT 3.00  // the centre every band is measured from (300 % of one ATR)
+double BaseKnotOwnerBandLo(const double aDown, const double aThis)
+{ return (aDown > 0.0 && aThis > 0.0 ? BK_OWNER_UNIT * MathSqrt(aDown / aThis) : BK_OWNER_LO); }
+double BaseKnotOwnerBandHi(const double aUp, const double aThis)
+{ return (aUp > 0.0 && aThis > 0.0 ? BK_OWNER_UNIT * MathSqrt(aUp / aThis) : BK_OWNER_HI); }
 string BaseKnotOwnerTag(BaseKnotNode &nd, const double boxPips)
 {
    if(nd.nodeTF <= 0 || boxPips <= 0.0 || nd.abTrig <= 0.0) return "";
@@ -243,8 +257,13 @@ string BaseKnotOwnerTag(BaseKnotNode &nd, const double boxPips)
       double ap = BaseKnotToPips(atrs[idx]);
       if(ap <= 0.0) break;
       double r = boxPips / ap;
-      if(r >= BK_OWNER_LO && r <= BK_OWNER_HI) { owner = idx; break; }
-      int nxt = (r > BK_OWNER_HI ? idx + 1 : idx - 1);
+      // P-BK-141: the band is the GEOMETRIC midpoint to each neighbour, computed from this
+      // array's own ATRs - a fixed +/-20 % leaves holes the same box can fall into.
+      double aDn = (idx > 0 ? BaseKnotToPips(atrs[idx - 1]) : 0.0);
+      double aUp = (idx < n - 1 ? BaseKnotToPips(atrs[idx + 1]) : 0.0);
+      double rLo = BaseKnotOwnerBandLo(aDn, ap), rHi = BaseKnotOwnerBandHi(aUp, ap);
+      if(r >= rLo && r <= rHi) { owner = idx; break; }
+      int nxt = (r > rHi ? idx + 1 : idx - 1);
       if(nxt < 0 || nxt >= n || nxt == idx) break;
       idx = nxt;
    }

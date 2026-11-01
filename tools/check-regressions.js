@@ -10414,6 +10414,45 @@ function main() {
       console.log('[PASS] P-BK-135 the factor belongs to the pair, and P-BK-138 makes that factor 1.0: BaseKnotPairGrade is still the ONE answer the geometry, the note\'s risk and the card ask, the geometry still multiplies BOTH legs or neither - so a restore can never split the pair again, and every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) with no box in between');
   }
 
+  // -- 96. P-BK-141 (2026-11-01): THE OWNER'S TOLERANCE IS HALF THE ATR STEP --
+  //
+  // A fixed +/-20 % around 300 % does not TILE. MEASURED on his own EURUSD M15 ATR table
+  // (M1 1.2 · M5 3.6 · M15 6.7 · H1 12.7 · H4 25.5 · D1 59.6 · W1 137.7): the old bands leave
+  // a hole between EVERY pair of rungs - 4.32 pips wide at M1->M5, 6.36 at M15->H1, 51.24 at
+  // H4->D1, 115.92 at D1->W1 - and a box in a hole has NO owner at all, which is why the
+  // note's `TF .. | Leg .. %` line comes and goes on boxes of the same size. The edge to a
+  // neighbour is the geometric midpoint `3 x sqrt(aNeighbour / aThis)`, so the bands meet
+  // exactly (M15 27.67 = H1 27.67) and the tolerance grows with the knot's own time. Nothing
+  // is tuned: the number IS the real step between two rungs.
+  {
+    const broken = [];
+    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
+    const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
+    const noteText = note ? note.join('\n') : '';
+    if (!noteText.includes('double BaseKnotOwnerBandLo(const double aDown, const double aThis)') ||
+        !noteText.includes('BK_OWNER_UNIT * MathSqrt(aDown / aThis)'))
+      broken.push('the band is no longer the step to the neighbour - a fixed 2.40..3.60 leaves a hole between every pair of rungs');
+    if (!noteText.includes('double rLo = BaseKnotOwnerBandLo(aDn, ap), rHi = BaseKnotOwnerBandHi(aUp, ap);'))
+      broken.push('the note\'s owner still tests the fixed band - the face and the pump can name two owners');
+    const walk = own ? bodyOf(own, 'int BaseKnotOwnerTFWalk(') : null;
+    if (!walk)
+      broken.push('BaseKnotOwnerTFWalk is gone');
+    else {
+      if (!walk.text.includes('BaseKnotOwnerBandLo(aDn, a)') || !walk.text.includes('BaseKnotOwnerBandHi(aUp, a)'))
+        broken.push('the pump\'s owner is back on the fixed band - a box in a hole reads no owner at all');
+      if (walk.text.includes('r >= BK_OWNER_LO && r <= BK_OWNER_HI'))
+        broken.push('the fixed band is still the test - the tolerance cannot follow the knot\'s time');
+    }
+    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
+    if (!doc || !doc.join('\n').includes('P-BK-141'))
+      broken.push('the contract no longer carries the rule');
+
+    if (broken.length)
+      failures.push('P-BK-141: ' + broken.join('; ') + ' (BaseKnot_Note / BaseKnot_Owner / docs/contract.md)');
+    else
+      console.log('[PASS] P-BK-141 the owner\'s tolerance is half the ATR step: BaseKnotOwnerBandLo/Hi answer 3 x sqrt(aNeighbour/aThis), the note and the pump both test THAT band, and the bands meet at every rung (M15 27.67 = H1 27.67) where the fixed +/-20 % left a 6.36-pip hole and, at H4->D1, 51.24');
+  }
+
   // -- 95. P-BK-140 (2026-11-01): A BOX IN MOTION KEEPS THE LENGTH IT WAS COMMITTED WITH --
   //
   // MEASURED on box 15_151797125 (EURUSD M15, band 1.11331..1.1158x): three drag frames
