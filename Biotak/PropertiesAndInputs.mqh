@@ -47,7 +47,7 @@ input string S1 = "[03] DISPLAY / VISIBILITY";
 input bool inpShowLines = false;              // Show level lines (default OFF — zones/structure only)
 input bool inpShowTHLevels = true;
 input bool inpShowTHLabels = false;
-input bool inpShowTHTargets = true;              // Show TH Targets
+input bool inpShowTHTargets = false;             // Show TH Targets (default OFF)
 input bool inpShowPipDistanceLabels = true;
 input bool inpShowMidpointLine = true;
 input bool inpShowTimeframeInLabels = true;
@@ -57,7 +57,7 @@ input bool inpShowStandardTHs = false;
 // relative range (THVolNorm.mqh). OFF = the professor's table, byte-identical.
 input bool inpTHVolNorm = false;                // Scale TH labels to the pair's own volatility (OFF = classic TH)
 input bool inpShowATRLabels = false;              // Show ATR Labels
-input bool inpShowATRTargets = true;             // Show ATR Targets
+input bool inpShowATRTargets = false;            // Show ATR Targets (default OFF)
 input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels
 input bool inpShowATRTradeSLLabels = true;       // Show Hunter row (Str Bond row retired 2026-09-10 — R-STBOND)
 input bool inpShowATRTradeTPLabels = true;       // Show #SL/#TP1-3 row

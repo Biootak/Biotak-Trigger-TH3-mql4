@@ -38,6 +38,12 @@ const ROOT = path.resolve(__dirname, '..');
 const BIOTAK = path.join(ROOT, 'Biotak');
 const INIT_FILE = path.join(BIOTAK, 'EventHandlers_Init.mqh');
 const CALC_FILE = path.join(BIOTAK, 'EventHandlers_Calc.mqh');
+// P-SIZE-1500 (2026-10-31): the teardown owner (OnDeinitHandler and its switch
+// branch) moved out of Calc into its own file. This gate asks about the TEARDOWN,
+// so it reads the two as one unit — the same text the compiler sees, in the same
+// order. A check that kept reading only Calc would report the branch GONE while the
+// behaviour it guards is untouched: a false red is as expensive as a false green.
+const DEINIT_FILE = path.join(BIOTAK, 'EventHandlers_Deinit.mqh');
 const TAIL_FILE = path.join(BIOTAK, 'EventHandlers_Tail.mqh');
 
 const failures = [];
@@ -88,7 +94,7 @@ function indexOfLine(lines, needle, from = 0) {
 
 function main() {
   const init = linesOf(INIT_FILE);
-  const calc = linesOf(CALC_FILE);
+  const calc = [...(linesOf(CALC_FILE) || []), ...(linesOf(DEINIT_FILE) || [])];
   const tail = linesOf(TAIL_FILE);
   if (!init || !calc || !tail) {
     console.log('LEVEL CONTINUITY GATE FAILED');
@@ -122,7 +128,7 @@ function main() {
   // costume printed nothing at all).
   for (const [file, abs, lines, tag] of [
     ['Biotak/EventHandlers_Init.mqh', INIT_FILE, init, 'probe=adopt'],
-    ['Biotak/EventHandlers_Calc.mqh', CALC_FILE, calc, 'probe=handoff'],
+    ['Biotak/EventHandlers_Calc.mqh + Biotak/EventHandlers_Deinit.mqh', CALC_FILE, calc, 'probe=handoff'],
   ]) {
     const i = indexOfLine(lines, tag);
     const line = i >= 0 ? lines[i] : '';
@@ -153,14 +159,14 @@ function main() {
     foundForbidden.length === 0;
   if (!handoffOk) {
     failures.push(
-      'the REASON_CHARTCHANGE branch in Biotak/EventHandlers_Calc.mqh must SAVE the adoption ' +
+      'the REASON_CHARTCHANGE branch in Biotak/EventHandlers_Deinit.mqh (OnDeinitHandler) must SAVE the adoption ' +
         'stamp, print probe=handoff, and delete nothing' +
         (foundForbidden.length ? ` (found: ${foundForbidden.join(', ')})` : '')
     );
   } else {
     console.log(
       `[PASS] switch branch keeps the family: stamp saved, handoff printed, ` +
-        `no delete (Biotak/EventHandlers_Calc.mqh:${branch.from + 1}-${branch.to + 1})`
+        `no delete (Biotak/EventHandlers_Deinit.mqh:${branch.from + 1}-${branch.to + 1})`
     );
   }
 

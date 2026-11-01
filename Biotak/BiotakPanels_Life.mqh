@@ -267,6 +267,12 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       // (probe-budget-audit's `chart change stops invalidating` seed anchors on it).
       if(PnlDpiPoll()) UIRebuildForMetrics();
       if(PnlClampOpenPanel()) ChartRedraw();   // shrunken chart: keep header grabbable
+      // P-UI-222: the palette is a POPUP of a surface, and the window that moved is
+      // its window too. It was placed at open and never re-derived, so a shrink left
+      // every swatch and the Done button clipped outside the chart. Same owner as the
+      // open (`PalComputePos`), same rule as the ring/chip homes: re-derive, never
+      // write a clamped value back.
+      if(PalReclampOpen()) ChartRedraw();
       // P-PERF-02: pan/zoom changes what the HTF overlay must cover — re-check
       // its viewport cap on the event that moved the view, not on the next 1 s
       // timer probe (internally throttled, so a zoom storm stays cheap).

@@ -8317,7 +8317,10 @@ function main() {
   {
     const broken = [];
     const r193 = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
-    const c193 = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
+    // P-SIZE-1500 (2026-10-31): DeactivateCustomPriceMode moved to the teardown owner;
+    // read the two files as the one unit the compiler sees.
+    const c193 = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
+                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
     if (!r193) broken.push('EventHandlers_Router.mqh is gone — the key door has no home');
     else if (!c193 || !bodyOf(c193, 'void DeactivateCustomPriceMode('))
       broken.push('DeactivateCustomPriceMode is gone — the OFF has no owner');
@@ -10513,8 +10516,10 @@ function main() {
   // hold. The MT5 twin shipped this as P-MT5-LEGPREVIEW (2026-10-24); MT4 never got it.
   {
     const broken = [];
-    const calc = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
-    const deinit = calc ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
+    // P-SIZE-1500 (2026-10-31): OnDeinitHandler moved to the teardown owner file.
+    const calc = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
+                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
+    const deinit = calc.length ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
     if (!deinit)
       broken.push('OnDeinitHandler is gone');
     else {

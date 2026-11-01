@@ -68,8 +68,66 @@ top-down; every reader of a home lives below the cut).
 
 ## Not yet covered
 
-**Nothing — all four surfaces now wear this contract.** What was open when this page
-was written, and when each half landed:
+**One class was open, and it was the POPUPS** — found 2026-10-31 by reading the tree, not
+by a report (P-UI-222). Every surface that OWNS a home re-derived it on a resize; the two
+popups that hang off a surface did not:
+
+* **The palette** was placed by `PalComputePos` from exactly one caller, `PalOpenKind`.
+  A chart that shrank under an open popup left `g_PalX` outside the new width, where MT4
+  clips the whole family — swatches, Done button and TR track gone, Esc the only exit. A
+  DPI change healed it (`UIRebuildForMetrics` re-opens the kind); a plain resize did not.
+  Fixed by `PalReclampOpen()` — the same owner, called from the `CHART_CHANGE` branch, so
+  the place is RE-DERIVED from its home (a hand spot clamps from `s_palMX/MY`, a card or
+  drawing spot re-anchors to its live parent) instead of a clamped value being stored.
+* **The Box Settings panel** was re-placed by `DrawStripPlaceGear`, which runs inside
+  `DrawStripPaint` — and `DrawStripHomeClamp` returned BEFORE that paint whenever the
+  strip's own plate needed no move. A chart that shrank under a panel whose plate fitted
+  kept the panel at its old y, its foot and Done button below the chart edge (P-UI-188's
+  law, one surface over). Fixed in the clamp's early-return branch: the placer is asked,
+  and the paint runs only when its answer moved.
+
+The general answer is contract §10: a UI surface is a row in `tools/ui-scenarios.js`, and
+`tools/ui_scenario_check.js` fails on a painter file that belongs to no row, on a `popup`
+with no resize answer, and on an answer whose call site is gone. A comment is not a call.
+
+**The case a clamp cannot answer.** Every law above is about *where* a surface goes. None
+of them answers the window that is smaller than the surface: the clamp pins it to the
+top-left and the overflow runs off the bottom-right, so the Done pill and the header `.x`
+can both be outside the chart. Nothing places a 520 px card inside a 380 px window — the
+arithmetic runs out. What makes that survivable is Esc dismissing inside-out: palette,
+then the open dropdown, then the card; the strip takes its gear before its picker before
+its plate (P-DRAW-13); the knot's draw session ends on Esc too. That ladder is now axis
+**S13** and rule **P-UI-223**, because it had no register rule and no mutation — one
+deleted line would have removed the only exit from every stranded surface in the product
+with nothing red anywhere.
+
+Two smaller rules came with it, both about the gate's own honesty rather than the UI:
+the `SHARED` whitelist is now checked (an entry that names no file, or a file that creates
+no control type, fails), and a note about a shared owner prints as `[note]` instead of
+`[OPEN]` — the tag that must never be skimmed had been appearing on non-problems.
+
+## The second tree (P-UI-224)
+
+The matrix began MT4-only, and that was the same mistake one level up: a rule asked of one
+tree is not a rule. MEASURED when the gate went per-platform — **27 of 89 MT5 sites
+resolved**, `PalReclampOpen` did not exist in the MT5 tree at all, and `DrawStripHomeClamp`
+still returned before re-placing its gear panel. So both P-UI-222 defects were live on MT5
+while the MT4 tree carried the fix, and nothing was red anywhere.
+
+Two things followed, and they are different in kind:
+
+* **The port.** `PalReclampOpen` and the clamp's re-place branch now exist in
+  `Biotak-Trigger-TH3-mql5/Biotak/BiotakPanels.mqh` and `…/DrawStrip.mqh`, identical in
+  logic to MT4. Both MT5 entries compile 0 errors / 0 warnings with them.
+* **The question.** The matrix declares both trees, each row names its files on each
+  (`files` / `filesM5`), and the gate reports them apart. 89 of 89 sites now resolve on
+  MT5 — 71 of them through the unit, because MT5 is still unsplit. Those 71 are printed as
+  `mapped`, which is the honest label: the code is there, in a different file.
+
+The MT5 build runs the gate scoped to its own tree (`--platform=mt5`) after a clean
+compile. The MT4 build runs both. Neither can go green while the other is broken.
+
+What was open when this page was written, and when each half landed:
 
 * **The strip's home was stored in pixels and saved a clamped value back as the home**
   (`DrawStripOpenAt`, `DrawStripHomeClamp`). Fixed 2026-10-13 (P-UI-144/146): the home

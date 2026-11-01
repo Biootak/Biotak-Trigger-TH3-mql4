@@ -605,6 +605,34 @@ void PalComputePos()
    g_PalX=px; g_PalY=py;
 }
 
+//--- P-UI-222 (2026-10-31) — THE POPUP'S WINDOW MOVES TOO.
+//---
+//--- `PalComputePos` was called from ONE place: `PalOpenKind`. So the palette was
+//--- placed correctly at the moment it OPENED and never again — and a chart that
+//--- shrank under an open popup left `g_PalX/g_PalY` outside the new width, where
+//--- MT4 clips every object of the family: the swatch grid, the Done button and the
+//--- TR track all gone, with Esc as the only exit (E-05's dead zone, contract §3).
+//--- The DPI branch rebuilt it (`UIRebuildForMetrics` → `PalOpenKind`), which is
+//--- why a monitor move healed it and a plain resize did not.
+//---
+//--- The fix is the ring's and the chip's own shape (`CircHomesRefresh`): the resize
+//--- RE-DERIVES the place from its home instead of writing a clamped value back.
+//--- `PalComputePos` is that one owner — a hand spot re-clamps from `s_palMX/MY`
+//--- (the stored pair is never touched, contract §4), a card/drawing spot re-anchors
+//--- to its live parent. The paint runs only when the answer moved, so a scroll or a
+//--- zoom that changes no edge costs one compare.
+bool PalReclampOpen()
+{
+   if(!g_PalOpen) return false;
+   const int x0 = g_PalX, y0 = g_PalY;
+   PalComputePos();
+   if(g_PalX == x0 && g_PalY == y0) return false;
+   PalDraw();
+   PnlPublishCover();
+   HTFCardCullRefresh();
+   return true;
+}
+
 //--- P-UI-137 (2026-10-02) — THE CENSUS EPOCH. One popup census per OPEN, never per
 //--- repaint (MEASURED: on every pass the popup walked the chart and wrote ~55
 //--- flushed lines, and PalDraw runs on every chip / tab / pager click — the popup

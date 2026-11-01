@@ -50,4 +50,41 @@ void RuntimeSettingsSaveDrain()
    RuntimeSettingsSaveOverrides();
 }
 
+//+------------------------------------------------------------------+
+//| P-LBL-11 (2026-11-01) — THE TARGET ROWS START OFF, AND THE         |
+//| DEFAULT HAS TO BEAT WHAT IS ALREADY STORED.                        |
+//|                                                                    |
+//| User order: «این تارگت ها لیبل هاش پیش فرض خاموش باشه همه برای atr   |
+//| و هم th». The INPUTS default both off now, but `OV_A1` (ATR        |
+//| targets) and `OV_TG` (TH targets) are re-applied by the loader on  |
+//| EVERY attach, so a chart that ever had a row on would keep it on   |
+//| for ever and the new default would never be visible on it — that   |
+//| is P-UI-119's lesson in the same shape (MidZonesStateForget).      |
+//|                                                                    |
+//| ONE TIME per symbol: the prefix carries the symbol                 |
+//| (`BIOMENU_<SYMBOL>_OV_`), and the stamp is what stops a LATER      |
+//| choice of the user's from being wiped.                            |
+//|                                                                    |
+//| The stamp lives OUTSIDE the BIOMENU_ namespace on purpose: a UI-   |
+//| version reset (ClearAllGVs) keeps every `OV_` but wipes every      |
+//| other key under that prefix, so a stamp born there would           |
+//| resurrect this migration and silently overwrite the user's own     |
+//| later choice. Same idiom as `Biotak_LevelsOffDefault_`.             |
+//|                                                                    |
+//| Caller: RuntimeSettingsLoadOverrides(), BEFORE its first read. A   |
+//| delete after the reads leaves the old value in this attach's       |
+//| mirrors — which is the "it came back" report. The shadow epoch is  |
+//| bumped with the delete, or the saver would compare against a key   |
+//| that no longer exists and skip writing the user's own value back.  |
+//+------------------------------------------------------------------+
+void RuntimeSettingsTargetsForgetOnce(const string ovPrefix)
+{
+   const string stamp = "Biotak_TargetsOffDefault_" + _Symbol;
+   if(GlobalVariableCheck(stamp)) return;
+   GlobalVariableDel(ovPrefix + "A1");
+   GlobalVariableDel(ovPrefix + "TG");
+   GVShadowsInvalidate();
+   GlobalVariableSet(stamp, 1.0);
+}
+
 #endif // RUNTIME_SAVE_MQH

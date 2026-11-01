@@ -566,7 +566,26 @@ void DrawStripHomeClamp()
    if(ny > ch - s_dsH - 4) ny = ch - s_dsH - 4;
    if(nx < 4) nx = 4;
    if(ny < 4) ny = 4;
-   if(nx == s_dsX && ny == s_dsY) return;   // the plate is already where the clamp wants it
+   if(nx == s_dsX && ny == s_dsY)
+   {
+      //--- P-UI-222 (2026-10-31) — THE PANEL IS A SECOND WINDOW INSIDE THIS ONE.
+      //--- The plate is already where the clamp wants it, but the OPEN PANEL hangs
+      //--- off the plate and the window that just moved is ITS window too. The
+      //--- placer is called from the PAINT (`DrawStripPaint`), and this branch used
+      //--- to return before any paint ran — so a chart that shrank under a panel
+      //--- whose own plate needed no move kept the panel at its old y, its foot and
+      //--- Done button below the chart edge (P-UI-188's law, one surface over).
+      //--- `DrawStripPlaceGear` stays the ONE owner of that arithmetic: it is asked
+      //--- here, and the paint runs only when its answer moved. A still frame costs
+      //--- two int compares; a resize that moved the panel costs one paint.
+      if(s_dsGear != 0 && s_dsGearH > 0)
+      {
+         const int gx0 = s_dsGEX, gy0 = s_dsGEY;
+         DrawStripPlaceGear();
+         if(s_dsGEX != gx0 || s_dsGEY != gy0) DrawStripPaint();
+      }
+      return;   // the plate is already where the clamp wants it
+   }
    s_dsX = nx; s_dsY = ny;                  // the live pair follows; the home does not
    DrawStripLayout();
    DrawStripPaint();

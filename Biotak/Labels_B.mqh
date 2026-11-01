@@ -311,6 +311,40 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     return true;
 }
 
+// P-TH-02b (2026-11-01) — ONE CAPTION, TWO BLOCKS, AND THE SECOND PAINTED HALF OF IT.
+//
+// The two TH blocks are EXCLUSIVE (`g_thLabelsMode` 1 or 2), and both address the
+// SAME object, `<prefix>LBL_TH_Title`. DisplayFractalTHs wrote every property of
+// it; DisplayStandardTHs wrote only `OBJPROP_YDISTANCE`. So the standard frame
+// inherited whatever the previous frame had left - and on a fresh attach there
+// was nothing to inherit: the object was CREATED here, cleared to `""` at birth
+// (the `ObjectSetString(TEXT, "")` that removes MT4's default "Label"), and then
+// never given a caption. The bottom row therefore carried values M1..MN1 with no
+// `TH:` in front of them, beside an ATR row that had its own - the reported
+// «مقادیر بالا لیبل ATR داره ولی پایین لیبل TH نداره».
+//
+// ONE OWNER: the caption is painted HERE and both blocks call it, so no mode can
+// write a title property the other skips. Same literals, same order, same
+// arithmetic the fractal block always used - the frame it draws is unchanged.
+void PaintTHTitle(const string labelPrefix, const int titleYPos, const int singleLineHeight) {
+    string thTitleObjName = labelPrefix + "TH_Title";
+    LblMark(thTitleObjName);   // P-PERF-38g
+    if(ObjectFind(0, thTitleObjName) < 0) {
+        if(!ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0)) return;
+    }
+    ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, "TH:");
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_COLOR, clrDarkBlue);
+    ObjectSetString(0, thTitleObjName, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_FONTSIZE, inpFontSize);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_CORNER, CORNER_LEFT_LOWER);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_HIDDEN, false);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_XDISTANCE, inpLabelsMarginLeft);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_TIMEFRAMES, IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+}
+
 void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
     if(!g_thLabelsVisible || g_thLabelsMode != 1) return;
     // P-UI-43: the shown section opens the bottom side and owns the margin.
@@ -332,23 +366,8 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
     int sectionGap = inpSectionGap;
 
-    string thTitleObjName = labelPrefix + "TH_Title";
-    LblMark(thTitleObjName);   // P-PERF-38g
-    if(ObjectFind(0, thTitleObjName) < 0) {
-        ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
-        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
-    }
-    ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, "TH:");
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_COLOR, clrDarkBlue);
-    ObjectSetString(0, thTitleObjName, OBJPROP_FONT, inpFontName);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_FONTSIZE, inpFontSize);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_CORNER, CORNER_LEFT_LOWER);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_HIDDEN, false);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_XDISTANCE, inpLabelsMarginLeft);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_TIMEFRAMES, IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+    // P-TH-02b: the caption has ONE painter, shared with DisplayStandardTHs.
+    PaintTHTitle(labelPrefix, titleYPos, singleLineHeight);
 
     int titleWidth = (int)CalculateTextWidth("TH:");
     int labelStartX = GetLabelStartX(startXPos, titleWidth, horizontalPadding, isVerticalLayout);
@@ -446,14 +465,10 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
     int sectionGap = inpSectionGap;
 
-    string thTitleObjName = labelPrefix + "TH_Title";
-    LblMark(thTitleObjName);   // P-PERF-38g
-    if(ObjectFind(0, thTitleObjName) < 0) {
-        ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
-        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
-    }
-    // Exclusive mode: only one block paints, the title Y is set here.
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
+    // P-TH-02b: the SAME painter the fractal block calls - this block used to
+    // write only the title's Y, so a standard-mode frame born on a fresh attach
+    // had an empty `TH_Title` (values with no caption).
+    PaintTHTitle(labelPrefix, titleYPos, singleLineHeight);
 
     int titleWidth = (int)CalculateTextWidth("TH:");
     int labelStartX = GetLabelStartX(startXPos, titleWidth, horizontalPadding, isVerticalLayout);

@@ -2217,6 +2217,21 @@ if (Test-Path $lifeGate) {
     Invoke-ProjectGate -Name "object lifecycle gate" -Script $lifeGate -Runner "node" -Cache $gateCache
 }
 
+#--- P-UI-222 (2026-10-31): THE SCENARIO GATE IS PART OF THE BUILD. The contract names
+#--- four lifecycle scenarios in prose ("every surface survives all four"), and prose is
+#--- how the palette and the gear panel shipped without a resize answer while the ring,
+#--- the chip, the strip and the cards all had one: nothing was wrong with any file — the
+#--- SURFACE was missing a row in a list nobody kept. `tools/ui-scenarios.js` is that list,
+#--- `tools/ui_scenario_check.js` requires every answer to be a CALL at the site that runs
+#--- on that event (a comment is not a call), and a file that creates a UI control type and
+#--- belongs to no row FAILS — so the next surface is declared the day it is written.
+$scenarioGate = Join-Path $SCRIPT_ROOT "tools\ui_scenario_check.js"
+if (Test-Path $scenarioGate) {
+    Write-Host ""
+    Write-Host "  UI scenario gate (every surface answers every scenario, wired):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "ui scenario gate" -Script $scenarioGate -Runner "node" -Cache $gateCache
+}
+
 #--- P-UI-149 (2026-10-13): THE SKIN GATE IS PART OF THE BUILD. The 9-slice's middle
 #--- band is BAKED at one width (`tools/gen-th3-icons.js`) and CROPPED at another
 #--- (`Biotak/DrawStrip_Head.mqh`): two files, two numbers, and the compiler cannot see

@@ -232,7 +232,7 @@ void OnDeinit(const int reason)
     // cannot say which of the six owners spent it, so each one is timed here.
     // Reported only when the total blows the budget, like every other ledger.
     uint p15t = p4d;
-    uint p15Pnl, p15Menu, p15Htf, p15Save, p15Cleanup, p15Handler;
+    uint p15Pnl = 0, p15Menu = 0, p15Htf = 0, p15Save = 0, p15Cleanup = 0, p15Handler = 0;
 #ifdef DSTRIP_DIAG
     //--- P-SESS-42 (2026-10-31) — WHO TAKES THE SESSION FAMILY, MEASURED STEP BY STEP.
     //--- «هنوز فیلکر داره و حذف و رسم میشه»: a switch is deinit + init, and five
@@ -242,6 +242,31 @@ void OnDeinit(const int reason)
     //--- a teardown, behind the standing diag define.
     DrawStripDiagEmit("[P-SESS] td start n=" + IntegerToString(SessFamilyCount()));
 #endif
+    // P-ARCH-03b (2026-10-31) — A UNIT REFUSED AT INIT OWNS NOTHING, SO ITS TEARDOWN
+    // DELETES NOTHING.
+    //
+    // OnInitHandler refuses a SECOND unit on one chart (P-ARCH-03) and states the rule
+    // in its own words: "a unit that will not load must not delete a live unit's
+    // objects". That rule was enforced on the INIT half — the refusal sits before the
+    // first piece of chart work — and forgotten on the EXIT half. MT4 answers a
+    // non-INIT_SUCCEEDED OnInit with OnDeinit(REASON_INITFAILED), and the block below
+    // then ran as if this instance had drawn the chart.
+    //
+    // It had drawn nothing. What it deleted belonged to the LIVE unit:
+    //   · DrawStripClose()  -> `PnlDrawS_*`, a chart-wide family (no chart id in it)
+    //   · DeleteAllIndicatorObjects -> `inpObjectPrefix + "_"`, the level family
+    //     (that one lives in OnDeinitHandler and is guarded there)
+    //   · SnapshotOpenSurfaces() -> six keys under an EMPTY prefix: junk in the
+    //     terminal's GV table for the lifetime of the terminal
+    // The menu, the HTF block and the settings block survive only by accident — their
+    // names carry a prefix this instance never set, so an empty prefix matches
+    // nothing. Accident is not a policy; the whole UI block is skipped instead.
+    //
+    // The symptom this prevents: «دوباره اندیکاتور رو اضافه کردم و کل سطوح و استریپ
+    // رفت» — the survivor's object cache still believes the family exists, so nothing
+    // recreates it until a timeframe switch or a restart.
+    if(reason != REASON_INITFAILED)
+    {
     SnapshotOpenSurfaces();   // P-UI-142: record open panel/tools BEFORE the closes below clear them
     PnlCloseAll();
     p15Pnl = GetTickCount() - p15t; p15t = GetTickCount();
@@ -267,6 +292,7 @@ void OnDeinit(const int reason)
 #ifdef DSTRIP_DIAG
     DrawStripDiagEmit("[P-SESS] td ui+htf n=" + IntegerToString(SessFamilyCount()));
 #endif
+    }
     OnDeinitHandler(reason);
     p15Handler = GetTickCount() - p15t;
 #ifdef DSTRIP_DIAG

@@ -109,7 +109,7 @@ static int   g_zoneEdgeTopTransparency = -1;
 static int   g_zoneEdgeBottomTransparency = 1;   // P-UI-143: card look as shipped (was AUTO)
 static bool g_showPipDistanceLabels = true;                      // [03] inpShowPipDistanceLabels
 static bool g_showATRLabels = false;                             // [03] inpShowATRLabels
-static bool g_showATRTargets = true;                             // [03] inpShowATRTargets
+static bool g_showATRTargets = false;                            // [03] inpShowATRTargets (default OFF)
 static bool g_showATRTradeLabels = true;                         // [03] inpShowATRTradeLabels
 static bool g_showATRTradeSLLabels = true;                       // [03] inpShowATRTradeSLLabels
 static bool g_showATRTradeTPLabels = true;                       // [03] inpShowATRTradeTPLabels
@@ -158,7 +158,7 @@ static bool g_showTHLabels = false;                              // [03] inpShow
 static bool g_showFractalTHs = false;                            // [03] inpShowFractalTHs
 static bool g_showStandardTHs = false;                           // [03] inpShowStandardTHs
 static bool g_thVolNorm = false;                                 // [03] inpTHVolNorm (P-TH-VOLNORM)
-static bool g_showTHTargets = true;                              // [03] inpShowTHTargets
+static bool g_showTHTargets = false;                             // [03] inpShowTHTargets (default OFF)
 static int g_thLabelsMarginBottom = 40;                          // [13] inpTHLabelsMarginBottom
 static bool g_enableTH3Tool = true;                              // [14] inpEnableTH3Tool
 static ENUM_TH3_DRAWING_MODE g_th3DrawingMode = TH3_MODE_ABCD;  // [14] inpTH3DrawingMode
@@ -1211,6 +1211,7 @@ void RuntimeSettingsLoadOverrides()
 {
    if(StringLen(g_settingsGVPrefix) == 0) return;
    string p = g_settingsGVPrefix + "OV_";
+   RuntimeSettingsTargetsForgetOnce(p);   // P-LBL-11: the OFF default must beat a stored OV_A1/OV_TG (owner: Runtime_Save.mqh)
    if(GlobalVariableCheck(p + "ML"))  g_maxLevels = ClampSettingInt((int)GlobalVariableGet(p + "ML"), 1, MAX_SAFE_LEVELS);
    if(GlobalVariableCheck(p + "TW"))  g_triggerWidth = ClampSettingInt((int)GlobalVariableGet(p + "TW"), 1, 5);
    if(GlobalVariableCheck(p + "TS"))  g_triggerStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "TS"), 0, 4);
