@@ -719,6 +719,29 @@ One function over the ceiling stays whole and never grows.
   pushed leg is never shrunk, BKCAP-OFF's rule), and the graded pair fills `30/64` of the box
   (`195/512` when the entry is the Hunt) - always inside the ladder's own `55/64` fit. Gate:
   `P-BK-132`, mutations `-a..-g`.
+- **A leg is read at a TIME, not at a rung (P-BK-136).** The pushed leg table is
+  rung-keyed, so an off-ladder knot time (2h20m, 45m, 80m) matched no row - and every
+  caller replaced that absence with the box' own height: an absence dressed as a
+  measurement (`BaseKnotEngPips`, `Biotak/BaseKnot_Nodes.mqh`). `BaseKnotLegAt` now answers
+  the way the ability table has since P-BK-126: the exact pushed row wins (so EVERY rung
+  reads exactly as it did before), otherwise the band's own slope answers (P-BK-137 below).
+  `0` survives only for a time with no row beneath
+  it at all. Gate: `P-BK-136` (the register asserts the delegation, the √-scale and the
+  exact-row-first order; the harness `tests/Biotak_LegAt_Test.mq4` asserts the monotone
+  property) plus mutation `-a`, which restores the exact-match read. MEASURED 2026-11-01:
+  `python tools/mutation_gate.py P-BK-136` -> `1 killed, 0 survived, 0 stale`, and the
+  gate's own failing line names the rule. The harness ran on the live terminal: 18/18 PASS.
+- **A leg between two rows rides the BAND's slope, never a constant (P-BK-137).** The pushed
+  rows are not √-shaped: on the labelled samples (`Files/BK_Dataset`, XAUUSD 2026-10-27) the
+  consecutive rows sit 1.80, 1.93, 2.03, 2.09, 2.23 and 3.23 apart while √(time ratio) is
+  1.73..2.45 — the exponent reads 0.43..0.66, never 0.500. `BaseKnotLegAt` therefore collects
+  BOTH neighbouring rows and interpolates log-linearly, `vb x (t/b)^(ln(va/vb)/ln(a/b))`: exact
+  at both rows, continuous in between, and byte-identical to the √-law on a table that IS
+  √-shaped (P-BK-136 is its special case, not a second rule). MEASURED on the 27m→60m band
+  (66.6 → 135.2): a 0.1m change in the knot's time moved the stop 36 % under the fixed 0.5
+  (99.3 → 135.2); the band's own slope moves it 0. The one fallback left is a band whose upper
+  row was never pushed (a cold pump), which keeps `BaseKnotRungScale`. Gate: `P-BK-137`,
+  mutation `-a`.
 - **A time the ladder does not carry is its OWN rung.** The type names the MEASURE (EngSL for
   FTR, HuntSL for ETR/CTR/OTR); the ladder names the RUNG. Stepping an off-ladder knot onto the
   next standard rung and then grading it by the box' power counted the growth twice: his 2h20m
@@ -771,3 +794,95 @@ One function over the ceiling stays whole and never grows.
 - **Predict, then verify.** Before an edit lands, write down which surfaces read what
   changed and re-check the fixed defects that share it. A symptom with no measurable
   number is a question for the user, not a guess committed to the tree (Touch rule 5).
+
+## 10. A UI surface is a row in the scenario matrix, and the matrix is a gate
+
+`tools/ui-scenarios.js` lists every UI surface and, for each scenario, the ONE function
+that answers it plus the CALL that proves it is wired. `node tools/ui_scenario_check.js`
+runs in every build and fails on five things: an answer whose function or call site is
+gone (`STALE`), a file that creates a UI control type and belongs to no row (`ORPHAN`),
+a surface flagged `popup` with no resize answer or no escape answer, a teardown never
+called from outside the surface, and a `SHARED` whitelist entry that names no file or
+creates no control type. A scenario answered `null` is printed as `OPEN` — a work item,
+never a pass. A note about an answer that lives in a shared owner prints as `[note]`,
+never as `[OPEN]`: a tag that appears on non-problems is a tag that stops being read.
+
+The axes: S01 attach · S02 reattach · S03 TF switch/params · S04 restart · S05 template
+re-apply · S06 resize · S07 DPI · S08 F mute · S09 user delete · S10 popup parent ·
+S11 hit==paint · S12 second unit · S13 escape.
+
+Three laws ride it, and a fourth answers the case the first three cannot:
+
+- **A comment is not a call.** The gate strips `//` and `/* */` before matching. The first
+  cut matched raw text and passed on the very line that disabled the call — P-DRAW-121b's
+  blind detector, one file over.
+- **A popup is not a surface with a home.** It owns no fraction; it hangs off a parent and
+  re-derives on the SAME event the parent does. P-UI-222: the palette was placed at open
+  and never again, and the gear panel was re-placed only when its plate moved — both were
+  invisible until a chart shrank under them, and neither was a bug in a file. The surface
+  was missing a row in a list nobody kept.
+- **A new painter is a new row.** A file that creates `OBJ_BUTTON` / `OBJ_EDIT` /
+  `OBJ_BITMAP_LABEL` and belongs to no row fails the gate, so the next surface is declared
+  the day it is written instead of the day it strands itself off-screen.
+- **Every surface has an exit that is not its own button.** A clamp can only place a
+  surface inside the window; when the window is smaller than the surface there is nowhere
+  to put it, and the Done pill and the header `.x` end up outside the chart. That is
+  survivable only because Esc dismisses inside-out — palette, then the open dropdown, then
+  the card; the strip takes its gear before its picker before its plate (P-DRAW-13).
+  P-UI-223: that ladder had no register rule and no mutation, so one deleted line would
+  have removed the only exit from every stranded surface with nothing red anywhere. The
+  `SHARED` whitelist is checked by the same rule — an unverified entry is an unverified
+  hole in the orphan law above.
+
+Adding a surface: add the row, name the answers, run the gate. Adding a scenario: add it
+to `SCENARIOS`, then answer it in every row or leave it `OPEN` on purpose.
+
+### Every platform, or it is not a rule
+
+The matrix is asked of **both trees** — MT4 (`tools/…`, the split source) and MT5
+(`../Biotak-Trigger-TH3-mql5`, the same code still in monoliths). A scenario proved on one
+platform is not proved at all: the MT5 tree carried BOTH P-UI-222 defects for as long as it
+did precisely because no gate had ever asked it. `node tools/ui_scenario_check.js` reports
+each tree separately and exits non-zero if either fails; `--platform=mt5` scopes it to one
+tree, which is what the MT5 build runs.
+
+Each row therefore names its files twice — `files` for the split tree, `filesM5` for the
+monoliths. A site names MT4's file; when that file does not exist on MT5 the gate looks for
+the SAME text in the MT5 unit and prints it as `mapped`, so structural drift is visible
+rather than fatal. When the named file DOES exist, the check stays strict. A place where the
+platforms genuinely differ in spelling carries an explicit `m5` override — declared, never
+inferred. The whitelist (`SHARED`) is per tree too, because the two trees do not hold the
+same files.
+
+## 11. The code is the fact; a comment, a header and a doc are claims
+
+Prose is written once and the code moves. Before believing a sentence ABOUT the code —
+this page included — read the code. When they disagree, the code is what the terminal
+runs and what the user sees; the sentence is the defect.
+
+- **MEASURED 2026-11-01.** `Biotak/BaseKnotTool.mqh:44` said «the SL is ALWAYS one EngSL
+  behind the entry». It had been false since 2026-10-27: P-BK-132/135 grade the PAIR by
+  the box' own power (`BaseKnotLegGrade`, `Biotak/BaseKnot_Ability.mqh:288`;
+  `if(g > 1.0) { offPips *= g; riskPips *= g; }`, `Biotak/BaseKnot_Measure.mqh:860`), so
+  the stop is `max(EngSL, height / 4.2667)` and the pair fills 30/64 of the box (55/64
+  when the entry is the Hunt). A whole review was written against that sentence first,
+  and it proposed a cap that would have undone the derived law and the measured case it
+  was built from. The arithmetic was right the whole time. The sentence is fixed in
+  place, and now says what the code does.
+- **The order of authority.** Code → a flushed log line (`DrawStripDiagEmit`, §6.16) → a
+  comment → a doc/header. A disagreement between the first and any later one is a
+  FINDING to report, never a detail to smooth over.
+- **A stale note is not harmless.** §3's dirt list already names "a comment that cites a
+  function nobody calls". A note that no longer matches the code is DELETED (first
+  paragraph of this page), because its cost is exactly the review above: a reader sent
+  after a defect that no longer exists.
+- **Prose never gets a vote on behaviour.** An edit that changes what the code does
+  changes the sentence that describes it in the SAME edit and names it in the report
+  (§9). No behaviour change may ship behind text that still describes the old rule, and
+  no behaviour change may be justified by a quote from a comment alone.
+- **Names are still code (Touch rule 2).** An object name, a GV key, an `FF_` address and
+  a `#define` ARE behaviour. This law is about DESCRIPTIONS being stale; it never
+  licenses treating an identifier as soft.
+- **A gate reads code, not prose.** `tools/ui_scenario_check.js` strips `//` and `/* */`
+  before matching (§10) for the same reason: a comment is not a call, and a sentence that
+  promises one proves nothing.

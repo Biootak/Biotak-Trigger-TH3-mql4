@@ -49,6 +49,12 @@ const ROOT = path.resolve(__dirname, '..');
 const BIOTAK = path.join(ROOT, 'Biotak');
 const LABELS_B = path.join(BIOTAK, 'Labels_B.mqh');
 const LABELS_A = path.join(BIOTAK, 'Labels_A.mqh');
+// P-LBL-11 (2026-11-01): the ATR/TH target rows' default OFF — the two inputs and
+// their runtime mirrors, plus the one-time forget that makes the default real for a
+// chart that already stored `OV_A1`/`OV_TG`.
+const RUNTIME_A = path.join(BIOTAK, 'Runtime_A.mqh');
+const RUNTIME_SAVE = path.join(BIOTAK, 'Runtime_Save.mqh');
+const PROPS_INPUTS = path.join(BIOTAK, 'PropertiesAndInputs.mqh');
 const EVENT_TAIL = path.join(BIOTAK, 'EventHandlers_Tail.mqh');
 const ROUTER = path.join(BIOTAK, 'EventHandlers_Router.mqh');
 const EVENT_ROUTER = ROUTER;
@@ -8317,7 +8323,10 @@ function main() {
   {
     const broken = [];
     const r193 = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
-    const c193 = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
+    // P-SIZE-1500 (2026-10-31): DeactivateCustomPriceMode moved to the teardown owner;
+    // read the two files as the one unit the compiler sees.
+    const c193 = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
+                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
     if (!r193) broken.push('EventHandlers_Router.mqh is gone — the key door has no home');
     else if (!c193 || !bodyOf(c193, 'void DeactivateCustomPriceMode('))
       broken.push('DeactivateCustomPriceMode is gone — the OFF has no owner');
@@ -10393,6 +10402,83 @@ function main() {
       console.log('[PASS] P-BK-135 the factor belongs to the pair: BaseKnotPairGrade is the ONE answer (a rung or an FTR rides the box, an off-ladder Hunt does not), the geometry multiplies BOTH legs or neither, the note\'s risk and the card\'s cells ask the same factor - so every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) and the 2h20m box reads 142.5 / 53.4, not 142.5 / 80.5 = 1.77');
   }
 
+  // -- 92. P-BK-136 (2026-11-01): A LEG IS READ AT A TIME, NEVER AT A RUNG --
+  //
+  // The leg table is RUNG-keyed and answered ONLY an exact row: an off-ladder knot time
+  // (20m, 140m) read 0, and every caller replaced that absence with the box' own height —
+  // an absence dressed as a measurement. The ability table has answered this way since
+  // P-BK-126 (`BaseKnotAbilityGet` scales from the row below by the √-law); the legs now do
+  // the same, so ONE rule answers "a leg at this time" in both tables.
+  {
+    const broken = [];
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const leg = nodes ? bodyOf(nodes, 'double BaseKnotLegAt(') : null;
+    if (!leg)
+      broken.push('BaseKnotLegAt is gone - an off-ladder knot time is a hole again');
+    else {
+      if (!leg.text.includes('BaseKnotRungScale(below, tf)'))
+        broken.push('the row below is no longer scaled - 20m / 140m read 0 again');
+      if (!leg.text.includes('if(s_bkEngTF[i] == tf) return x;'))
+        broken.push('the exact row no longer wins - every rung would move');
+    }
+    if (!nodes || !nodes.join('\n').includes('BaseKnotEngPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, false); }'))
+      broken.push('BaseKnotEngPips stopped delegating - a second leg read is back');
+    if (!nodes || !nodes.join('\n').includes('BaseKnotHuntPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, true); }'))
+      broken.push('BaseKnotHuntPips stopped delegating - the Hunt would read a second rule');
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    if (!hText.includes('DONE pass=') || !hText.includes('monotone'))
+      broken.push('the harness no longer asserts the monotone property - the cliff would return unwitnessed');
+    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
+    if (!doc || !doc.join('\n').includes('P-BK-136'))
+      broken.push('the contract no longer carries the rule');
+
+    if (broken.length)
+      failures.push('P-BK-136: ' + broken.join('; ') + ' (BaseKnot_Nodes / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
+    else
+      console.log('[PASS] P-BK-136 a leg is read at a TIME: BaseKnotLegAt returns the exact pushed row unchanged, else the nearest row BELOW scaled by the project\'s √-law, and 0 only when nothing is beneath - so an off-ladder knot (20m, 140m) reads its own curve instead of the box\' height');
+  }
+
+  // -- 93. P-BK-137 (2026-11-01): A LEG BETWEEN TWO ROWS RIDES THE BAND, NOT A CONSTANT --
+  //
+  // MEASURED on the labelled samples (Files/BK_Dataset, XAUUSD 2026-10-27): the table's own
+  // consecutive rows sit 1.80, 1.93, 2.03, 2.09, 2.23 and 3.23 apart while sqrt of the time
+  // ratio is 1.73..2.45 - the market's exponent reads 0.43..0.66, never 0.500. A law anchored
+  // at the row below with a FIXED 0.5 therefore arrives at the next row rho^0.5 short (25 %..
+  // 44 % under the row it is meant to meet) and STEPS there: on the 27m->60m band a 0.1m
+  // change in the knot's time moved the stop 36 %. The band's own slope, log-linear through
+  // the two neighbouring rows, is exact at both rows and continuous in between, and it
+  // degenerates to the sqrt law whenever the band IS sqrt-shaped - so P-BK-136 is its special
+  // case, not a second rule.
+  {
+    const broken = [];
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const leg = nodes ? bodyOf(nodes, 'double BaseKnotLegAt(') : null;
+    if (!leg)
+      broken.push('BaseKnotLegAt is gone - an off-ladder knot time is a hole again');
+    else {
+      if (!leg.text.includes('MathLog(va / vb) / MathLog((double)above / (double)below)'))
+        broken.push('the band slope is gone - an off-ladder leg steps at every rung again');
+      if (!leg.text.includes('if(s_bkEngTF[i] < tf) { if(s_bkEngTF[i] > below)'))
+        broken.push('the neighbouring rows are no longer both collected - a bracket needs two');
+      if (!leg.text.includes('return (below > 0 ? vb * BaseKnotRungScale(below, tf) : 0.0);'))
+        broken.push('the no-upper-row fallback is gone - a cold band reads 0 instead of the sqrt law');
+    }
+    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
+    const hText = harness ? harness.join('\n') : '';
+    for (const s of ['log-linear through the', '35.7664', '54.6232', 'a 1m step at the rung'])
+      if (!hText.includes(s))
+        broken.push('the harness no longer pins `' + s + '` - a sqrt-shaped table cannot tell the two laws apart');
+    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
+    if (!doc || !doc.join('\n').includes('P-BK-137'))
+      broken.push('the contract no longer carries the rule');
+
+    if (broken.length)
+      failures.push('P-BK-137: ' + broken.join('; ') + ' (BaseKnot_Nodes / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
+    else
+      console.log('[PASS] P-BK-137 a leg rides its band: between two pushed rows the exponent is the band\'s own (ln rho / ln time ratio), so the read lands exactly on both rows and never steps at a rung - and a table that IS sqrt-shaped reads byte-identically to P-BK-136');
+  }
+
   // P-PATH-BUG-6/7/9 (2026-10-30) — A PATH'S CHILDREN ARE SWEPT BY NAME.
   //
   // MEASURED on the report (XAUUSD M15, 2026-10-30 11:58): five blue dots in a row and no
@@ -10513,8 +10599,10 @@ function main() {
   // hold. The MT5 twin shipped this as P-MT5-LEGPREVIEW (2026-10-24); MT4 never got it.
   {
     const broken = [];
-    const calc = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
-    const deinit = calc ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
+    // P-SIZE-1500 (2026-10-31): OnDeinitHandler moved to the teardown owner file.
+    const calc = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
+                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
+    const deinit = calc.length ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
     if (!deinit)
       broken.push('OnDeinitHandler is gone');
     else {
@@ -10770,6 +10858,278 @@ function main() {
       failures.push('P-UI-220: ' + broken.join('; ') + ' (BiotakPanels_PalSpec/_PalB/_Apply MT4, BiotakPanels.mqh MT5)');
     } else {
       console.log("[PASS] P-UI-220 the levels' card carries its own door to the ANCHOR's START POINT in both terminals — appended row 18, a NAV to the CUSTOM PRICE card, counted by the band, and the write proves itself on the flushed channel");
+    }
+  }
+
+  // -- 87. P-UI-222 (2026-10-31): A SURFACE IS A ROW, AND THE ROW IS A GATE ---------
+  // MEASURED by reading the tree, not by a report: the ring, the chip, the strip and
+  // the cards each re-derived their place on a resize, and the two POPUPS that hang
+  // off them did not. The palette kept the x it opened at; the gear panel kept the y
+  // its plate had, because `DrawStripHomeClamp` returned before the paint that would
+  // have re-placed it. Nothing was wrong in any file — the SURFACE had no row in a
+  // list nobody kept. `tools/ui-scenarios.js` is that list and
+  // `tools/ui_scenario_check.js` is the gate; this section keeps both alive, keeps
+  // the two fixes wired, and keeps the gate COMMENT-BLIND (a commented-out call
+  // satisfies a raw text match — the first cut of the gate passed on the very line
+  // that disabled it, which is P-DRAW-121b's "detector is blind" one file over).
+  {
+    const broken = [];
+    const matrix = linesOf(path.join(ROOT, 'tools', 'ui-scenarios.js'));
+    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
+    if (!matrix) broken.push('tools/ui-scenarios.js is gone — the matrix is the only list of surfaces');
+    else {
+      const mtext = matrix.join('\n');
+      for (const id of ['ring', 'cards', 'palette', 'strip', 'gear', 'knot', 'htf', 'legmeasure', 'sessions'])
+        if (!mtext.includes("id: '" + id + "'")) broken.push('the matrix lost the ' + id + ' row — that surface is undeclared again');
+      if (!mtext.includes('popup: true'))
+        broken.push('no surface is flagged `popup` — the P-UI-222 class can no longer be named');
+    }
+    if (!gate) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
+    else {
+      const gtext = gate.join('\n');
+      if (!gtext.includes('stripComments('))
+        broken.push('the gate matches raw text again — a commented-out call would satisfy it (P-DRAW-121b)');
+      if (!gtext.includes('ORPHAN painter'))
+        broken.push('the orphan half is gone — a new painter file could belong to no surface');
+      if (!gtext.includes('a POPUP with no S06'))
+        broken.push('the popup-without-resize half is gone — exactly the defect this rule was written for');
+    }
+    const life = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh'));
+    const lt = life ? life.join('\n') : '';
+    const cc = lt.indexOf('if(id == CHARTEVENT_CHART_CHANGE)');
+    const ccEnd = cc >= 0 ? lt.indexOf('return;', cc) : -1;
+    if (cc < 0 || ccEnd < 0 || !lt.slice(cc, ccEnd).includes('PalReclampOpen'))
+      broken.push('the palette is placed at open and never re-derived again — the resize branch lost `PalReclampOpen` (the shipped defect)');
+    const paint = linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh'));
+    const clamp = paint ? bodyOf(paint, 'void DrawStripHomeClamp()') : null;
+    if (!clamp)
+      broken.push('DrawStripHomeClamp is gone — the strip has no clamp');
+    else if (!clamp.text.includes('DrawStripPlaceGear();') || !clamp.text.includes('DrawStripPaint();'))
+      broken.push('the strip clamp returns before the panel is re-placed again — a shrunk window strands the gear panel\'s foot (the shipped defect)');
+    const build = linesOf(path.join(ROOT, 'compile-th3.ps1'));
+    if (!build || !build.join('\n').includes('ui_scenario_check.js'))
+      broken.push('the scenario gate is not wired into the build — a gate nobody runs is a rule nobody keeps (P-UI-149)');
+    if (broken.length) {
+      failures.push('P-UI-222: ' + broken.join('; ') + ' (tools/ui-scenarios.js / ui_scenario_check.js / BiotakPanels_Life.mqh / DrawStrip_Paint.mqh / compile-th3.ps1)');
+    } else {
+      console.log('[PASS] P-UI-222 a UI surface is a row in the scenario matrix: every painter file is claimed, every popup answers the resize, the palette re-derives and the gear panel re-places on that event, and the gate matches code with the comments stripped (a commented-out call is not a call)');
+    }
+  }
+
+  // -- 88. P-UI-223 (2026-10-31): EVERY SURFACE HAS AN EXIT THAT IS NOT ITS OWN BUTTON --
+  // The placement laws answer "where does it go". None of them answered "what if the
+  // window is too small to hold it at all": the clamp pins a surface to the top-left and
+  // the overflow runs off the bottom-right, so the Done pill and the header .x can both
+  // end up outside the chart. That is survivable ONLY because Esc dismisses inside-out —
+  // palette, then the open dropdown, then the card; the strip and the knot carry the same
+  // rule (P-DRAW-13). MEASURED before this entry: no register rule and no mutation covered
+  // that branch, so deleting one line would have removed the only exit from every stranded
+  // surface in the product with nothing red anywhere.
+  {
+    const broken = [];
+    const life = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh'));
+    const esc = life ? bodyOf(life, 'void HandleUIChartEvent(') : null;
+    if (!esc) broken.push('HandleUIChartEvent is gone — the panels have no event owner');
+    else {
+      const t = esc.text;
+      const rungs = [
+        ['the palette', 'if(g_PalOpen) { PalHandleKey(PNL_KEY_ESC)'],
+        ['the mini-toolbar dropdown', 'if(g_PnlOpen == 13 && g_BkDd != 0)'],
+        ['the card dropdown', 'if(g_PnlDdItem >= 0)'],
+        ['the card itself', 'if(g_PnlOpen >= 0) { PnlCloseAll()'],
+      ];
+      let last = -1;
+      for (const rung of rungs) {
+        const at = t.indexOf(rung[1]);
+        if (at < 0) { broken.push('Esc no longer dismisses ' + rung[0] + ' — the inside-out ladder lost a rung, and a stranded surface has no exit'); continue; }
+        if (at < last) broken.push('Esc dismisses ' + rung[0] + ' out of order — inside-out means the popup goes before the thing that holds it');
+        last = at;
+      }
+    }
+    // P-DRAW-13's own ladder, on the file that owns it: gear, then picker, then plate.
+    const dsr = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
+    const dt = dsr ? codeOf(dsr) : '';
+    const g = dt.indexOf('if(s_dsGear != 0)');
+    const k = dt.indexOf('if(s_dsPicker != DSTRIP_PICK_NONE)');
+    const c = dt.indexOf('close: Esc key');
+    if (g < 0 || k < 0 || c < 0) broken.push('the strip\'s Esc ladder is gone (gear then picker then plate) — P-DRAW-13');
+    else if (!(g < k && k < c)) broken.push('the strip closes out of order — Esc must take the gear before the picker before the plate');
+    // The gate must keep asking the question, and must keep its own whitelist honest.
+    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
+    const gt = gate ? gate.join('\n') : '';
+    if (!gt) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
+    else {
+      if (!gt.includes('a POPUP with no S13')) broken.push('the gate no longer demands an escape from a popup — the P-UI-222 trap can come back with nothing red');
+      if (!gt.includes('a dead whitelist entry is a free pass')) broken.push('the SHARED whitelist is unverified again — every entry is a hole in the orphan rule');
+    }
+    if (broken.length) {
+      failures.push('P-UI-223: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Life.mqh / Biotak/DrawStrip_Router.mqh / tools/ui_scenario_check.js)');
+    } else {
+      console.log('[PASS] P-UI-223 every surface has an exit that is not its own button: Esc dismisses inside-out (palette, dropdown, card), the strip takes its gear before its picker before its plate, the gate still demands an escape from every popup, and its whitelist is itself checked');
+    }
+  }
+
+  // -- 89. P-UI-224 (2026-10-31): A SCENARIO PROVED ON ONE PLATFORM IS PROVED ON ALL --
+  // The matrix was MT4-only, and the MT4-only reading is what let the MT5 tree keep BOTH
+  // P-UI-222 defects for as long as it did: `PalReclampOpen` did not exist there at all,
+  // and the strip clamp still returned before re-placing its panel. Neither was a bug in
+  // a line anyone had changed — no gate had ever asked the second tree the question.
+  // MEASURED when the matrix went per-platform: 27 of 89 MT5 sites resolved; after the
+  // port, 89 of 89 (71 of them through the unit, because MT5 is still unsplit).
+  // The tree may be absent on a machine that carries only one terminal, so the block is
+  // conditional — but when the tree IS there, its wiring is not optional.
+  {
+    const broken = [];
+    const m5 = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
+    const haveM5 = fs.existsSync(path.join(m5, 'Biotak'));
+    const matrix = linesOf(path.join(ROOT, 'tools', 'ui-scenarios.js'));
+    const mt = matrix ? matrix.join('\n') : '';
+    if (!matrix) broken.push('tools/ui-scenarios.js is gone — there is no matrix to be per-platform');
+    else {
+      if (!mt.includes('PLATFORMS')) broken.push('the matrix has no PLATFORMS map — it is single-platform again');
+      for (const k of ['mt4', 'mt5'])
+        if (!new RegExp('\\b' + k + ':\\s*\\{').test(mt)) broken.push('PLATFORMS lost the ' + k + ' tree — that platform is unchecked');
+      if (!mt.includes('filesM5')) broken.push('no row names its MT5 files — the second tree cannot be checked');
+    }
+    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
+    const gt = gate ? gate.join('\n') : '';
+    if (!gt) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
+    else {
+      if (!gt.includes('mapped-to-unit')) broken.push('the per-platform report is gone — a reader cannot tell the trees apart');
+      if (!gt.includes('--platform=')) broken.push('the gate can no longer be asked about ONE platform — a build cannot scope its own tree');
+    }
+    if (haveM5) {
+      const pnl = linesOf(path.join(m5, 'Biotak', 'BiotakPanels.mqh'));
+      const pt = pnl ? pnl.join('\n') : '';
+      if (!pt.includes('bool PalReclampOpen()'))
+        broken.push('MT5 has no PalReclampOpen — the palette is placed at open and never re-derived again (the shipped MT4 defect, still live on the second tree)');
+      if (!pt.includes('if(PalReclampOpen()) ChartRedraw();'))
+        broken.push('MT5 never calls PalReclampOpen from its CHART_CHANGE branch — the function is dead code there');
+      const ds = linesOf(path.join(m5, 'Biotak', 'DrawStrip.mqh'));
+      const dt = ds ? ds.join('\n') : '';
+      if (!dt.includes('const int gx0 = s_dsGEX, gy0 = s_dsGEY;'))
+        broken.push('MT5 DrawStripHomeClamp returns before re-placing its gear panel — a shrunk window strands the panel foot on the second tree');
+    }
+    if (broken.length) {
+      failures.push('P-UI-224: ' + broken.join('; ') + ' (tools/ui-scenarios.js / tools/ui_scenario_check.js / ../Biotak-Trigger-TH3-mql5)');
+    } else {
+      console.log('[PASS] P-UI-224 a scenario proved on one platform is proved on all: the matrix declares both trees, every row names its files on each, the gate reports them apart and can be scoped to one, and the MT5 tree carries both popup re-derivations (palette + gear panel)' + (haveM5 ? '' : ' [MT5 tree absent — wiring assertions skipped]'));
+    }
+  }
+
+  // -- 90. P-TH-02b (2026-11-01): ONE CAPTION, AND BOTH TH BLOCKS PAINT IT ------
+  // The two TH blocks are EXCLUSIVE (`g_thLabelsMode` 1/2) and share ONE object,
+  // `<prefix>LBL_TH_Title`. DisplayFractalTHs wrote every property of it; the
+  // standard block wrote only `OBJPROP_YDISTANCE`. So on a fresh attach in mode 2
+  // there was nothing to inherit: the title was CREATED, cleared to "" at birth
+  // (the write that removes MT4's default "Label"), and never given a caption -
+  // the bottom row carried M1..MN1 with no `TH:` beside an ATR row that had one
+  // («مقادیر بالا لیبل ATR داره ولی پایین لیبل TH نداره»). ONE painter
+  // (`PaintTHTitle`) is now the only writer of the caption, and BOTH blocks call
+  // it, so no mode can paint the half the other skips.
+  {
+    const broken = [];
+    const title = bodyOf(labelsB, 'void PaintTHTitle(');
+    const frac = bodyOf(labelsB, 'void DisplayFractalTHs(');
+    const std = bodyOf(labelsB, 'void DisplayStandardTHs(');
+    if (!title) broken.push('PaintTHTitle() is gone from Biotak/Labels_B.mqh — the caption has no owner');
+    else if (!/OBJPROP_TEXT\s*,\s*"TH:"/.test(title.text))
+      broken.push('PaintTHTitle never WRITES the caption (`OBJPROP_TEXT, "TH:"`) — the title is an empty object again');
+    if (!frac || !frac.text.includes('PaintTHTitle('))
+      broken.push('DisplayFractalTHs no longer calls the caption painter');
+    if (!std || !std.text.includes('PaintTHTitle('))
+      broken.push('DisplayStandardTHs no longer calls the caption painter — a standard-mode frame born on a fresh attach shows values with no `TH:` (the reported defect)');
+    // P-UI-224's rule: a rule proved on one platform is proved on all. The MT5 tree
+    // is a copy, and a copy that is not asked drifts — so the same two assertions are
+    // asked of `Biotak-Trigger-TH3-mql5/Biotak/LabelFunctions.mqh` when it is present.
+    const m5root = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
+    const haveM5 = fs.existsSync(path.join(m5root, 'Biotak'));
+    if (haveM5) {
+      const m5lbl = linesOf(path.join(m5root, 'Biotak', 'LabelFunctions.mqh')) || [];
+      const m5title = bodyOf(m5lbl, 'void PaintTHTitle(');
+      const m5std = bodyOf(m5lbl, 'void DisplayStandardTHs(');
+      if (!m5title || !/OBJPROP_TEXT\s*,\s*"TH:"/.test(m5title.text))
+        broken.push('the MT5 tree has no PaintTHTitle writing the caption (Biotak/LabelFunctions.mqh)');
+      if (!m5std || !m5std.text.includes('PaintTHTitle('))
+        broken.push('the MT5 standard TH block no longer calls the caption painter — the same `TH:`-less row is back on the second tree');
+      if (m5std && /OBJPROP_YDISTANCE\s*,\s*titleYPos/.test(m5std.text) && !m5std.text.includes('PaintTHTitle('))
+        broken.push('the MT5 standard block is back to writing only the title Y');
+    }
+    if (broken.length) {
+      failures.push('P-TH-02b: ' + broken.join('; ') + ' (Biotak/Labels_B.mqh)');
+    } else {
+      console.log('[PASS] P-TH-02b the TH caption has ONE painter (PaintTHTitle) and BOTH TH blocks call it (Biotak/Labels_B.mqh' + (haveM5 ? ' + the MT5 twin' : '') + ')');
+    }
+  }
+
+  // -- 91. P-LBL-11 (2026-11-01): THE ATR/TH TARGET ROWS START OFF -------------
+  // User order («این تارگت ها لیبل هاش پیش فرض خاموش باشه همه برای atr و هم th»):
+  // both target rows ship OFF. A default is only real when BOTH halves hold — the
+  // inputs and the RUNTIME MIRRORS every painter reads say false, AND the stored
+  // keys are forgotten once per symbol: `OV_A1`/`OV_TG` are re-applied by the
+  // loader on EVERY attach, so a chart that ever had a row on would keep it on for
+  // ever and the new default would never be visible on it (P-UI-119's lesson).
+  // The forget must sit BEFORE the loader's reads — a delete after them leaves the
+  // old value in this attach's mirrors, which is the "it came back" report.
+  {
+    const broken = [];
+    const props = codeOf(linesOf(PROPS_INPUTS) || []);
+    const runtimeLines = linesOf(RUNTIME_A) || [];
+    const runtime = codeOf(runtimeLines);
+    if (!/inpShowATRTargets\s*=\s*false\s*;/.test(props))
+      broken.push('inpShowATRTargets is not `false` in Biotak/PropertiesAndInputs.mqh — the ATR target row is back ON by default');
+    if (!/inpShowTHTargets\s*=\s*false\s*;/.test(props))
+      broken.push('inpShowTHTargets is not `false` in Biotak/PropertiesAndInputs.mqh — the TH target row is back ON by default');
+    if (!/g_showATRTargets\s*=\s*false\s*;/.test(runtime))
+      broken.push('g_showATRTargets is not `false` in Biotak/Runtime_A.mqh — every painter reads the mirror, so the input flip alone is not a default');
+    if (!/g_showTHTargets\s*=\s*false\s*;/.test(runtime))
+      broken.push('g_showTHTargets is not `false` in Biotak/Runtime_A.mqh — every painter reads the mirror, so the input flip alone is not a default');
+    const mig = bodyOf(linesOf(RUNTIME_SAVE) || [], 'void RuntimeSettingsTargetsForgetOnce(');
+    if (!mig) broken.push('RuntimeSettingsTargetsForgetOnce() is gone from Biotak/Runtime_Save.mqh — a stored OV_A1/OV_TG overrides the new default for ever');
+    else {
+      if (!/GlobalVariableDel\([^)]*"A1"\)/.test(mig.text))
+        broken.push('the one-time forget never deletes the ATR targets key (`O`+`A1`) — a chart with that row saved ON keeps it ON');
+      if (!/GlobalVariableDel\([^)]*"TG"\)/.test(mig.text))
+        broken.push('the one-time forget never deletes the TH targets key (`O`+`TG`) — a chart with that row saved ON keeps it ON');
+      if (!/if\s*\(\s*GlobalVariableCheck\(stamp\)\s*\)\s*return\s*;/.test(mig.text))
+        broken.push('the one-time forget has no stamp guard — it would wipe the user\'s own later choice on every attach');
+    }
+    const load = bodyOf(runtimeLines, 'void RuntimeSettingsLoadOverrides(');
+    if (!load) broken.push('RuntimeSettingsLoadOverrides() is gone from Biotak/Runtime_A.mqh');
+    else {
+      const callAt = load.text.indexOf('RuntimeSettingsTargetsForgetOnce(');
+      const readAt = load.text.indexOf('GlobalVariableGet(p');
+      if (callAt < 0)
+        broken.push('RuntimeSettingsLoadOverrides() never calls the one-time forget — the stored keys win and the default is decorative');
+      else if (readAt >= 0 && callAt > readAt)
+        broken.push('the one-time forget runs AFTER the loader\'s first read — this attach keeps the old value (delete-then-read, never read-then-delete)');
+    }
+    // The same two halves on the second tree (P-UI-224): a default ported as a copy
+    // but not asked drifts, and «همه اینا رو هم در متاتریدر 5» was the order.
+    const m5root = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
+    const haveM5 = fs.existsSync(path.join(m5root, 'Biotak'));
+    if (haveM5) {
+      const m5props = codeOf(linesOf(path.join(m5root, 'Biotak', 'PropertiesAndInputs.mqh')) || []);
+      const m5rtLines = linesOf(path.join(m5root, 'Biotak', 'RuntimeSettings.mqh')) || [];
+      const m5rt = codeOf(m5rtLines);
+      if (!/inpShowATRTargets\s*=\s*false\s*;/.test(m5props) || !/inpShowTHTargets\s*=\s*false\s*;/.test(m5props))
+        broken.push('the MT5 inputs still default a target row ON (Biotak-Trigger-TH3-mql5/Biotak/PropertiesAndInputs.mqh)');
+      if (!/g_showATRTargets\s*=\s*false\s*;/.test(m5rt) || !/g_showTHTargets\s*=\s*false\s*;/.test(m5rt))
+        broken.push('the MT5 runtime mirrors still default a target row ON (Biotak-Trigger-TH3-mql5/Biotak/RuntimeSettings.mqh)');
+      const m5mig = bodyOf(m5rtLines, 'void RuntimeSettingsTargetsForgetOnce(');
+      if (!m5mig) broken.push('the MT5 tree has no one-time forget — a stored OV_A1/OV_TG keeps a target row ON for ever there');
+      else if (!/GlobalVariableDel\([^)]*"OV_A1"\)/.test(m5mig.text) || !/GlobalVariableDel\([^)]*"OV_TG"\)/.test(m5mig.text))
+        broken.push('the MT5 one-time forget does not delete both keys');
+      const m5load = bodyOf(m5rtLines, 'void RuntimeSettingsLoadOverrides(');
+      if (!m5load || m5load.text.indexOf('RuntimeSettingsTargetsForgetOnce(') < 0)
+        broken.push('the MT5 loader never calls the one-time forget');
+      else if (m5load.text.indexOf('RuntimeSettingsTargetsForgetOnce(') > m5load.text.indexOf('GlobalVariableGet(p'))
+        broken.push('the MT5 one-time forget runs AFTER the loader\'s first read');
+    }
+    if (broken.length) {
+      failures.push('P-LBL-11: ' + broken.join('; ') + ' (Biotak/PropertiesAndInputs.mqh, Biotak/Runtime_A.mqh, Biotak/Runtime_Save.mqh)');
+    } else {
+      console.log('[PASS] P-LBL-11 both target rows default OFF in the inputs and the runtime mirrors, and the stored OV_A1/OV_TG are forgotten once per symbol before the loader reads them (Biotak/PropertiesAndInputs.mqh, Biotak/Runtime_A.mqh, Biotak/Runtime_Save.mqh' + (haveM5 ? ' + the MT5 twin' : '') + ')');
     }
   }
 

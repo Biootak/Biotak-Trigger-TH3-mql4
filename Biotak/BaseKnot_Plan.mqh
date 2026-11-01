@@ -1257,11 +1257,11 @@ void BaseKnotSync(const string id)
     if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
     int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF, hop);     // P-BK-127: ... and the ENTRY's, on the SAME rung (one ruler)
     string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
-    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor, nd.kind);   // P-BK-135: the note's risk asks the pair factor with the SAME type the geometry used
     bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the rung both legs use
     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs BaseKnotCalcLevels PRODUCED — published beside the levels, so the note and its hover name the very numbers the lines were drawn with (never a second read)
      BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor,
                         hop);   // P-BK-125: the same hop the stop's TF above was named with — P-BK-127: and the entry's
+    double hPips = riskPips;   // ONE OWNER (§11): the R IS the drawn pair — never a second BaseKnotRiskPips read
      // P-BK-104: the ENTRY's own leg, named and sized, ready for the note's face.
      string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag); BaseKnotPairWitness(id, baseTF, mTF, offPips, riskPips);   // P-BK-133: the off-ladder decision goes to the FLUSHED channel (P-LOG-3), never the journal
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.

@@ -1232,31 +1232,33 @@ void BaseKnotEngPush(const int &mins[], const datetime &anchors[], const double 
    if(moved) s_bkEngEpoch++;
 }
 // The pushed EngSL of one TF AT ONE ANCHOR, in pips. 0 = the pump has no value for that
-// (TF, anchor) pair (never invented); tfMin <= 0 means THIS chart's TF (the sizing
-// preview's question), and anchor 0 means the LIVE row (P-BK-79: a box with no story yet
-// falls back to it rather than inventing a bar).
-double BaseKnotEngPips(const int tfMin, const datetime anchor = 0)
+// (TF, anchor) pair (never invented); tfMin <= 0 means THIS chart's TF, anchor 0 the LIVE row.
+// P-BK-136/137: THE EXACT ROW WINS, else the BAND'S OWN SLOPE (log-linear through the two
+// neighbouring rows), and √-from-below only when the band's upper row was never pushed.
+double BaseKnotLegAt(const int tfMin, const datetime anchor, const bool hunt)
 {
-   int tf = (tfMin > 0 ? tfMin : Period());
-   if(tf <= 0) tf = 1;
+   int tf = (tfMin > 0 ? tfMin : Period()); if(tf <= 0) tf = 1;
+   int below = 0, above = 0; double vb = 0.0, va = 0.0;
    for(int i = 0; i < s_bkEngN; i++)
-      if(s_bkEngTF[i] == tf && s_bkEngAnchor[i] == anchor) return s_bkEngPips[i];
-   return 0.0;
+   {
+      double x = (hunt ? s_bkEngHunt[i] : s_bkEngPips[i]);
+      if(s_bkEngAnchor[i] != anchor || !(x > 0.0)) continue;
+      if(s_bkEngTF[i] == tf) return x;
+      if(s_bkEngTF[i] < tf) { if(s_bkEngTF[i] > below) { below = s_bkEngTF[i]; vb = x; } }
+      else if(above == 0 || s_bkEngTF[i] < above) { above = s_bkEngTF[i]; va = x; }
+   }
+   if(below > 0 && above > 0)
+      return vb * MathPow((double)tf / (double)below, MathLog(va / vb) / MathLog((double)above / (double)below));
+   return (below > 0 ? vb * BaseKnotRungScale(below, tf) : 0.0);
 }
+double BaseKnotEngPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, false); }
+double BaseKnotHuntPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, true); }
 bool BaseKnotRiskIsEng(const int tfMin, const datetime anchor = 0)
 { return (BaseKnotEngPips(tfMin, anchor) > 0.0); }
 // P-BK-51 — THE HUNTER LEG, read back the same way: the pushed HuntSL of one TF at one
 // anchor in pips, 0 = the pump has no value for it (never invented). It is what an
 // ETR/CTR/OTR node's ENTRY waits for («به اندازه huntsl محل ورود»), while every stop stays
 // ONE EngSL long.
-double BaseKnotHuntPips(const int tfMin, const datetime anchor = 0)
-{
-   int tf = (tfMin > 0 ? tfMin : Period());
-   if(tf <= 0) tf = 1;
-   for(int i = 0; i < s_bkEngN; i++)
-      if(s_bkEngTF[i] == tf && s_bkEngAnchor[i] == anchor) return s_bkEngHunt[i];
-   return 0.0;
-}
 // P-BK-50 — THE BOX' OWN TARGET LEGS per TF and anchor, exactly as the pump pushed
 // them: TP1..TP3 in pips from the ENTRY. 0 = not pushed: an ABSENCE, never a guess.
 // P-BK-120 — AND THE RULER IS THE STOP'S OWN EngSL: the pump applies the plan's ratios
