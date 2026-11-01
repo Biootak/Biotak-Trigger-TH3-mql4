@@ -47,7 +47,6 @@ GATES = {
     "parity": ("python", "tools/ui_parity_audit.py", "ui parity gate"),
     "resources": ("node", "tools/check-resources.js", "resource gate"),
     "pen": ("python", "tools/pen-sim.py", "pen scenario sim"),
-    "scenario": ("node", "tools/ui_scenario_check.js", "ui scenario gate"),
 }
 
 GEAR_B = "Biotak/DrawStrip_GearB.mqh"
@@ -60,162 +59,6 @@ REGISTER = "tools/check-regressions.js"
 #--- `expect` is the text the owning gate must print (its own message, so a gate that
 #--- fails for an unrelated reason does not count as a kill).
 MUTATIONS = [
-    #--- P-LBL-11 (2026-11-01) - THE ATR/TH TARGET ROWS START OFF.
-    #--- User order: «این تارگت ها لیبل هاش پیش فرض خاموش باشه همه برای atr و هم th».
-    #--- Two halves, and the default is only real when both hold: the INPUTS (and the
-    #--- runtime mirrors every painter reads) say false, AND the stored `OV_A1`/`OV_TG`
-    #--- are forgotten once per symbol before the loader reads them - those keys are
-    #--- re-applied on every attach, so a chart that ever had a row on keeps it on.
-    {
-        "id": "P-LBL-11",
-        "gate": "regression",
-        "rule": "both target rows default OFF, and the stored keys cannot outvote the default",
-        "what": "the ATR target row ships ON again",
-        "file": "Biotak/PropertiesAndInputs.mqh",
-        "find": "input bool inpShowATRTargets = false;            // Show ATR Targets (default OFF)",
-        "replace": "input bool inpShowATRTargets = true;             // Show ATR Targets (default OFF)",
-        "expect": "[FAIL] P-LBL-11",
-    },
-    {
-        "id": "P-LBL-11",
-        "gate": "regression",
-        "rule": "both target rows default OFF, and the stored keys cannot outvote the default",
-        "what": "the one-time forget never runs - a chart with `OV_A1`/`OV_TG` saved keeps both rows ON for ever",
-        "file": "Biotak/Runtime_A.mqh",
-        "find": "   RuntimeSettingsTargetsForgetOnce(p);   // P-LBL-11: the OFF default must beat a stored OV_A1/OV_TG (owner: Runtime_Save.mqh)",
-        "replace": "   // RuntimeSettingsTargetsForgetOnce(p);",
-        "expect": "[FAIL] P-LBL-11",
-    },
-    {
-        #--- the port half: the MT5 tree is a COPY, and a copy nobody asks drifts.
-        "id": "P-LBL-11",
-        "gate": "regression",
-        "rule": "both target rows default OFF on BOTH trees",
-        "what": "the MT5 tree's ATR target row ships ON again",
-        "file": "../Biotak-Trigger-TH3-mql5/Biotak/PropertiesAndInputs.mqh",
-        "find": "input bool inpShowATRTargets = false;            // Show ATR Targets (default OFF)",
-        "replace": "input bool inpShowATRTargets = true;             // Show ATR Targets (default OFF)",
-        "expect": "[FAIL] P-LBL-11",
-    },
-    {
-        "id": "P-TH-02b",
-        "gate": "regression",
-        "rule": "the TH caption is painted by ONE owner on BOTH trees and both blocks call it",
-        "what": "the MT5 standard TH block writes only the title's Y again",
-        "file": "../Biotak-Trigger-TH3-mql5/Biotak/LabelFunctions.mqh",
-        "find": "    // P-TH-02b: the SAME painter the fractal block calls — this block used to\n"
-                "    // write only the title's Y, so a standard-mode frame born on a fresh attach\n"
-                "    // had an empty `TH_Title` (values with no caption).\n"
-                "    PaintTHTitle(labelPrefix, titleYPos, singleLineHeight);",
-        "replace": "    ObjectSetInteger(0, labelPrefix + \"TH_Title\", OBJPROP_YDISTANCE, titleYPos);",
-        "expect": "[FAIL] P-TH-02",
-    },
-    #--- P-TH-02b (2026-11-01) - ONE CAPTION, AND BOTH TH BLOCKS PAINT IT.
-    #--- The two TH blocks are exclusive and share `<prefix>LBL_TH_Title`; the standard
-    #--- one wrote only the title's Y, so a fresh standard-mode frame created the title,
-    #--- cleared it to "" and never wrote a caption: values with no `TH:`.
-    {
-        "id": "P-TH-02b",
-        "gate": "regression",
-        "rule": "the TH caption is painted by ONE owner and both blocks call it",
-        "what": "the standard TH block writes only the title's Y again - a fresh standard-mode frame shows values with no caption",
-        "file": "Biotak/Labels_B.mqh",
-        "find": "    // P-TH-02b: the SAME painter the fractal block calls - this block used to\n"
-                "    // write only the title's Y, so a standard-mode frame born on a fresh attach\n"
-                "    // had an empty `TH_Title` (values with no caption).\n"
-                "    PaintTHTitle(labelPrefix, titleYPos, singleLineHeight);",
-        "replace": "    ObjectSetInteger(0, labelPrefix + \"TH_Title\", OBJPROP_YDISTANCE, titleYPos);",
-        #--- the census parses register codes as `P-<WORD>-<digits>`, so the witness
-        #--- names the family the caption belongs to; the failure line it prints is
-        #--- the precise `[FAIL] P-TH-02b: ...`.
-        "expect": "[FAIL] P-TH-02",
-    },
-    #--- P-UI-222 (2026-10-31) - THE RESIZE SCENARIO, ONE SURFACE AT A TIME.
-    #--- The defect was not in any file: the palette and the gear panel had no answer to
-    #--- "the window moved", while every surface that OWNS a home did. These three put it
-    #--- back and require the scenario gate to name the surface.
-    {
-        "id": "P-UI-222-a",
-        "gate": "scenario",
-        "rule": "an open palette re-derives its place on a resize",
-        "what": "the palette's resize re-clamp is commented out",
-        "file": "Biotak/BiotakPanels_Life.mqh",
-        "find": "      if(PalReclampOpen()) ChartRedraw();",
-        "replace": "      // if(PalReclampOpen()) ChartRedraw();",
-        "expect": "palette S06",
-    },
-    {
-        "id": "P-UI-222-b",
-        "gate": "scenario",
-        "rule": "an open gear panel is re-placed even when its plate did not move",
-        "what": "the panel's re-place leaves the clamp's early-return branch",
-        "file": "Biotak/DrawStrip_Paint.mqh",
-        "find": "         const int gx0 = s_dsGEX, gy0 = s_dsGEY;\r\n"
-                "         DrawStripPlaceGear();\r\n"
-                "         if(s_dsGEX != gx0 || s_dsGEY != gy0) DrawStripPaint();",
-        "replace": "         // removed",
-        "expect": "gear S06",
-    },
-    {
-        "id": "P-UI-222-c",
-        "gate": "scenario",
-        "rule": "a file that paints a UI control belongs to a surface row",
-        "what": "the matrix stops claiming one of the cards' own painter files",
-        "file": "tools/ui-scenarios.js",
-        "find": "            'BiotakPanels_DynDef.mqh', 'BiotakPanels_Hit.mqh',",
-        "replace": "            'BiotakPanels_DynDef.mqh',",
-        "expect": "ORPHAN",
-    },
-    {
-        "id": "P-UI-223-a",
-        "gate": "regression",
-        "rule": "every surface has an exit that is not its own button",
-        "what": "the card rung of Esc's inside-out ladder is gone - a window too small to hold a card strands it with no exit at all",
-        "file": "Biotak/BiotakPanels_Life.mqh",
-        "find": "         if(g_PnlOpen >= 0) { PnlCloseAll(); return; }\n",
-        "replace": "",
-        "expect": "[FAIL] P-UI-223",
-    },
-    {
-        "id": "P-UI-223-b",
-        "gate": "scenario",
-        "rule": "every surface has an exit that is not its own button",
-        "what": "the same line deleted, asked of the MATRIX instead of the register - the answer's call site must go STALE, not quietly pass",
-        "file": "Biotak/BiotakPanels_Life.mqh",
-        "find": "         if(g_PnlOpen >= 0) { PnlCloseAll(); return; }\n",
-        "replace": "",
-        "expect": "cards S13",
-    },
-    {
-        "id": "P-UI-224-a",
-        "gate": "regression",
-        "rule": "a scenario proved on one platform is proved on all",
-        "what": "the MT5 palette never re-derives its place - the shipped MT4 defect, still live on the second tree",
-        "file": "../Biotak-Trigger-TH3-mql5/Biotak/BiotakPanels.mqh",
-        "find": "bool PalReclampOpen()",
-        "replace": "bool PalReclampOpenX()",
-        "expect": "[FAIL] P-UI-224",
-    },
-    {
-        "id": "P-UI-224-b",
-        "gate": "scenario",
-        "rule": "a scenario proved on one platform is proved on all",
-        "what": "the MT5 palette re-clamp exists but is never called - asked of the MATRIX, which must go STALE on the second tree",
-        "file": "../Biotak-Trigger-TH3-mql5/Biotak/BiotakPanels.mqh",
-        "find": "if(PalReclampOpen()) ChartRedraw();",
-        "replace": "if(false) ChartRedraw();",
-        "expect": "[mt5] palette S06",
-    },
-    {
-        "id": "P-UI-224-c",
-        "gate": "scenario",
-        "rule": "a scenario proved on one platform is proved on all",
-        "what": "the MT5 strip clamp returns before re-placing its gear panel - a shrunk window strands the panel foot on the second tree",
-        "file": "../Biotak-Trigger-TH3-mql5/Biotak/DrawStrip.mqh",
-        "find": "const int gx0 = s_dsGEX, gy0 = s_dsGEY;",
-        "replace": "const int gx0 = 0, gy0 = 0;",
-        "expect": "[mt5] gear S06",
-    },
     {
         "id": "P-DRAW-121",
         "gate": "gear",
@@ -5549,36 +5392,6 @@ MUTATIONS = [
     #--- stepped onto H4 and drew the H4 Hunt (214.6) while its own 2h20m ATR says 142.5 (the
     #--- ~138 he expected); the four standard rungs and every FTR keep P-BK-132 byte-identically.
     {
-        "id": "P-BK-136-a",
-        "gate": "regression",
-        "rule": "a leg is read at a TIME, not at a rung",
-        "what": "the exact-match read is back - an off-ladder 20m / 140m knot reads 0 and every caller falls back to the box height again",
-        "file": "Biotak/BaseKnot_Nodes.mqh",
-        "find": "return (below > 0 ? vb * BaseKnotRungScale(below, tf) : 0.0);",
-        "replace": "return 0.0;   // MUTATION: exact row only",
-        "expect": "[FAIL] P-BK-136",
-    },
-    {
-        "id": "P-BK-138-a",
-        "gate": "regression",
-        "rule": "the time rules, the box only names the type",
-        "what": "the box grade is back in the pair factor - a tall box scales both legs again (the 2h20m box reads 214.6 / 80.5)",
-        "file": "Biotak/BaseKnot_Ability.mqh",
-        "find": "   // the four parameters stay because the caller set is frozen (contract \u00a711).\r\n   return 1.0;",
-        "replace": "   if(boxEngPips <= legEngPips) return 1.0;   // MUTATION: the floor is back\r\n   return BaseKnotLegGrade(boxEngPips, legEngPips);",
-        "expect": "[FAIL] P-BK-138",
-    },
-    {
-        "id": "P-BK-137-a",
-        "gate": "regression",
-        "rule": "a leg between two rows rides the band's own slope",
-        "what": "a fixed 0.5 is back - an off-ladder leg arrives at the next row 25 %..44 % short and steps there",
-        "file": "Biotak/BaseKnot_Nodes.mqh",
-        "find": "return vb * MathPow((double)tf / (double)below, MathLog(va / vb) / MathLog((double)above / (double)below));",
-        "replace": "return vb * BaseKnotRungScale(below, tf);   // MUTATION: one exponent for every band",
-        "expect": "[FAIL] P-BK-137",
-    },
-    {
         "id": "P-BK-133-a",
         "gate": "regression",
         "rule": "an off-ladder knot's own time is its rung",
@@ -5665,62 +5478,6 @@ MUTATIONS = [
     #--- P-BK-135 (2026-10-28) - THE FACTOR BELONGS TO THE PAIR. MEASURED on his 2h20m ETR box:
     #--- the geometry wrote `g` onto the stop only (142.5 / 80.5 = 1.77) while the plan's law is
     #--- 8/3. Each entry puts one half of the one-ruler law back; the owning gate must fail.
-    #--- P-BK-143 (2026-11-01) - THE TYPE HAS A DEADBAND. One drag read FTR then ETR on one box
-    #--- (`h` 8.4 / 8.5 around an 8.46 edge, still/nodeTF/hop identical). The mutation removes the
-    #--- hold; the numeric pin in the gate must fail on the two reported drags.
-    {
-        "id": "P-BK-143-a",
-        "gate": "regression",
-        "rule": "the type is held inside a deadband of the edge it crossed",
-        "what": "no hysteresis - a 0.1-pip drag re-types the knot and re-prices the whole card (FTR 1.5|4|8|18 vs ETR 2.8|7.5|14|34)",
-        "file": "Biotak/BaseKnot_Nodes.mqh",
-        "find": "   if(edge > 0.0 && MathAbs(h - edge) < BK_TYPE_DEADBAND * edge) return was;",
-        "replace": "   if(false) return was;   // MUTATION: no deadband, the published type is not held",
-        "expect": "[FAIL] P-BK-143",
-    },
-    #--- P-BK-142 (2026-11-01) - THE KNOT'S TIME IS A LADDER RUNG. Three screenshots of ONE box
-    #--- read 24 / 14 / 12 bars -> 2h / 1h10m / H1 and the card moved with them. The mutation puts
-    #--- `spanMin / 3` back as the answer; the numeric pin below must fail on it.
-    {
-        "id": "P-BK-142-a",
-        "gate": "regression",
-        "rule": "the knot's time is the largest ladder rung whose three candles fit",
-        "what": "`spanMin / 3` answers again - 24 / 14 / 12 M15 candles read 120m / 70m / H1 for one box",
-        "file": "Biotak/BaseKnot_Class.mqh",
-        "find": "   if(rung > 0) nodeTF = rung;                    // M1 always fits (bars >= 3, tfMin >= 1)",
-        "replace": "   if(false) nodeTF = rung;   // MUTATION: ship the un-rounded span/3 again",
-        "expect": "[FAIL] P-BK-142",
-    },
-    {
-        "id": "P-BK-141-a",
-        "gate": "regression",
-        "rule": "the owner's tolerance is half the ATR step",
-        "what": "the fixed +/-20 % band is back - a box between 24.12 and 30.48 pips (M15->H1) names no owner at all",
-        "file": "Biotak/BaseKnot_Owner.mqh",
-        "find": "      double rLo = BaseKnotOwnerBandLo(aDn, a), rHi = BaseKnotOwnerBandHi(aUp, a);",
-        "replace": "      double rLo = BK_OWNER_LO, rHi = BK_OWNER_HI;   // MUTATION: one band for every knot",
-        "expect": "[FAIL] P-BK-141",
-    },
-    {
-        "id": "P-BK-140-a",
-        "gate": "regression",
-        "rule": "a box in motion keeps the length it was committed with",
-        "what": "every drag frame re-derives the length - the same 24-pip box reads 75m / 70m / H1",
-        "file": "Biotak/BaseKnot_Plan.mqh",
-        "find": "if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }",
-        "replace": "if(false) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }   // MUTATION: the drag re-derives",
-        "expect": "[FAIL] P-BK-140",
-    },
-    {
-        "id": "P-BK-139-a",
-        "gate": "regression",
-        "rule": "the knot's time is the base's own candle count",
-        "what": "the count is taken on the ATR owner rung again - the same box reads 70m and 320m after a drag",
-        "file": "Biotak/BaseKnot_Plan.mqh",
-        "find": "int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);",
-        "replace": "int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount(   // MUTATION: the height picks the ruler",
-        "expect": "[FAIL] P-BK-126b",
-    },
     {
         "id": "P-BK-135-a",
         "gate": "regression",
@@ -6081,7 +5838,7 @@ MUTATIONS = [
         "gate": "regression",
         "rule": "the leg preview leaves with every deinit reason, above the REASON_REMOVE branch",
         "what": "the teardown sweeps no preview - a TF switch during a leg draw leaves the dashed line on the chart with no owner, forever",
-        "file": "Biotak/EventHandlers_Deinit.mqh",
+        "file": "Biotak/EventHandlers_Calc.mqh",
         "find": "    ObjectsDeleteAll(0, \"LM_prev_\");",
         "replace": "    // MUTATION: the preview outlives a TF switch",
         "expect": "P-MT4-LEGPREVIEW",

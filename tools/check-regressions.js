@@ -49,12 +49,6 @@ const ROOT = path.resolve(__dirname, '..');
 const BIOTAK = path.join(ROOT, 'Biotak');
 const LABELS_B = path.join(BIOTAK, 'Labels_B.mqh');
 const LABELS_A = path.join(BIOTAK, 'Labels_A.mqh');
-// P-LBL-11 (2026-11-01): the ATR/TH target rows' default OFF — the two inputs and
-// their runtime mirrors, plus the one-time forget that makes the default real for a
-// chart that already stored `OV_A1`/`OV_TG`.
-const RUNTIME_A = path.join(BIOTAK, 'Runtime_A.mqh');
-const RUNTIME_SAVE = path.join(BIOTAK, 'Runtime_Save.mqh');
-const PROPS_INPUTS = path.join(BIOTAK, 'PropertiesAndInputs.mqh');
 const EVENT_TAIL = path.join(BIOTAK, 'EventHandlers_Tail.mqh');
 const ROUTER = path.join(BIOTAK, 'EventHandlers_Router.mqh');
 const EVENT_ROUTER = ROUTER;
@@ -65,10 +59,6 @@ const APPLY = path.join(BIOTAK, 'BiotakPanels_Apply.mqh');
 const PAL_B = path.join(BIOTAK, 'BiotakPanels_PalB.mqh');
 const OBJ = path.join(BIOTAK, 'EventHandlers_Objects.mqh');
 const NODES = path.join(BIOTAK, 'BaseKnot_Nodes.mqh');
-// P-BK-142 (2026-11-01): the knot's time (ladder walk + class read + its three spellings) moved
-// to BaseKnot_Class.mqh when Nodes hit the 1500-line ceiling, and it is still ONE member of the
-// unit - so every gate that asks "does the unit still carry this?" reads BOTH files.
-const CLASS = path.join(BIOTAK, 'BaseKnot_Class.mqh');
 const BK_BASE = path.join(BIOTAK, 'BaseKnot_Base.mqh');
 const PLAN = path.join(BIOTAK, 'BaseKnot_Plan.mqh');
 const PIPE_A = path.join(BIOTAK, 'LevelPipe_A.mqh');
@@ -276,7 +266,7 @@ function main() {
   const obj = linesOf(OBJ);
   // P-BK-105 (2026-10-09): the base note's own unit — the node read, its hover, and the
   // sizing preview's zero block in the plan file.
-  const nodes = [...(linesOf(NODES) || []), ...(linesOf(CLASS) || [])];
+  const nodes = linesOf(NODES);
   const bkBase = linesOf(BK_BASE);
   const plan = linesOf(PLAN);
   const pipeA = linesOf(PIPE_A);
@@ -8327,10 +8317,7 @@ function main() {
   {
     const broken = [];
     const r193 = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
-    // P-SIZE-1500 (2026-10-31): DeactivateCustomPriceMode moved to the teardown owner;
-    // read the two files as the one unit the compiler sees.
-    const c193 = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
-                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
+    const c193 = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
     if (!r193) broken.push('EventHandlers_Router.mqh is gone — the key door has no home');
     else if (!c193 || !bodyOf(c193, 'void DeactivateCustomPriceMode('))
       broken.push('DeactivateCustomPriceMode is gone — the OFF has no owner');
@@ -9513,8 +9500,7 @@ function main() {
   {
     const broken = [];
     const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
     const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
     const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
 
@@ -9534,14 +9520,8 @@ function main() {
         broken.push('the owner fallback is gone - a box whose M1 story cannot be read names no time at all (P-BK-36)');
       if (walkAt >= 0 && fallAt >= 0 && fallAt < walkAt)
         broken.push('the owner is read BEFORE the walk - the first answer wins and the three candles are never consulted');
-      // P-BK-139 (2026-11-01): THE COUNT'S GRID IS THE BOX' OWN TF, NEVER THE OWNER RUNG.
-      // MEASURED on box 15_149567468 (EURUSD M15, band 1.11333..1.11573): moving the left
-      // edge 22:00 -> 23:15 moved the ATR owner from M15 to H1, so 16 candles counted on H1
-      // read 320m where 14 on M15 read 70m - the knot's time jumped x4.6 for a 1-pip drag.
-      // The owner is a HEIGHT (240%..360% of a rung's ATR); a candle count needs a WIDTH, and
-      // the only stable width is the box' own TF.
-      if (!sync.text.includes('int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);'))
-        broken.push('the count is taken on a ruler that can move with the box\' height again - the same knot would read two different times after a drag (70m vs 320m)');
+      if (!sync.text.includes('int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount('))
+        broken.push('the count is no longer taken on a declared read TF - `still` and the class would describe two grids');
     }
 
     // 2 — THREE IN A ROW, not three anywhere in the story.
@@ -9586,8 +9566,7 @@ function main() {
   // grid; this count is the hover's sentence now and it still must not follow the drawing.
   {
     const broken = [];
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
 
     // 1 — the bucket key is the clock. ONE line, and it is the whole rule.
     const still = nodes ? bodyOf(nodes, 'int BaseKnotStillCount(') : null;
@@ -9619,8 +9598,7 @@ function main() {
   // user's own input and the only thing allowed to move it.
   {
     const broken = [];
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
 
     // 1 — the class is the count over three, and NOTHING else is consulted.
@@ -9631,15 +9609,10 @@ function main() {
         broken.push('the class is no longer the base\'s own span over three - "three candles between the entry and the exit" is the user\'s own rule');
       if (read.text.includes('BaseKnotStillCount') || read.text.includes('BaseKnotM1Window'))
         broken.push('a bucket grid is back in the class read - that grid, not the box, is what moved `Node_TF` between 26m and 31m on one band');
-      // P-BK-142 (2026-11-01): the ANSWER is snapped onto a rung, and that snap owns its own block
-      // below. What 126d still forbids here is a BUCKET grid over the candles (the edge grid and the
-      // clock grid that answered 26..31m and 30m for one band) - the count stays the only measure.
       if (read.text.includes('3 * rungs[i] <= spanMin') || read.text.includes('if(rungs[i] <= spanMin)'))
-        broken.push('a bucket grid is back in the class read - `rungs[i] <= spanMin` walks the ladder over the SPAN instead of rounding the count\'s own answer (P-BK-126d: the count is the only measure)');
+        broken.push('the class rounds to a ladder rung again - a 40-minute base must read 13m, not M15');
       if (!read.text.includes('if(nodeTF > BK_KNOT_TF_MAX) nodeTF = BK_KNOT_TF_MAX;'))
         broken.push('the class is unclamped - a week-long story names a time no read can measure');
-      if (!read.text.includes('if(rung > 0) nodeTF = rung;'))
-        broken.push('the answer is no longer snapped onto a rung - P-BK-142: `spanMin / 3` is a CONTINUOUS function of an integer count, so one more in-band candle walks the knot\'s time by `tfMin / 3` and the whole card (entry, stop, TP1..TP4) with it');
     }
 
     // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
@@ -9650,144 +9623,7 @@ function main() {
     if (broken.length)
       failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
     else
-      console.log('[PASS] P-BK-126d the knot\'s time is the base\'s own entry..exit count over three: no clock, no bucket grid over the candles - the count is the one measure (P-BK-142 rounds its ANSWER onto a rung, it never re-counts and never re-buckets)');
-  }
-
-  // P-BK-142 (2026-11-01) — THE KNOT'S TIME IS A LADDER RUNG, AND THAT IS WHAT MAKES IT STABLE.
-  //
-  // Three screenshots of ONE box (EURUSD M15, 24 pips, band 1.11331..1.11575), dragged:
-  // `24 Bars · 2h base` / `14 Bars · 1h10m base` / `12 Bars · H1 base`, and the card moved with it
-  // (`TRex 3.6|9.6|18|43` / `2.7|7.2|14|33` / `5.5|14.5|27|65`). The user: «باید در هر حالت همون
-  // نشون بده … نمیشه روی اعدادش اطمینان کرد برای ترید». The flushed witness agreed with the screen:
-  // `still=24 nodeTF=120m` then `still=14 nodeTF=70m` then `still=12 nodeTF=H1` on the same band.
-  // MEASURED (1 650 jitter states of that box on the terminal's own EURUSD15.hst, +/-2 candles per
-  // edge and +/-0.5 pip per band side): `spanMin / 3` answers 41 distinct knot times, the rung 8.
-  {
-    const broken = [];
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
-    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
-
-    const read = nodes ? bodyOf(nodes, 'int BaseKnotBaseTFRead(') : null;
-    if (!read) broken.push('BaseKnotBaseTFRead is gone - the knot\'s time has no owner');
-    else {
-      if (!read.text.includes('int up = BaseKnotNextTFMin(rung);'))
-        broken.push('the snap no longer walks the ladder\'s ONE owner (BaseKnotNextTFMin) - a second rung table can only drift from the one the type is read on');
-      if (!read.text.includes('if(3 * up > spanMin) break;'))
-        broken.push('a rung is named whose three candles do not fit the base - the user\'s rule is «تایم گره سه کندل درجا زدن», so three candles of the named rung must fit inside the base\'s own span');
-      if (!read.text.includes('if(up <= 0 || up > BK_KNOT_TF_MAX) break;'))
-        broken.push('the walk can name a rung past the class\' cap (D1) - W1/MN1 would be named by a base of a few days');
-      if (!read.text.includes('if(rung > 0) nodeTF = rung;'))
-        broken.push('the snapped rung is not what the read returns - the whole card (entry / stop / TP1..TP4) is read on this number');
-    }
-
-    // the witness prints the clock span and the un-rounded value BESIDE the rung, so a reader sees
-    // the rounding instead of trusting it.
-    const wit = shot ? bodyOf(shot, 'void BaseKnotKnotWitness(') : null;
-    if (wit) {
-      if (!wit.text.includes('" span=" + IntegerToString(still * readUsed) +'))
-        broken.push('the [BK-KNOT] line dropped `span=` - the base\'s own minutes is the number the rung is derived from');
-      if (!wit.text.includes('" (raw=" + IntegerToString(still * readUsed / 3) + "m)" +'))
-        broken.push('the [BK-KNOT] line dropped `raw=` - a reader must be able to see the un-rounded `span/3` beside the rung, or the snap is invisible on the one channel that diagnoses it');
-    } else broken.push('BaseKnotKnotWitness is gone - the snap has no witness');
-
-    // THE NUMBER, not the shape: the ladder below is read OUT of BaseKnotNextTFMin's own literals,
-    // so a gate that pins the answers cannot disagree with the owner it pins.
-    const ladderOf = () => {
-      const body = nodes ? bodyOf(nodes, 'int BaseKnotNextTFMin(') : null;
-      const src = body ? body.text : '';
-      const rungs = [...src.matchAll(/if\(tfMin < (\d+)\)\s*return (\d+);/g)].map(m => Number(m[2]));
-      const floor = /if\(tfMin < 1\)\s*return (\d+);/.exec(src);
-      return floor ? [Number(floor[1]), ...rungs] : rungs;
-    };
-    const rungs = ladderOf();
-    const snap = (spanMin) => {
-      let r = 0;
-      for (const up of rungs) { if (!(up > 0) || up > 1440) break; if (3 * up > spanMin) break; r = up; }
-      return r;
-    };
-    if (rungs.length < 6)
-      broken.push('the ladder could not be read out of BaseKnotNextTFMin (' + rungs.length + ' rungs) - the pin below would be measuring nothing');
-    else {
-      // the three reported frames: 24 / 14 / 12 M15 candles. They must land on ONE time.
-      const frames = [[24, 15], [14, 15], [12, 15], [15, 15], [21, 15]];
-      const answers = frames.map(([b, tf]) => snap(b * tf));
-      if (new Set(answers).size !== 1)
-        broken.push('the reported frames still disagree: ' + frames.map(([b, tf], i) => `${b} bars -> ${answers[i]}m`).join(', ') + ' - these are one knot (2h / 1h10m / H1 on the same band) and the user cannot trade a number that moves');
-      if (answers[0] !== 60)
-        broken.push('24 M15 candles no longer read H1 (' + answers[0] + 'm) - three H1 candles are 180 minutes and fit a 360-minute base, while 3 x 240 does not');
-      if (snap(48 * 15) !== 240)
-        broken.push('48 M15 candles (720 minutes) must read H4 - the snap may only round DOWN to a rung whose three candles fit, never up');
-      if (snap(3 * 15) !== 15)
-        broken.push('a 3-candle base must read M15 - the floor of the snap is the base\'s own commit TF, not M1');
-      if (snap(400 * 15) !== 1440)
-        broken.push('a very long base must stop at the class\' cap (D1)');
-    }
-
-    if (broken.length)
-      failures.push('P-BK-142: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
-    else
-      console.log('[PASS] P-BK-142 the knot\'s time is the largest ladder rung whose three candles fit the base (24 / 14 / 12 M15 candles all read H1; 48 reads H4): the rounding is printed on the [BK-KNOT] line as `span=` + `raw=`, and one box can no longer answer 41 different times');
-  }
-
-  // P-BK-143 (2026-11-01) — THE TYPE HAS A DEADBAND, AND THAT IS WHAT MAKES IT TRUSTWORTHY.
-  //
-  // One box, one drag, two screenshots: `TRex 2.8 | Trigger 7.5 | Pricicle 14 | Classic 34` then
-  // `1.5 | 4 | 8 | 18` — FTR became ETR and the whole card went with it. The flushed witness named
-  // the input: `still=7 nodeTF=M15 span=105 hop=0` on EVERY frame, only `h` breathed (8.4 / 8.7 /
-  // 8.1 / 8.5 / 8.5), and the boundary `sqrt(6.4 x 11.2) = 8.46` sat under the box. The answer is
-  // hysteresis on the published type, never a re-tuned edge.
-  {
-    const broken = [];
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                   ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];
-    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
-
-    const sticky = nodes ? bodyOf(nodes, 'int BaseKnotKindSticky(') : null;
-    if (!sticky) broken.push('BaseKnotKindSticky is gone - a published type is back on a knife edge and one drag re-prices the whole card');
-    else {
-      if (!sticky.text.includes('if(was == BK_NODE_NONE || plain == BK_NODE_NONE || plain == was) return plain;'))
-        broken.push('a fresh box (no published type) no longer answers the PLAIN read - the deadband must never invent a type for a box that has none');
-      if (!sticky.text.includes('if(edge > 0.0 && MathAbs(h - edge) < BK_TYPE_DEADBAND * edge) return was;'))
-        broken.push('the deadband is gone from the answer - `BK_TYPE_DEADBAND` of the edge is the whole rule (a FRACTION, so it scales with the knot)');
-      if (!sticky.text.includes('return plain;'))
-        broken.push('the sticky read never takes a new answer - the type would freeze for good');
-    }
-    const edgeFn = nodes ? bodyOf(nodes, 'double BaseKnotKindBoundary(') : null;
-    if (!edgeFn) broken.push('BaseKnotKindBoundary is gone - the deadband has no edge to measure from');
-    else
-      for (const [s, label] of [['MathSqrt(trig * pat)', 'FTR|ETR'], ['MathSqrt(pat * str)', 'ETR|CTR'], ['if(ctrOtr) return str;', 'CTR|OTR']])
-        if (!edgeFn.text.includes(s))
-          broken.push(`the ${label} edge is not the SAME midpoint the type read uses - a deadband measured from its own arithmetic is a second ruler`);
-
-    // and the box' published kind is what it is compared against — never a fresh local read
-    const planText = plan ? plan.join('\n') : '';
-    if (!planText.includes('nd.kind = BaseKnotKindSticky(baseTF, BaseKnotToPips(MathAbs(top - bot)), (sp.tLast > 0 ? sp.tLast : t2), g_bkBoxes[k].nodeKind);'))
-      broken.push('BaseKnotSync no longer applies the deadband to the PUBLISHED kind - the face, the legs and the witness could describe two different knots');
-
-    // THE NUMBER, on the reported box: the same two drags must answer ONE type, and a real resize
-    // (clear of the edge) must still flip.
-    const dbSrc = /#define BK_TYPE_DEADBAND\s+([0-9.]+)/.exec(nodes ? nodes.join('\n') : '');
-    const db = dbSrc ? Number(dbSrc[1]) : 0;
-    if (!(db > 0 && db < 0.5))
-      broken.push('BK_TYPE_DEADBAND is missing or out of range (' + db + ') - 0 = no hysteresis, >= 0.5 = a type that cannot follow a real resize');
-    else {
-      const trig = 6.4, pat = 11.2;                  // the box' own rows (the note: ATR 6.4, H1 11.2)
-      const edge = Math.sqrt(trig * pat);            // 8.46 pips
-      const stick = (h, was) => (Math.abs(h - edge) < db * edge ? was : (h <= edge ? 'FTR' : 'ETR'));
-      if (!(Math.abs(8.4 - edge) < db * edge && Math.abs(8.5 - edge) < db * edge))
-        broken.push('the reported drags (8.4 / 8.5 pips around an 8.46 edge) fall OUTSIDE the deadband - the type still flips on them');
-      if (stick(8.4, 'ETR') !== 'ETR' || stick(8.5, 'FTR') !== 'FTR')
-        broken.push('the two reported drags still answer two types');
-      if (stick(8.4, 'ETR') !== stick(8.5, 'FTR') && false) broken.push('unreachable');
-      if (stick(5.0, 'ETR') !== 'FTR' || stick(16.0, 'FTR') !== 'ETR')
-        broken.push('a REAL resize no longer flips the type (5 pips must read FTR, 16 pips ETR) - the deadband may never freeze the model');
-    }
-
-    if (broken.length)
-      failures.push('P-BK-143: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Plan)');
-    else
-      console.log('[PASS] P-BK-143 the TYPE is held inside a deadband of the edge it crossed (BK_TYPE_DEADBAND of `sqrt(trig x pat)` etc.): the reported drags 8.4 / 8.5 pips around 8.46 answer ONE type, a real resize still flips, and the box\' published kind is what it compares against');
+      console.log('[PASS] P-BK-126d the knot\'s time is the base\'s own entry..exit count over three: no clock, no bucket grid, no ladder rounding - one number per band');
   }
 
   // P-BK-126e (2026-10-27) — THE WALK ANCHORS AT THE BOX' LEFT EDGE (THE ENTRY), SO THE RIGHT
@@ -9810,8 +9646,7 @@ function main() {
   {
     const broken = [];
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
 
     // 1 — the anchor is the OLDER shift, and it is the box' LEFT edge.
     const count = measure ? bodyOf(measure, 'int BaseKnotBarCount(') : null;
@@ -10015,8 +9850,7 @@ function main() {
   {
     const broken = [];
     const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
     const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
@@ -10132,8 +9966,7 @@ function main() {
     const broken = [];
     const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
     const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
-    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
-                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
     const witFile = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
@@ -10309,11 +10142,7 @@ function main() {
       console.log('[PASS] P-BK-131 no series is not no answer: a length MT4 has no bar for (700m / 45m / 8m) is scaled from the rung below by the project\'s √-law - the same arithmetic BaseKnotRungScale applies to the type\'s row - so the plan\'s price is ONE continuous monotone function of the knot\'s own minutes (H4 324.9 -> 700m 554.9 -> D1 999.3) and two knots can be compared');
   }
 
-  // P-BK-132 (2026-10-27) — THE STRUCTURE OF THE GRADE. RETIRED IN BEHAVIOUR by P-BK-138
-  // (2026-11-01): the factor now answers 1.0 for every knot, so no box moves a leg. What stays
-  // asserted here is the SHAPE a restore must still obey - one owner asked once, both legs under
-  // one guard, every reader (note, targets, card) off the drawn pair - plus the harness pin that
-  // a box twice its rung now draws the rung's own legs.
+  // P-BK-132 (2026-10-27) — THE BOX' OWN POWER IS THE FLOOR OF THE LEG.
   //
   // The user's own case: an FTR box that drifts a short step (or a C step) past its own time's
   // ability but never reaches the next rung's range. The type ladder still prices it on its own
@@ -10387,10 +10216,10 @@ function main() {
     const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_BaseKnot_Lines_Test.mq4'));
     const hText = harness ? harness.join('\n') : '';
     for (const s of ['P-BK-132 - a box under its rung is untouched',
-                     'P-BK-132 - a box twice its rung KEEPS the rung',
+                     'P-BK-132 - a box twice its rung doubles BOTH legs',
                      'P-BK-132 - the note\'s risk IS the drawn stop',
                      'P-BK-132 - the grade preserves the entry/stop ratio',
-                     'P-BK-132 - a box twice its rung KEEPS the rung\'s legs',
+                     'P-BK-132 - the graded pair fills exactly 30/64 of the box (off/risk = 1)',
                      'P-BK-132 - the product\'s Hunt/Eng fills 55/64 of the box (the ladder\'s own fit)'])
       if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the grade would be arithmetic nobody executes');
 
@@ -10450,8 +10279,8 @@ function main() {
     for (const s of ['P-BK-133 - 2h20m is NOT a ladder rung',
                      'P-BK-133 - the entry IS the knot\'s own HuntSL (142.5)',
                      'P-BK-133 - the stop IS the knot\'s own EngSL (53.4)',
-                     'P-BK-133 - a rung keeps its OWN legs (H4 entry = Hunt(H4))',
-                     'P-BK-133 - an off-ladder FTR keeps one EngSL (box ignored)',
+                     'P-BK-133 - a rung keeps the shared grade (H4 entry = Hunt(H4) x g)',
+                     'P-BK-133 - an off-ladder FTR still grades BOTH legs (one EngSL)',
                      'P-BK-133 - the note\'s Trigger IS the entry (142.5)'])
       if (!hText.includes(s)) broken.push('the harness no longer runs `' + s + '` - the fix would be arithmetic nobody executes');
 
@@ -10528,12 +10357,10 @@ function main() {
     if (!pairG)
       broken.push('BaseKnotPairGrade is gone - the factor is written per leg again, and the 2h20m box reads 1.77');
     else {
-      // P-BK-138 RETIRED THE FLOOR: the pair factor now answers 1.0 for every knot, and the
-      // inverse (a grade back inside this body) is what fails this gate.
-      if (!pairG.text.includes('return 1.0;'))
-        broken.push('the pair factor no longer answers 1.0 - the box is scaling a leg again');
-      if (pairG.text.includes('return BaseKnotLegGrade(boxEngPips, legEngPips);'))
-        broken.push('the box grade is back inside the pair factor - the 2h20m box would read 80.5 again');
+      if (!pairG.text.includes('if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;'))
+        broken.push('the pair factor lost its fence - an off-ladder Hunt rides the box\' power (214.6) or a rung stops riding it');
+      if (!pairG.text.includes('return BaseKnotLegGrade(boxEngPips, legEngPips);'))
+        broken.push('the pair factor is not BaseKnotLegGrade - a second ratio is back');
     }
     const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
     if (!pair || !pair.text.includes('double g = BaseKnotPairGrade(hunt, stf, capE, riskPips);'))
@@ -10563,200 +10390,7 @@ function main() {
     if (broken.length)
       failures.push('P-BK-135: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / BaseKnot_Nodes / BaseKnot_Shot / the harness)');
     else
-      console.log('[PASS] P-BK-135 the factor belongs to the pair, and P-BK-138 makes that factor 1.0: BaseKnotPairGrade is still the ONE answer the geometry, the note\'s risk and the card ask, the geometry still multiplies BOTH legs or neither - so a restore can never split the pair again, and every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) with no box in between');
-  }
-
-  // -- 96. P-BK-141 (2026-11-01): THE OWNER'S TOLERANCE IS HALF THE ATR STEP --
-  //
-  // A fixed +/-20 % around 300 % does not TILE. MEASURED on his own EURUSD M15 ATR table
-  // (M1 1.2 · M5 3.6 · M15 6.7 · H1 12.7 · H4 25.5 · D1 59.6 · W1 137.7): the old bands leave
-  // a hole between EVERY pair of rungs - 4.32 pips wide at M1->M5, 6.36 at M15->H1, 51.24 at
-  // H4->D1, 115.92 at D1->W1 - and a box in a hole has NO owner at all, which is why the
-  // note's `TF .. | Leg .. %` line comes and goes on boxes of the same size. The edge to a
-  // neighbour is the geometric midpoint `3 x sqrt(aNeighbour / aThis)`, so the bands meet
-  // exactly (M15 27.67 = H1 27.67) and the tolerance grows with the knot's own time. Nothing
-  // is tuned: the number IS the real step between two rungs.
-  {
-    const broken = [];
-    const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
-    const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
-    const noteText = note ? note.join('\n') : '';
-    if (!noteText.includes('double BaseKnotOwnerBandLo(const double aDown, const double aThis)') ||
-        !noteText.includes('BK_OWNER_UNIT * MathSqrt(aDown / aThis)'))
-      broken.push('the band is no longer the step to the neighbour - a fixed 2.40..3.60 leaves a hole between every pair of rungs');
-    if (!noteText.includes('double rLo = BaseKnotOwnerBandLo(aDn, ap), rHi = BaseKnotOwnerBandHi(aUp, ap);'))
-      broken.push('the note\'s owner still tests the fixed band - the face and the pump can name two owners');
-    const walk = own ? bodyOf(own, 'int BaseKnotOwnerTFWalk(') : null;
-    if (!walk)
-      broken.push('BaseKnotOwnerTFWalk is gone');
-    else {
-      if (!walk.text.includes('BaseKnotOwnerBandLo(aDn, a)') || !walk.text.includes('BaseKnotOwnerBandHi(aUp, a)'))
-        broken.push('the pump\'s owner is back on the fixed band - a box in a hole reads no owner at all');
-      if (walk.text.includes('r >= BK_OWNER_LO && r <= BK_OWNER_HI'))
-        broken.push('the fixed band is still the test - the tolerance cannot follow the knot\'s time');
-    }
-    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
-    if (!doc || !doc.join('\n').includes('P-BK-141'))
-      broken.push('the contract no longer carries the rule');
-
-    if (broken.length)
-      failures.push('P-BK-141: ' + broken.join('; ') + ' (BaseKnot_Note / BaseKnot_Owner / docs/contract.md)');
-    else
-      console.log('[PASS] P-BK-141 the owner\'s tolerance is half the ATR step: BaseKnotOwnerBandLo/Hi answer 3 x sqrt(aNeighbour/aThis), the note and the pump both test THAT band, and the bands meet at every rung (M15 27.67 = H1 27.67) where the fixed +/-20 % left a 6.36-pip hole and, at H4->D1, 51.24');
-  }
-
-  // -- 95. P-BK-140 (2026-11-01): A BOX IN MOTION KEEPS THE LENGTH IT WAS COMMITTED WITH --
-  //
-  // MEASURED on box 15_151797125 (EURUSD M15, band 1.11331..1.1158x): three drag frames
-  // moved the top 0.8 pip and the count read 15 -> 14 -> 12, so the knot's time read
-  // 75m -> 70m -> H1 and the TYPE printed blank on two of the three, while the box on the
-  // screen was the same 24-pip box. "Inside the band" is a per-candle yes/no, so the count
-  // is a STEP and cannot be smoothed - it is HELD instead: while a box is under the mouse
-  // (the same 400 ms heartbeat P-UI-130 uses), the length the last commit published stands,
-  // and a real resize commits a new one. Zero cost per frame (one compare).
-  {
-    const broken = [];
-    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
-    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
-    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
-    if (!sync)
-      broken.push('BaseKnotSync is gone');
-    else {
-      if (!sync.text.includes('if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }'))
-        broken.push('the drag no longer holds the committed length - the same box reads 75m / 70m / H1 in three frames');
-      if (!sync.text.includes('g_bkBoxes[k].baseStill = still; g_bkBoxes[k].baseBars = bars;'))
-        broken.push('nothing is stored to hold - every frame would re-derive the length');
-    }
-    if (!base || !base.join('\n').includes('bool BaseKnotBoxInMotion()') ||
-        !base.join('\n').includes('#define BK_BOX_MOTION_MS 400'))
-      broken.push('BaseKnotBoxInMotion is gone - "in motion" has no owner and a guess would hold a box forever');
-    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
-    if (!doc || !doc.join('\n').includes('P-BK-140'))
-      broken.push('the contract no longer carries the rule');
-
-    if (broken.length)
-      failures.push('P-BK-140: ' + broken.join('; ') + ' (BaseKnot_Plan / BaseKnot_Base / docs/contract.md)');
-    else
-      console.log('[PASS] P-BK-140 a box in motion keeps its committed length: BaseKnotBoxInMotion is the ONE 400 ms owner, BaseKnotSync holds still/bars from the last commit while it answers true, and a real resize stores a new pair - so the same 24-pip box reads 75m in every drag frame instead of 75m / 70m / H1');
-  }
-
-  // -- 94. P-BK-138 (2026-11-01): THE TIME RULES, THE BOX ONLY NAMES THE TYPE --
-  //
-  // MEASURED in his own two reports, in opposite places: the 2h20m box read 214.6 / 80.5
-  // because `h / 4.2667` beat its own EngSL, and the tall ETR box read Trigger 188.0 because
-  // the graded pair filled the box. He kept the SMALLER number both times. The floor had a
-  // second cost: on a box taller than 4.2667 x EngSL the knot's TIME stopped entering the
-  // subset at all, so two knots on different times read the same legs. The fit rule
-  // (BaseKnotLadderHopAt, 55/64) is what keeps the pair inside the box, so the floor was
-  // never what held it there. The STRUCTURE of P-BK-132/135 stays asserted above: a restore
-  // must still lift BOTH legs under one guard, and must still be asked once.
-  {
-    const broken = [];
-    const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
-    const pairG = ab ? bodyOf(ab, 'double BaseKnotPairGrade(') : null;
-    if (!pairG)
-      broken.push('BaseKnotPairGrade is gone - the floor and the fence would both be written per leg');
-    else {
-      if (!/^\s*return 1\.0;\s*$/m.test(pairG.text))
-        broken.push('the pair factor is not 1.0 - the box scales a leg again (the 2h20m 214.6 / 80.5)');
-      if (/return\s+BaseKnotLegGrade\(/.test(pairG.text))
-        broken.push('the box grade answers the pair again - the box is a multiplier, not a name');
-    }
-    const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
-    const pair = measure ? bodyOf(measure, 'void BaseKnotLegPair(') : null;
-    if (!pair || !pair.text.includes('BaseKnotPairGrade(hunt, stf, capE, riskPips)'))
-      broken.push('the geometry stopped asking the one owner - a second factor could appear beside it');
-    if (!pair || !pair.text.includes('if(g > 1.0)'))
-      broken.push('the one-guard shape is gone - a restore could write one leg without the other');
-    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
-    const hText = harness ? harness.join('\n') : '';
-    if (!hText.includes('P-BK-138 - a 400 pips box keeps the hour'))
-      broken.push('the harness no longer pins the 400-pip box - a floor would come back unwitnessed');
-    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
-    if (!doc || !doc.join('\n').includes('P-BK-138'))
-      broken.push('the contract no longer carries the rule');
-
-    if (broken.length)
-      failures.push('P-BK-138: ' + broken.join('; ') + ' (BaseKnot_Ability / BaseKnot_Measure / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
-    else
-      console.log('[PASS] P-BK-138 the time rules and the box only names the type: BaseKnotPairGrade answers 1.0 for every knot, so the stop is the knot\'s own EngSL (never h/4.2667), the entry is 8/3 of it on a Hunt and 1 on an FTR, and the targets ride the drawn stop - the 2h20m box reads 142.5 / 53.4 and a 400-pip box on an hour still draws 60');
-  }
-
-  // -- 92. P-BK-136 (2026-11-01): A LEG IS READ AT A TIME, NEVER AT A RUNG --
-  //
-  // The leg table is RUNG-keyed and answered ONLY an exact row: an off-ladder knot time
-  // (20m, 140m) read 0, and every caller replaced that absence with the box' own height —
-  // an absence dressed as a measurement. The ability table has answered this way since
-  // P-BK-126 (`BaseKnotAbilityGet` scales from the row below by the √-law); the legs now do
-  // the same, so ONE rule answers "a leg at this time" in both tables.
-  {
-    const broken = [];
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
-    const leg = nodes ? bodyOf(nodes, 'double BaseKnotLegAt(') : null;
-    if (!leg)
-      broken.push('BaseKnotLegAt is gone - an off-ladder knot time is a hole again');
-    else {
-      if (!leg.text.includes('BaseKnotRungScale(below, tf)'))
-        broken.push('the row below is no longer scaled - 20m / 140m read 0 again');
-      if (!leg.text.includes('if(s_bkEngTF[i] == tf) return x;'))
-        broken.push('the exact row no longer wins - every rung would move');
-    }
-    if (!nodes || !nodes.join('\n').includes('BaseKnotEngPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, false); }'))
-      broken.push('BaseKnotEngPips stopped delegating - a second leg read is back');
-    if (!nodes || !nodes.join('\n').includes('BaseKnotHuntPips(const int tfMin, const datetime anchor = 0) { return BaseKnotLegAt(tfMin, anchor, true); }'))
-      broken.push('BaseKnotHuntPips stopped delegating - the Hunt would read a second rule');
-    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
-    const hText = harness ? harness.join('\n') : '';
-    if (!hText.includes('DONE pass=') || !hText.includes('monotone'))
-      broken.push('the harness no longer asserts the monotone property - the cliff would return unwitnessed');
-    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
-    if (!doc || !doc.join('\n').includes('P-BK-136'))
-      broken.push('the contract no longer carries the rule');
-
-    if (broken.length)
-      failures.push('P-BK-136: ' + broken.join('; ') + ' (BaseKnot_Nodes / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
-    else
-      console.log('[PASS] P-BK-136 a leg is read at a TIME: BaseKnotLegAt returns the exact pushed row unchanged, else the nearest row BELOW scaled by the project\'s √-law, and 0 only when nothing is beneath - so an off-ladder knot (20m, 140m) reads its own curve instead of the box\' height');
-  }
-
-  // -- 93. P-BK-137 (2026-11-01): A LEG BETWEEN TWO ROWS RIDES THE BAND, NOT A CONSTANT --
-  //
-  // MEASURED on the labelled samples (Files/BK_Dataset, XAUUSD 2026-10-27): the table's own
-  // consecutive rows sit 1.80, 1.93, 2.03, 2.09, 2.23 and 3.23 apart while sqrt of the time
-  // ratio is 1.73..2.45 - the market's exponent reads 0.43..0.66, never 0.500. A law anchored
-  // at the row below with a FIXED 0.5 therefore arrives at the next row rho^0.5 short (25 %..
-  // 44 % under the row it is meant to meet) and STEPS there: on the 27m->60m band a 0.1m
-  // change in the knot's time moved the stop 36 %. The band's own slope, log-linear through
-  // the two neighbouring rows, is exact at both rows and continuous in between, and it
-  // degenerates to the sqrt law whenever the band IS sqrt-shaped - so P-BK-136 is its special
-  // case, not a second rule.
-  {
-    const broken = [];
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
-    const leg = nodes ? bodyOf(nodes, 'double BaseKnotLegAt(') : null;
-    if (!leg)
-      broken.push('BaseKnotLegAt is gone - an off-ladder knot time is a hole again');
-    else {
-      if (!leg.text.includes('MathLog(va / vb) / MathLog((double)above / (double)below)'))
-        broken.push('the band slope is gone - an off-ladder leg steps at every rung again');
-      if (!leg.text.includes('if(s_bkEngTF[i] < tf) { if(s_bkEngTF[i] > below)'))
-        broken.push('the neighbouring rows are no longer both collected - a bracket needs two');
-      if (!leg.text.includes('return (below > 0 ? vb * BaseKnotRungScale(below, tf) : 0.0);'))
-        broken.push('the no-upper-row fallback is gone - a cold band reads 0 instead of the sqrt law');
-    }
-    const harness = linesOf(path.join(ROOT, 'tests', 'Biotak_LegAt_Test.mq4'));
-    const hText = harness ? harness.join('\n') : '';
-    for (const s of ['log-linear through the', '35.7671', '54.6351', 'a 1m step at the rung'])
-      if (!hText.includes(s))
-        broken.push('the harness no longer pins `' + s + '` - a sqrt-shaped table cannot tell the two laws apart');
-    const doc = linesOf(path.join(ROOT, 'docs', 'contract.md'));
-    if (!doc || !doc.join('\n').includes('P-BK-137'))
-      broken.push('the contract no longer carries the rule');
-
-    if (broken.length)
-      failures.push('P-BK-137: ' + broken.join('; ') + ' (BaseKnot_Nodes / tests/Biotak_LegAt_Test.mq4 / docs/contract.md)');
-    else
-      console.log('[PASS] P-BK-137 a leg rides its band: between two pushed rows the exponent is the band\'s own (ln rho / ln time ratio), so the read lands exactly on both rows and never steps at a rung - and a table that IS sqrt-shaped reads byte-identically to P-BK-136');
+      console.log('[PASS] P-BK-135 the factor belongs to the pair: BaseKnotPairGrade is the ONE answer (a rung or an FTR rides the box, an off-ladder Hunt does not), the geometry multiplies BOTH legs or neither, the note\'s risk and the card\'s cells ask the same factor - so every knot draws entry / stop = 8/3 (Hunt) or 1 (FTR) and the 2h20m box reads 142.5 / 53.4, not 142.5 / 80.5 = 1.77');
   }
 
   // P-PATH-BUG-6/7/9 (2026-10-30) — A PATH'S CHILDREN ARE SWEPT BY NAME.
@@ -10879,10 +10513,8 @@ function main() {
   // hold. The MT5 twin shipped this as P-MT5-LEGPREVIEW (2026-10-24); MT4 never got it.
   {
     const broken = [];
-    // P-SIZE-1500 (2026-10-31): OnDeinitHandler moved to the teardown owner file.
-    const calc = [...(linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh')) || []),
-                  ...(linesOf(path.join(BIOTAK, 'EventHandlers_Deinit.mqh')) || [])];
-    const deinit = calc.length ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
+    const calc = linesOf(path.join(BIOTAK, 'EventHandlers_Calc.mqh'));
+    const deinit = calc ? bodyOf(calc, 'void OnDeinitHandler(const int reason)') : null;
     if (!deinit)
       broken.push('OnDeinitHandler is gone');
     else {
@@ -11138,278 +10770,6 @@ function main() {
       failures.push('P-UI-220: ' + broken.join('; ') + ' (BiotakPanels_PalSpec/_PalB/_Apply MT4, BiotakPanels.mqh MT5)');
     } else {
       console.log("[PASS] P-UI-220 the levels' card carries its own door to the ANCHOR's START POINT in both terminals — appended row 18, a NAV to the CUSTOM PRICE card, counted by the band, and the write proves itself on the flushed channel");
-    }
-  }
-
-  // -- 87. P-UI-222 (2026-10-31): A SURFACE IS A ROW, AND THE ROW IS A GATE ---------
-  // MEASURED by reading the tree, not by a report: the ring, the chip, the strip and
-  // the cards each re-derived their place on a resize, and the two POPUPS that hang
-  // off them did not. The palette kept the x it opened at; the gear panel kept the y
-  // its plate had, because `DrawStripHomeClamp` returned before the paint that would
-  // have re-placed it. Nothing was wrong in any file — the SURFACE had no row in a
-  // list nobody kept. `tools/ui-scenarios.js` is that list and
-  // `tools/ui_scenario_check.js` is the gate; this section keeps both alive, keeps
-  // the two fixes wired, and keeps the gate COMMENT-BLIND (a commented-out call
-  // satisfies a raw text match — the first cut of the gate passed on the very line
-  // that disabled it, which is P-DRAW-121b's "detector is blind" one file over).
-  {
-    const broken = [];
-    const matrix = linesOf(path.join(ROOT, 'tools', 'ui-scenarios.js'));
-    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
-    if (!matrix) broken.push('tools/ui-scenarios.js is gone — the matrix is the only list of surfaces');
-    else {
-      const mtext = matrix.join('\n');
-      for (const id of ['ring', 'cards', 'palette', 'strip', 'gear', 'knot', 'htf', 'legmeasure', 'sessions'])
-        if (!mtext.includes("id: '" + id + "'")) broken.push('the matrix lost the ' + id + ' row — that surface is undeclared again');
-      if (!mtext.includes('popup: true'))
-        broken.push('no surface is flagged `popup` — the P-UI-222 class can no longer be named');
-    }
-    if (!gate) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
-    else {
-      const gtext = gate.join('\n');
-      if (!gtext.includes('stripComments('))
-        broken.push('the gate matches raw text again — a commented-out call would satisfy it (P-DRAW-121b)');
-      if (!gtext.includes('ORPHAN painter'))
-        broken.push('the orphan half is gone — a new painter file could belong to no surface');
-      if (!gtext.includes('a POPUP with no S06'))
-        broken.push('the popup-without-resize half is gone — exactly the defect this rule was written for');
-    }
-    const life = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh'));
-    const lt = life ? life.join('\n') : '';
-    const cc = lt.indexOf('if(id == CHARTEVENT_CHART_CHANGE)');
-    const ccEnd = cc >= 0 ? lt.indexOf('return;', cc) : -1;
-    if (cc < 0 || ccEnd < 0 || !lt.slice(cc, ccEnd).includes('PalReclampOpen'))
-      broken.push('the palette is placed at open and never re-derived again — the resize branch lost `PalReclampOpen` (the shipped defect)');
-    const paint = linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh'));
-    const clamp = paint ? bodyOf(paint, 'void DrawStripHomeClamp()') : null;
-    if (!clamp)
-      broken.push('DrawStripHomeClamp is gone — the strip has no clamp');
-    else if (!clamp.text.includes('DrawStripPlaceGear();') || !clamp.text.includes('DrawStripPaint();'))
-      broken.push('the strip clamp returns before the panel is re-placed again — a shrunk window strands the gear panel\'s foot (the shipped defect)');
-    const build = linesOf(path.join(ROOT, 'compile-th3.ps1'));
-    if (!build || !build.join('\n').includes('ui_scenario_check.js'))
-      broken.push('the scenario gate is not wired into the build — a gate nobody runs is a rule nobody keeps (P-UI-149)');
-    if (broken.length) {
-      failures.push('P-UI-222: ' + broken.join('; ') + ' (tools/ui-scenarios.js / ui_scenario_check.js / BiotakPanels_Life.mqh / DrawStrip_Paint.mqh / compile-th3.ps1)');
-    } else {
-      console.log('[PASS] P-UI-222 a UI surface is a row in the scenario matrix: every painter file is claimed, every popup answers the resize, the palette re-derives and the gear panel re-places on that event, and the gate matches code with the comments stripped (a commented-out call is not a call)');
-    }
-  }
-
-  // -- 88. P-UI-223 (2026-10-31): EVERY SURFACE HAS AN EXIT THAT IS NOT ITS OWN BUTTON --
-  // The placement laws answer "where does it go". None of them answered "what if the
-  // window is too small to hold it at all": the clamp pins a surface to the top-left and
-  // the overflow runs off the bottom-right, so the Done pill and the header .x can both
-  // end up outside the chart. That is survivable ONLY because Esc dismisses inside-out —
-  // palette, then the open dropdown, then the card; the strip and the knot carry the same
-  // rule (P-DRAW-13). MEASURED before this entry: no register rule and no mutation covered
-  // that branch, so deleting one line would have removed the only exit from every stranded
-  // surface in the product with nothing red anywhere.
-  {
-    const broken = [];
-    const life = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh'));
-    const esc = life ? bodyOf(life, 'void HandleUIChartEvent(') : null;
-    if (!esc) broken.push('HandleUIChartEvent is gone — the panels have no event owner');
-    else {
-      const t = esc.text;
-      const rungs = [
-        ['the palette', 'if(g_PalOpen) { PalHandleKey(PNL_KEY_ESC)'],
-        ['the mini-toolbar dropdown', 'if(g_PnlOpen == 13 && g_BkDd != 0)'],
-        ['the card dropdown', 'if(g_PnlDdItem >= 0)'],
-        ['the card itself', 'if(g_PnlOpen >= 0) { PnlCloseAll()'],
-      ];
-      let last = -1;
-      for (const rung of rungs) {
-        const at = t.indexOf(rung[1]);
-        if (at < 0) { broken.push('Esc no longer dismisses ' + rung[0] + ' — the inside-out ladder lost a rung, and a stranded surface has no exit'); continue; }
-        if (at < last) broken.push('Esc dismisses ' + rung[0] + ' out of order — inside-out means the popup goes before the thing that holds it');
-        last = at;
-      }
-    }
-    // P-DRAW-13's own ladder, on the file that owns it: gear, then picker, then plate.
-    const dsr = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
-    const dt = dsr ? codeOf(dsr) : '';
-    const g = dt.indexOf('if(s_dsGear != 0)');
-    const k = dt.indexOf('if(s_dsPicker != DSTRIP_PICK_NONE)');
-    const c = dt.indexOf('close: Esc key');
-    if (g < 0 || k < 0 || c < 0) broken.push('the strip\'s Esc ladder is gone (gear then picker then plate) — P-DRAW-13');
-    else if (!(g < k && k < c)) broken.push('the strip closes out of order — Esc must take the gear before the picker before the plate');
-    // The gate must keep asking the question, and must keep its own whitelist honest.
-    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
-    const gt = gate ? gate.join('\n') : '';
-    if (!gt) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
-    else {
-      if (!gt.includes('a POPUP with no S13')) broken.push('the gate no longer demands an escape from a popup — the P-UI-222 trap can come back with nothing red');
-      if (!gt.includes('a dead whitelist entry is a free pass')) broken.push('the SHARED whitelist is unverified again — every entry is a hole in the orphan rule');
-    }
-    if (broken.length) {
-      failures.push('P-UI-223: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Life.mqh / Biotak/DrawStrip_Router.mqh / tools/ui_scenario_check.js)');
-    } else {
-      console.log('[PASS] P-UI-223 every surface has an exit that is not its own button: Esc dismisses inside-out (palette, dropdown, card), the strip takes its gear before its picker before its plate, the gate still demands an escape from every popup, and its whitelist is itself checked');
-    }
-  }
-
-  // -- 89. P-UI-224 (2026-10-31): A SCENARIO PROVED ON ONE PLATFORM IS PROVED ON ALL --
-  // The matrix was MT4-only, and the MT4-only reading is what let the MT5 tree keep BOTH
-  // P-UI-222 defects for as long as it did: `PalReclampOpen` did not exist there at all,
-  // and the strip clamp still returned before re-placing its panel. Neither was a bug in
-  // a line anyone had changed — no gate had ever asked the second tree the question.
-  // MEASURED when the matrix went per-platform: 27 of 89 MT5 sites resolved; after the
-  // port, 89 of 89 (71 of them through the unit, because MT5 is still unsplit).
-  // The tree may be absent on a machine that carries only one terminal, so the block is
-  // conditional — but when the tree IS there, its wiring is not optional.
-  {
-    const broken = [];
-    const m5 = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
-    const haveM5 = fs.existsSync(path.join(m5, 'Biotak'));
-    const matrix = linesOf(path.join(ROOT, 'tools', 'ui-scenarios.js'));
-    const mt = matrix ? matrix.join('\n') : '';
-    if (!matrix) broken.push('tools/ui-scenarios.js is gone — there is no matrix to be per-platform');
-    else {
-      if (!mt.includes('PLATFORMS')) broken.push('the matrix has no PLATFORMS map — it is single-platform again');
-      for (const k of ['mt4', 'mt5'])
-        if (!new RegExp('\\b' + k + ':\\s*\\{').test(mt)) broken.push('PLATFORMS lost the ' + k + ' tree — that platform is unchecked');
-      if (!mt.includes('filesM5')) broken.push('no row names its MT5 files — the second tree cannot be checked');
-    }
-    const gate = linesOf(path.join(ROOT, 'tools', 'ui_scenario_check.js'));
-    const gt = gate ? gate.join('\n') : '';
-    if (!gt) broken.push('tools/ui_scenario_check.js is gone — the matrix is prose again');
-    else {
-      if (!gt.includes('mapped-to-unit')) broken.push('the per-platform report is gone — a reader cannot tell the trees apart');
-      if (!gt.includes('--platform=')) broken.push('the gate can no longer be asked about ONE platform — a build cannot scope its own tree');
-    }
-    if (haveM5) {
-      const pnl = linesOf(path.join(m5, 'Biotak', 'BiotakPanels.mqh'));
-      const pt = pnl ? pnl.join('\n') : '';
-      if (!pt.includes('bool PalReclampOpen()'))
-        broken.push('MT5 has no PalReclampOpen — the palette is placed at open and never re-derived again (the shipped MT4 defect, still live on the second tree)');
-      if (!pt.includes('if(PalReclampOpen()) ChartRedraw();'))
-        broken.push('MT5 never calls PalReclampOpen from its CHART_CHANGE branch — the function is dead code there');
-      const ds = linesOf(path.join(m5, 'Biotak', 'DrawStrip.mqh'));
-      const dt = ds ? ds.join('\n') : '';
-      if (!dt.includes('const int gx0 = s_dsGEX, gy0 = s_dsGEY;'))
-        broken.push('MT5 DrawStripHomeClamp returns before re-placing its gear panel — a shrunk window strands the panel foot on the second tree');
-    }
-    if (broken.length) {
-      failures.push('P-UI-224: ' + broken.join('; ') + ' (tools/ui-scenarios.js / tools/ui_scenario_check.js / ../Biotak-Trigger-TH3-mql5)');
-    } else {
-      console.log('[PASS] P-UI-224 a scenario proved on one platform is proved on all: the matrix declares both trees, every row names its files on each, the gate reports them apart and can be scoped to one, and the MT5 tree carries both popup re-derivations (palette + gear panel)' + (haveM5 ? '' : ' [MT5 tree absent — wiring assertions skipped]'));
-    }
-  }
-
-  // -- 90. P-TH-02b (2026-11-01): ONE CAPTION, AND BOTH TH BLOCKS PAINT IT ------
-  // The two TH blocks are EXCLUSIVE (`g_thLabelsMode` 1/2) and share ONE object,
-  // `<prefix>LBL_TH_Title`. DisplayFractalTHs wrote every property of it; the
-  // standard block wrote only `OBJPROP_YDISTANCE`. So on a fresh attach in mode 2
-  // there was nothing to inherit: the title was CREATED, cleared to "" at birth
-  // (the write that removes MT4's default "Label"), and never given a caption -
-  // the bottom row carried M1..MN1 with no `TH:` beside an ATR row that had one
-  // («مقادیر بالا لیبل ATR داره ولی پایین لیبل TH نداره»). ONE painter
-  // (`PaintTHTitle`) is now the only writer of the caption, and BOTH blocks call
-  // it, so no mode can paint the half the other skips.
-  {
-    const broken = [];
-    const title = bodyOf(labelsB, 'void PaintTHTitle(');
-    const frac = bodyOf(labelsB, 'void DisplayFractalTHs(');
-    const std = bodyOf(labelsB, 'void DisplayStandardTHs(');
-    if (!title) broken.push('PaintTHTitle() is gone from Biotak/Labels_B.mqh — the caption has no owner');
-    else if (!/OBJPROP_TEXT\s*,\s*"TH:"/.test(title.text))
-      broken.push('PaintTHTitle never WRITES the caption (`OBJPROP_TEXT, "TH:"`) — the title is an empty object again');
-    if (!frac || !frac.text.includes('PaintTHTitle('))
-      broken.push('DisplayFractalTHs no longer calls the caption painter');
-    if (!std || !std.text.includes('PaintTHTitle('))
-      broken.push('DisplayStandardTHs no longer calls the caption painter — a standard-mode frame born on a fresh attach shows values with no `TH:` (the reported defect)');
-    // P-UI-224's rule: a rule proved on one platform is proved on all. The MT5 tree
-    // is a copy, and a copy that is not asked drifts — so the same two assertions are
-    // asked of `Biotak-Trigger-TH3-mql5/Biotak/LabelFunctions.mqh` when it is present.
-    const m5root = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
-    const haveM5 = fs.existsSync(path.join(m5root, 'Biotak'));
-    if (haveM5) {
-      const m5lbl = linesOf(path.join(m5root, 'Biotak', 'LabelFunctions.mqh')) || [];
-      const m5title = bodyOf(m5lbl, 'void PaintTHTitle(');
-      const m5std = bodyOf(m5lbl, 'void DisplayStandardTHs(');
-      if (!m5title || !/OBJPROP_TEXT\s*,\s*"TH:"/.test(m5title.text))
-        broken.push('the MT5 tree has no PaintTHTitle writing the caption (Biotak/LabelFunctions.mqh)');
-      if (!m5std || !m5std.text.includes('PaintTHTitle('))
-        broken.push('the MT5 standard TH block no longer calls the caption painter — the same `TH:`-less row is back on the second tree');
-      if (m5std && /OBJPROP_YDISTANCE\s*,\s*titleYPos/.test(m5std.text) && !m5std.text.includes('PaintTHTitle('))
-        broken.push('the MT5 standard block is back to writing only the title Y');
-    }
-    if (broken.length) {
-      failures.push('P-TH-02b: ' + broken.join('; ') + ' (Biotak/Labels_B.mqh)');
-    } else {
-      console.log('[PASS] P-TH-02b the TH caption has ONE painter (PaintTHTitle) and BOTH TH blocks call it (Biotak/Labels_B.mqh' + (haveM5 ? ' + the MT5 twin' : '') + ')');
-    }
-  }
-
-  // -- 91. P-LBL-11 (2026-11-01): THE ATR/TH TARGET ROWS START OFF -------------
-  // User order («این تارگت ها لیبل هاش پیش فرض خاموش باشه همه برای atr و هم th»):
-  // both target rows ship OFF. A default is only real when BOTH halves hold — the
-  // inputs and the RUNTIME MIRRORS every painter reads say false, AND the stored
-  // keys are forgotten once per symbol: `OV_A1`/`OV_TG` are re-applied by the
-  // loader on EVERY attach, so a chart that ever had a row on would keep it on for
-  // ever and the new default would never be visible on it (P-UI-119's lesson).
-  // The forget must sit BEFORE the loader's reads — a delete after them leaves the
-  // old value in this attach's mirrors, which is the "it came back" report.
-  {
-    const broken = [];
-    const props = codeOf(linesOf(PROPS_INPUTS) || []);
-    const runtimeLines = linesOf(RUNTIME_A) || [];
-    const runtime = codeOf(runtimeLines);
-    if (!/inpShowATRTargets\s*=\s*false\s*;/.test(props))
-      broken.push('inpShowATRTargets is not `false` in Biotak/PropertiesAndInputs.mqh — the ATR target row is back ON by default');
-    if (!/inpShowTHTargets\s*=\s*false\s*;/.test(props))
-      broken.push('inpShowTHTargets is not `false` in Biotak/PropertiesAndInputs.mqh — the TH target row is back ON by default');
-    if (!/g_showATRTargets\s*=\s*false\s*;/.test(runtime))
-      broken.push('g_showATRTargets is not `false` in Biotak/Runtime_A.mqh — every painter reads the mirror, so the input flip alone is not a default');
-    if (!/g_showTHTargets\s*=\s*false\s*;/.test(runtime))
-      broken.push('g_showTHTargets is not `false` in Biotak/Runtime_A.mqh — every painter reads the mirror, so the input flip alone is not a default');
-    const mig = bodyOf(linesOf(RUNTIME_SAVE) || [], 'void RuntimeSettingsTargetsForgetOnce(');
-    if (!mig) broken.push('RuntimeSettingsTargetsForgetOnce() is gone from Biotak/Runtime_Save.mqh — a stored OV_A1/OV_TG overrides the new default for ever');
-    else {
-      if (!/GlobalVariableDel\([^)]*"A1"\)/.test(mig.text))
-        broken.push('the one-time forget never deletes the ATR targets key (`O`+`A1`) — a chart with that row saved ON keeps it ON');
-      if (!/GlobalVariableDel\([^)]*"TG"\)/.test(mig.text))
-        broken.push('the one-time forget never deletes the TH targets key (`O`+`TG`) — a chart with that row saved ON keeps it ON');
-      if (!/if\s*\(\s*GlobalVariableCheck\(stamp\)\s*\)\s*return\s*;/.test(mig.text))
-        broken.push('the one-time forget has no stamp guard — it would wipe the user\'s own later choice on every attach');
-    }
-    const load = bodyOf(runtimeLines, 'void RuntimeSettingsLoadOverrides(');
-    if (!load) broken.push('RuntimeSettingsLoadOverrides() is gone from Biotak/Runtime_A.mqh');
-    else {
-      const callAt = load.text.indexOf('RuntimeSettingsTargetsForgetOnce(');
-      const readAt = load.text.indexOf('GlobalVariableGet(p');
-      if (callAt < 0)
-        broken.push('RuntimeSettingsLoadOverrides() never calls the one-time forget — the stored keys win and the default is decorative');
-      else if (readAt >= 0 && callAt > readAt)
-        broken.push('the one-time forget runs AFTER the loader\'s first read — this attach keeps the old value (delete-then-read, never read-then-delete)');
-    }
-    // The same two halves on the second tree (P-UI-224): a default ported as a copy
-    // but not asked drifts, and «همه اینا رو هم در متاتریدر 5» was the order.
-    const m5root = path.resolve(ROOT, '..', 'Biotak-Trigger-TH3-mql5');
-    const haveM5 = fs.existsSync(path.join(m5root, 'Biotak'));
-    if (haveM5) {
-      const m5props = codeOf(linesOf(path.join(m5root, 'Biotak', 'PropertiesAndInputs.mqh')) || []);
-      const m5rtLines = linesOf(path.join(m5root, 'Biotak', 'RuntimeSettings.mqh')) || [];
-      const m5rt = codeOf(m5rtLines);
-      if (!/inpShowATRTargets\s*=\s*false\s*;/.test(m5props) || !/inpShowTHTargets\s*=\s*false\s*;/.test(m5props))
-        broken.push('the MT5 inputs still default a target row ON (Biotak-Trigger-TH3-mql5/Biotak/PropertiesAndInputs.mqh)');
-      if (!/g_showATRTargets\s*=\s*false\s*;/.test(m5rt) || !/g_showTHTargets\s*=\s*false\s*;/.test(m5rt))
-        broken.push('the MT5 runtime mirrors still default a target row ON (Biotak-Trigger-TH3-mql5/Biotak/RuntimeSettings.mqh)');
-      const m5mig = bodyOf(m5rtLines, 'void RuntimeSettingsTargetsForgetOnce(');
-      if (!m5mig) broken.push('the MT5 tree has no one-time forget — a stored OV_A1/OV_TG keeps a target row ON for ever there');
-      else if (!/GlobalVariableDel\([^)]*"OV_A1"\)/.test(m5mig.text) || !/GlobalVariableDel\([^)]*"OV_TG"\)/.test(m5mig.text))
-        broken.push('the MT5 one-time forget does not delete both keys');
-      const m5load = bodyOf(m5rtLines, 'void RuntimeSettingsLoadOverrides(');
-      if (!m5load || m5load.text.indexOf('RuntimeSettingsTargetsForgetOnce(') < 0)
-        broken.push('the MT5 loader never calls the one-time forget');
-      else if (m5load.text.indexOf('RuntimeSettingsTargetsForgetOnce(') > m5load.text.indexOf('GlobalVariableGet(p'))
-        broken.push('the MT5 one-time forget runs AFTER the loader\'s first read');
-    }
-    if (broken.length) {
-      failures.push('P-LBL-11: ' + broken.join('; ') + ' (Biotak/PropertiesAndInputs.mqh, Biotak/Runtime_A.mqh, Biotak/Runtime_Save.mqh)');
-    } else {
-      console.log('[PASS] P-LBL-11 both target rows default OFF in the inputs and the runtime mirrors, and the stored OV_A1/OV_TG are forgotten once per symbol before the loader reads them (Biotak/PropertiesAndInputs.mqh, Biotak/Runtime_A.mqh, Biotak/Runtime_Save.mqh' + (haveM5 ? ' + the MT5 twin' : '') + ')');
     }
   }
 

@@ -3,11 +3,6 @@
 //|        Base / Knot Measurement Tool — TradingView-style two-click |
 //|        base-box drawer with Entry / SL / TP projections.          |
 //+------------------------------------------------------------------+
-//| THE RULES ARE docs/contract.md (§8, P-BK-*). THIS BLOCK IS THE    |
-//| CHANGE HISTORY: it carries the measured cases and their dates.    |
-//| A sentence here that no longer matches the code IS the defect     |
-//| (contract §11) — read the code, then this, then the contract.     |
-//+------------------------------------------------------------------+
 //| LAYER: drawing/domain (no UI deps — compiles in Full AND Lite).   |
 //| The Tools-ring button, menu hide/restore and chart-lock watchdog  |
 //| hooks live on the UI side (BiotakMenu/BiotakPanels) and call into |
@@ -46,20 +41,12 @@
 //|    the knot, measured from the edge the side comes in on (top for a  |
 //|    Buy, bottom for a Sell) — the ENTRY waits ONE EngSL of penetration|
 //|    for an FTR node and ONE HuntSL for ETR/CTR/OTR, read on the NODE'S|
-//|    OWN time. THE STOP is ONE EngSL of the NODE TYPE'S OWN time       |
-//|    (P-BK-83: ETR one rung above the node's time, CTR two, OTR three) |
-//|    - AND P-BK-132/135 GRADE THE PAIR BY THE BOX' OWN POWER. When the |
-//|    box is TALLER than that rung's leg both legs multiply by one      |
-//|    factor, g = (height / 4.2667) / EngSL, so the stop is             |
-//|    max(EngSL, height / 4.2667), the entry is g x HuntSL, and the     |
-//|    pair still fits inside the box (30/64 of it for a TRex entry,     |
-//|    55/64 for a Hunt). "ALWAYS one EngSL" was true until 2026-10-27   |
-//|    and is exactly the sentence that sends a reader after a defect    |
-//|    that no longer exists. The TARGETS are the plan's OWN TP1..TP3 of |
-//|    the knot's TF (the numbers the label's `#SL/-TP` row prints),     |
-//|    measured from the entry exactly as that row measures them and     |
-//|    then graded by the SAME g, so every R printed on a tick stays     |
-//|    put (P-BK-132). The old `TARGET R` x R target stays RETIRED       |
+//|    OWN time, while the SL is ALWAYS one EngSL behind the entry read  |
+//|    on the NODE TYPE'S OWN time (P-BK-83: ETR one rung above the      |
+//|    node's time, CTR two, OTR three). The TARGETS are the plan's OWN  |
+//|    TP1..TP3 of the knot's TF (the numbers the label's `#SL/-TP` row   |
+//|    prints), measured from the entry exactly as that row measures     |
+//|    them. The old `TARGET R` x R target stays RETIRED IN PLACE        |
 //|    (BKTPR-OFF), and that SAME state picks how many of the plan's     |
 //|    legs are drawn (1..3); P-BK-50's `entry ONE R OUTSIDE, stop ON    |
 //|    the edge` pair is superseded in place (BKGEOM-OFF). Until the     |
@@ -246,7 +233,6 @@
 #include "BaseKnot_Ability.mqh"     // P-BK-125: the (TF, anchor) table + the stop's rung (split out of Nodes, P-SIZE-1500)
 #include "BaseKnot_Measure.mqh"
 #include "BaseKnot_Nodes.mqh"
-#include "BaseKnot_Class.mqh"   // P-BK-142: the knot's time — the ladder's walk, the base's count, the rung (split out of Nodes, P-SIZE-1500)
 #include "BaseKnot_Note.mqh"   // P-BK-104/109: the note's own text fields (their one writer is below)
 #include "BaseKnot_Plan.mqh"
 #include "BaseKnot_Drag.mqh"

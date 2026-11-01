@@ -38,14 +38,8 @@ int BaseKnotOwnerTFWalk(const double boxPips, const datetime an)
       double a = BaseKnotToPips(atr);
       if(a <= 0.0) break;
       double r = boxPips / a;
-      // P-BK-141: the tolerance is half the ATR STEP, read from this rung's own neighbours - so
-      // it grows with the knot's time and tiles the ladder (no box falls between two owners).
-      int tfDn = BaseKnotPrevTFMin(tf), tfUp = BaseKnotNextTFMin(tf);
-      double aDn = (tfDn > 0 ? BaseKnotToPips(CalculateWeightedATRAt(CompatTF(tfDn), an)) : 0.0);
-      double aUp = (tfUp > 0 ? BaseKnotToPips(CalculateWeightedATRAt(CompatTF(tfUp), an)) : 0.0);
-      double rLo = BaseKnotOwnerBandLo(aDn, a), rHi = BaseKnotOwnerBandHi(aUp, a);
-      if(r >= rLo && r <= rHi) return tf;
-      int nxt = (r > rHi ? tfUp : tfDn);
+      if(r >= BK_OWNER_LO && r <= BK_OWNER_HI) return tf;
+      int nxt = (r > BK_OWNER_HI ? BaseKnotNextTFMin(tf) : BaseKnotPrevTFMin(tf));
       if(nxt <= 0 || nxt == tf) break;
       bool seen = false;
       for(int v = 0; v < nv; v++) if(visited[v] == nxt) { seen = true; break; }

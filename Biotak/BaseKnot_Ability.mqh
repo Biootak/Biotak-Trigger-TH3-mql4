@@ -328,23 +328,9 @@ bool BaseKnotEntryRidesStop(const bool isHunt, const int stopTF)
 // every leg is `a x g x constant` - one ATR, five constants, no second multiplication.
 // THE READERS: BaseKnotLegPair (the lines), BaseKnotRiskPips (the note's number), the targets and
 // the card all derive their factor from the DRAWN pair, so no reader can spell a ratio of its own.
-// P-BK-138 (2026-11-01) — THE TIME RULES, THE BOX ONLY NAMES THE TYPE.
-//
-// MEASURED in his own reports, twice, in opposite places: the 2h20m box read 214.6 / 80.5 because
-// `h / 4.2667` beat its own EngSL (53.4), and the tall ETR box read Trigger 188.0 because the
-// graded pair filled the box. Both times he kept the SMALLER number - the one his knot's time
-// said. And the floor had a second cost: a box taller than 4.2667 x EngSL made the knot's TIME
-// irrelevant (two knots on different times read the same legs), which is the opposite of the
-// "every knot has its own coordinates" rule the legs are drawn by. The fit rule already keeps
-// the pair inside the box (55/64, BaseKnotLadderHopAt), so the floor was never what held it there.
-// SO: the factor is 1.0 for EVERY knot and every leg; the height decides the TYPE (which sets
-// 8/3 vs 1) and the rung, never the multiplier. The signature and the two readers stay, so the
-// lines, the note's R, the targets and the card still ask ONE owner and can only agree.
 double BaseKnotPairGrade(const bool isHunt, const int legTF,
                          const double boxEngPips, const double legEngPips)
 {
-   // P-BK-138: ONE answer for EVERY knot - the box never scales a leg, by any height, on any
-   // knot. The fit rule (BaseKnotLadderHopAt, 55/64) is what keeps the pair inside the box, and
-   // the four parameters stay because the caller set is frozen (contract §11).
-   return 1.0;
+   if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;   // off-ladder Hunt: the pair rides the knot's own time
+   return BaseKnotLegGrade(boxEngPips, legEngPips);         // a rung (or an FTR): both legs, one factor
 }

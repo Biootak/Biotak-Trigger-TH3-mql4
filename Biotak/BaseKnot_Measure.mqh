@@ -220,28 +220,20 @@ void BaseKnotLazyInit()
       if(StringFind(nm, "BOX", StringLen(nm) - 3) < 0) continue;
        string id = StringSubstr(nm, StringLen(tag), StringLen(nm) - StringLen(tag) - 4);
        int dir = 1;
-       bool dirGuessed = false;   // §4/§11: a reading taken from today's price is NOT persisted
        if(GlobalVariableCheck(BaseKnotGV(id)))
           dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
        else if(GlobalVariableCheck(BaseKnotGVTwin(id)))   // P-UI-142: restart layer (chart ids are per-session)
           dir = ((int)GlobalVariableGet(BaseKnotGVTwin(id)) < 0 ? -1 : 1);
        else
        {
-          // No frozen value (pre-GV box or a wiped GV): resolve positionally instead of
-          // blindly defaulting to Buy. Contract §4/§11: this is a READING, not a fact — it
-          // is taken from TODAY's price over the last BK_DIR_LOOKBACK closes, so it is NOT
-          // written back. A guess frozen into the GV pair is a state that never happened,
-          // and the next restart could never correct it.
+          // No frozen value (pre-GV box or a wiped GV): resolve positionally
+          // exactly like a fresh commit instead of blindly defaulting to Buy —
+          // Register persists it, so the rebuild is stable from here on.
           double iA = ObjectGetDouble(0, nm, OBJPROP_PRICE, 0);
           double iB = ObjectGetDouble(0, nm, OBJPROP_PRICE, 1);
           dir = BaseKnotResolveDirection(MathMax(iA, iB), MathMin(iA, iB));
-          dirGuessed = true;
        }
         BaseKnotRegister(id, dir, BaseKnotIdTF(id));
-        // §4: a reading paints this session and is NOT persisted. The first real follow
-        // (BaseKnotRefreshDirection) writes its own GV pair, so a genuine price move still
-        // freezes a side — only the absence-driven guess does not.
-        if(dirGuessed) { GlobalVariableDel(BaseKnotGV(id)); GlobalVariableDel(BaseKnotGVTwin(id)); }
        int q = BaseKnotFind(id);
        if(q >= 0)
        {
@@ -750,6 +742,12 @@ string BaseKnotEntryWhy(const int kind, const int entryTF, const bool isHunt,
 // ... and the SHORT form of the same fact — the box hover's first line and the note's
 // own hover read THIS sentence, so "how deep" is answered once. P-BK-127: its TF is the
 // ENTRY's own rung — the STOP's, one ruler (it was the node's class until 2026-10-27).
+// BKE2-OFF: 2nd entry retired — kept as the name the purge deletes, never drawn.
+string BaseKnotEntryLine2(const int kind, const int entryTF, const bool isHunt, const int dir,
+                          const double top, const double bot, const datetime anchor = 0)
+{
+   return "";
+}
 string BaseKnotEntryLine(const int kind, const int entryTF, const bool isHunt, const int dir,
                          const double top, const double bot, const datetime anchor = 0)
 {
@@ -819,6 +817,23 @@ double BaseKnotLegPick(const double planPips, const double capPips)
 }
 // THE EFFECTIVE PAIR of one node, in pips — the ONE owner the geometry, the R every text
 // prints and both sentences read, so the drawn lines and the printed pips cannot part.
+//+------------------------------------------------------------------+
+//| BKE2-OFF - THE 2ND ENTRY IS RETIRED (2026-09-28, chart too busy).|
+//| E1 stays the knot's own trade; E2 answers absence (0/"") below.  |
+//+------------------------------------------------------------------+
+// BKE2-OFF: 2nd entry retired — the measure answers 0 (absence), never a level.
+double BaseKnotEntry2OffPips(const double top, const double bot, const int kind,
+                             const int entryTF, const datetime anchor = 0)
+{
+   return 0.0;
+}
+// BKE2-OFF: 2nd entry retired — 0,0 keeps it off the chart.
+void BaseKnotCalcEntry2(const double top, const double bot, const int dir, const int kind,
+                        const int entryTF, const double riskPips,
+                        double &entry2, double &sl2, const datetime anchor = 0)
+{
+   entry2 = 0.0; sl2 = 0.0; return;
+}
 void BaseKnotLegPair(const double top, const double bot, const int kind, const int tfMin,
                      double &offPips, double &riskPips, const datetime anchor = 0,
                      const int hop = -1)

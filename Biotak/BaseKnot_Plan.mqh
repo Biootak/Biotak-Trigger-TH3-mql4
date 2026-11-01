@@ -1175,8 +1175,8 @@ void BaseKnotSync(const string id)
    // the note's own badge all read THIS record, so no two of them can disagree about
    // where the base started, where it ended, or which TF it belongs to.
    BaseKnotSpan sp;
-   int baseReadTF = tfMin; int bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin);   // P-BK-139: the count's grid is the BOX' OWN TF - the owner rung is a height, never the ruler
-   int still = sp.still; if(BaseKnotBoxInMotion() && g_bkBoxes[k].baseStill > 0) { still = g_bkBoxes[k].baseStill; bars = g_bkBoxes[k].baseBars; }   // P-BK-140: a box IN MOTION keeps the length it was committed with (the count is a per-candle yes/no and cannot be smooth)
+   int baseReadTF = (g_bkBoxes[k].ownerTFMin > 0 ? g_bkBoxes[k].ownerTFMin : tfMin); int bars = BaseKnotBarCount(t1, t2, top, bot, sp, baseReadTF);   // P-BK-114: the owner TF is the knot's time
+   if(bars <= 0 && baseReadTF != tfMin) { baseReadTF = tfMin; bars = BaseKnotBarCount(t1, t2, top, bot, sp, tfMin); } int still = sp.still;
    // P-BK-36/38: the CLASS comes first now, because it is also what the node's
    // story is read on — one box, one TF, one story, whichever chart opens it. Both
    // numbers are published on the registry, so the pump's change check reads the
@@ -1195,7 +1195,7 @@ void BaseKnotSync(const string id)
    datetime bs1, bs2;
    BaseKnotClassSpan(sp, t1, t2, bs1, bs2);
    int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF); if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;   // P-BK-126b: THE THREE STAND-STILL CANDLES DECIDE THE KNOT'S TIME and the ATR owner is the FALLBACK only (P-BK-114 read it first, so the M5 band — 119.9 / 34.6 = 3.47 — beat the three M30 candles the user drew: 119.2 pips = 99.4 % of the box, 32m already 123.4; docs/bk-dataset.md §11)
-   g_bkBoxes[k].baseTFMin = baseTF; g_bkBoxes[k].baseStill = still; g_bkBoxes[k].baseBars = bars;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces; P-BK-140: and the pair is stored so a drag frame cannot re-derive it
+   g_bkBoxes[k].baseTFMin = baseTF;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces
    g_bkBoxes[k].storyT = sp.tLast; if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);   // P-BK-41: the same story the pump re-reads; P-ANCHOR-LAST: the active owner follows the story it just published
    g_bkBoxes[k].exitT  = sp.tExit;   // P-BK-81: the base's OWN exit candle — the ONE candle the
                                      //          direction is read from, published so the pump's
@@ -1216,7 +1216,7 @@ void BaseKnotSync(const string id)
    // candle the note's number is counted to, so the two can never describe different bars.
    BaseKnotNodeRead((sp.tLast > 0 ? sp.tLast : t2), top, bot, baseTF,
                     sp.tExit, g_bkBoxes[k].storyT, nd);   // P-BK-79: the SAME anchor the pump keyed its rows on
-   g_bkBoxes[k].nodeKind = nd.kind = BaseKnotKindSticky(baseTF, BaseKnotToPips(MathAbs(top - bot)), (sp.tLast > 0 ? sp.tLast : t2), g_bkBoxes[k].nodeKind);   // P-BK-143: the TYPE is held inside the deadband of the edge it crossed (Nodes; measurement + law there) — and it is published from HERE, so the face, the legs and the witness read one answer
+   g_bkBoxes[k].nodeKind = nd.kind;   // published → the pump's gate compares against this
    // P-BK-46 — THE BREAK'S STORY NAMES THE SIDE (BaseKnotNodeDir), and the answer
    // is PUBLISHED (registry + chart GV) because the pump's price-follow must not
    // flip a knot whose trade is already named by what price DID.
@@ -1257,11 +1257,11 @@ void BaseKnotSync(const string id)
     if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
     int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF, hop);     // P-BK-127: ... and the ENTRY's, on the SAME rung (one ruler)
     string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
+    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor, nd.kind);   // P-BK-135: the note's risk asks the pair factor with the SAME type the geometry used
     bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the rung both legs use
     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs BaseKnotCalcLevels PRODUCED — published beside the levels, so the note and its hover name the very numbers the lines were drawn with (never a second read)
      BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor,
                         hop);   // P-BK-125: the same hop the stop's TF above was named with — P-BK-127: and the entry's
-    double hPips = riskPips;   // ONE OWNER (§11): the R IS the drawn pair — never a second BaseKnotRiskPips read
      // P-BK-104: the ENTRY's own leg, named and sized, ready for the note's face.
      string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag); BaseKnotPairWitness(id, baseTF, mTF, offPips, riskPips);   // P-BK-133: the off-ladder decision goes to the FLUSHED channel (P-LOG-3), never the journal
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.
