@@ -65,6 +65,10 @@ const APPLY = path.join(BIOTAK, 'BiotakPanels_Apply.mqh');
 const PAL_B = path.join(BIOTAK, 'BiotakPanels_PalB.mqh');
 const OBJ = path.join(BIOTAK, 'EventHandlers_Objects.mqh');
 const NODES = path.join(BIOTAK, 'BaseKnot_Nodes.mqh');
+// P-BK-142 (2026-11-01): the knot's time (ladder walk + class read + its three spellings) moved
+// to BaseKnot_Class.mqh when Nodes hit the 1500-line ceiling, and it is still ONE member of the
+// unit - so every gate that asks "does the unit still carry this?" reads BOTH files.
+const CLASS = path.join(BIOTAK, 'BaseKnot_Class.mqh');
 const BK_BASE = path.join(BIOTAK, 'BaseKnot_Base.mqh');
 const PLAN = path.join(BIOTAK, 'BaseKnot_Plan.mqh');
 const PIPE_A = path.join(BIOTAK, 'LevelPipe_A.mqh');
@@ -272,7 +276,7 @@ function main() {
   const obj = linesOf(OBJ);
   // P-BK-105 (2026-10-09): the base note's own unit — the node read, its hover, and the
   // sizing preview's zero block in the plan file.
-  const nodes = linesOf(NODES);
+  const nodes = [...(linesOf(NODES) || []), ...(linesOf(CLASS) || [])];
   const bkBase = linesOf(BK_BASE);
   const plan = linesOf(PLAN);
   const pipeA = linesOf(PIPE_A);
@@ -9509,7 +9513,8 @@ function main() {
   {
     const broken = [];
     const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
     const own = linesOf(path.join(BIOTAK, 'BaseKnot_Owner.mqh'));
     const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
 
@@ -9581,7 +9586,8 @@ function main() {
   // grid; this count is the hover's sentence now and it still must not follow the drawing.
   {
     const broken = [];
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
 
     // 1 — the bucket key is the clock. ONE line, and it is the whole rule.
     const still = nodes ? bodyOf(nodes, 'int BaseKnotStillCount(') : null;
@@ -9613,7 +9619,8 @@ function main() {
   // user's own input and the only thing allowed to move it.
   {
     const broken = [];
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
 
     // 1 — the class is the count over three, and NOTHING else is consulted.
@@ -9624,10 +9631,15 @@ function main() {
         broken.push('the class is no longer the base\'s own span over three - "three candles between the entry and the exit" is the user\'s own rule');
       if (read.text.includes('BaseKnotStillCount') || read.text.includes('BaseKnotM1Window'))
         broken.push('a bucket grid is back in the class read - that grid, not the box, is what moved `Node_TF` between 26m and 31m on one band');
+      // P-BK-142 (2026-11-01): the ANSWER is snapped onto a rung, and that snap owns its own block
+      // below. What 126d still forbids here is a BUCKET grid over the candles (the edge grid and the
+      // clock grid that answered 26..31m and 30m for one band) - the count stays the only measure.
       if (read.text.includes('3 * rungs[i] <= spanMin') || read.text.includes('if(rungs[i] <= spanMin)'))
-        broken.push('the class rounds to a ladder rung again - a 40-minute base must read 13m, not M15');
+        broken.push('a bucket grid is back in the class read - `rungs[i] <= spanMin` walks the ladder over the SPAN instead of rounding the count\'s own answer (P-BK-126d: the count is the only measure)');
       if (!read.text.includes('if(nodeTF > BK_KNOT_TF_MAX) nodeTF = BK_KNOT_TF_MAX;'))
         broken.push('the class is unclamped - a week-long story names a time no read can measure');
+      if (!read.text.includes('if(rung > 0) nodeTF = rung;'))
+        broken.push('the answer is no longer snapped onto a rung - P-BK-142: `spanMin / 3` is a CONTINUOUS function of an integer count, so one more in-band candle walks the knot\'s time by `tfMin / 3` and the whole card (entry, stop, TP1..TP4) with it');
     }
 
     // 2 — a v5 row's count came from a run anchored on the RIGHT edge; it cannot be scored
@@ -9638,7 +9650,144 @@ function main() {
     if (broken.length)
       failures.push('P-BK-126d: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
     else
-      console.log('[PASS] P-BK-126d the knot\'s time is the base\'s own entry..exit count over three: no clock, no bucket grid, no ladder rounding - one number per band');
+      console.log('[PASS] P-BK-126d the knot\'s time is the base\'s own entry..exit count over three: no clock, no bucket grid over the candles - the count is the one measure (P-BK-142 rounds its ANSWER onto a rung, it never re-counts and never re-buckets)');
+  }
+
+  // P-BK-142 (2026-11-01) — THE KNOT'S TIME IS A LADDER RUNG, AND THAT IS WHAT MAKES IT STABLE.
+  //
+  // Three screenshots of ONE box (EURUSD M15, 24 pips, band 1.11331..1.11575), dragged:
+  // `24 Bars · 2h base` / `14 Bars · 1h10m base` / `12 Bars · H1 base`, and the card moved with it
+  // (`TRex 3.6|9.6|18|43` / `2.7|7.2|14|33` / `5.5|14.5|27|65`). The user: «باید در هر حالت همون
+  // نشون بده … نمیشه روی اعدادش اطمینان کرد برای ترید». The flushed witness agreed with the screen:
+  // `still=24 nodeTF=120m` then `still=14 nodeTF=70m` then `still=12 nodeTF=H1` on the same band.
+  // MEASURED (1 650 jitter states of that box on the terminal's own EURUSD15.hst, +/-2 candles per
+  // edge and +/-0.5 pip per band side): `spanMin / 3` answers 41 distinct knot times, the rung 8.
+  {
+    const broken = [];
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
+    const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
+
+    const read = nodes ? bodyOf(nodes, 'int BaseKnotBaseTFRead(') : null;
+    if (!read) broken.push('BaseKnotBaseTFRead is gone - the knot\'s time has no owner');
+    else {
+      if (!read.text.includes('int up = BaseKnotNextTFMin(rung);'))
+        broken.push('the snap no longer walks the ladder\'s ONE owner (BaseKnotNextTFMin) - a second rung table can only drift from the one the type is read on');
+      if (!read.text.includes('if(3 * up > spanMin) break;'))
+        broken.push('a rung is named whose three candles do not fit the base - the user\'s rule is «تایم گره سه کندل درجا زدن», so three candles of the named rung must fit inside the base\'s own span');
+      if (!read.text.includes('if(up <= 0 || up > BK_KNOT_TF_MAX) break;'))
+        broken.push('the walk can name a rung past the class\' cap (D1) - W1/MN1 would be named by a base of a few days');
+      if (!read.text.includes('if(rung > 0) nodeTF = rung;'))
+        broken.push('the snapped rung is not what the read returns - the whole card (entry / stop / TP1..TP4) is read on this number');
+    }
+
+    // the witness prints the clock span and the un-rounded value BESIDE the rung, so a reader sees
+    // the rounding instead of trusting it.
+    const wit = shot ? bodyOf(shot, 'void BaseKnotKnotWitness(') : null;
+    if (wit) {
+      if (!wit.text.includes('" span=" + IntegerToString(still * readUsed) +'))
+        broken.push('the [BK-KNOT] line dropped `span=` - the base\'s own minutes is the number the rung is derived from');
+      if (!wit.text.includes('" (raw=" + IntegerToString(still * readUsed / 3) + "m)" +'))
+        broken.push('the [BK-KNOT] line dropped `raw=` - a reader must be able to see the un-rounded `span/3` beside the rung, or the snap is invisible on the one channel that diagnoses it');
+    } else broken.push('BaseKnotKnotWitness is gone - the snap has no witness');
+
+    // THE NUMBER, not the shape: the ladder below is read OUT of BaseKnotNextTFMin's own literals,
+    // so a gate that pins the answers cannot disagree with the owner it pins.
+    const ladderOf = () => {
+      const body = nodes ? bodyOf(nodes, 'int BaseKnotNextTFMin(') : null;
+      const src = body ? body.text : '';
+      const rungs = [...src.matchAll(/if\(tfMin < (\d+)\)\s*return (\d+);/g)].map(m => Number(m[2]));
+      const floor = /if\(tfMin < 1\)\s*return (\d+);/.exec(src);
+      return floor ? [Number(floor[1]), ...rungs] : rungs;
+    };
+    const rungs = ladderOf();
+    const snap = (spanMin) => {
+      let r = 0;
+      for (const up of rungs) { if (!(up > 0) || up > 1440) break; if (3 * up > spanMin) break; r = up; }
+      return r;
+    };
+    if (rungs.length < 6)
+      broken.push('the ladder could not be read out of BaseKnotNextTFMin (' + rungs.length + ' rungs) - the pin below would be measuring nothing');
+    else {
+      // the three reported frames: 24 / 14 / 12 M15 candles. They must land on ONE time.
+      const frames = [[24, 15], [14, 15], [12, 15], [15, 15], [21, 15]];
+      const answers = frames.map(([b, tf]) => snap(b * tf));
+      if (new Set(answers).size !== 1)
+        broken.push('the reported frames still disagree: ' + frames.map(([b, tf], i) => `${b} bars -> ${answers[i]}m`).join(', ') + ' - these are one knot (2h / 1h10m / H1 on the same band) and the user cannot trade a number that moves');
+      if (answers[0] !== 60)
+        broken.push('24 M15 candles no longer read H1 (' + answers[0] + 'm) - three H1 candles are 180 minutes and fit a 360-minute base, while 3 x 240 does not');
+      if (snap(48 * 15) !== 240)
+        broken.push('48 M15 candles (720 minutes) must read H4 - the snap may only round DOWN to a rung whose three candles fit, never up');
+      if (snap(3 * 15) !== 15)
+        broken.push('a 3-candle base must read M15 - the floor of the snap is the base\'s own commit TF, not M1');
+      if (snap(400 * 15) !== 1440)
+        broken.push('a very long base must stop at the class\' cap (D1)');
+    }
+
+    if (broken.length)
+      failures.push('P-BK-142: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Shot)');
+    else
+      console.log('[PASS] P-BK-142 the knot\'s time is the largest ladder rung whose three candles fit the base (24 / 14 / 12 M15 candles all read H1; 48 reads H4): the rounding is printed on the [BK-KNOT] line as `span=` + `raw=`, and one box can no longer answer 41 different times');
+  }
+
+  // P-BK-143 (2026-11-01) — THE TYPE HAS A DEADBAND, AND THAT IS WHAT MAKES IT TRUSTWORTHY.
+  //
+  // One box, one drag, two screenshots: `TRex 2.8 | Trigger 7.5 | Pricicle 14 | Classic 34` then
+  // `1.5 | 4 | 8 | 18` — FTR became ETR and the whole card went with it. The flushed witness named
+  // the input: `still=7 nodeTF=M15 span=105 hop=0` on EVERY frame, only `h` breathed (8.4 / 8.7 /
+  // 8.1 / 8.5 / 8.5), and the boundary `sqrt(6.4 x 11.2) = 8.46` sat under the box. The answer is
+  // hysteresis on the published type, never a re-tuned edge.
+  {
+    const broken = [];
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                   ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+
+    const sticky = nodes ? bodyOf(nodes, 'int BaseKnotKindSticky(') : null;
+    if (!sticky) broken.push('BaseKnotKindSticky is gone - a published type is back on a knife edge and one drag re-prices the whole card');
+    else {
+      if (!sticky.text.includes('if(was == BK_NODE_NONE || plain == BK_NODE_NONE || plain == was) return plain;'))
+        broken.push('a fresh box (no published type) no longer answers the PLAIN read - the deadband must never invent a type for a box that has none');
+      if (!sticky.text.includes('if(edge > 0.0 && MathAbs(h - edge) < BK_TYPE_DEADBAND * edge) return was;'))
+        broken.push('the deadband is gone from the answer - `BK_TYPE_DEADBAND` of the edge is the whole rule (a FRACTION, so it scales with the knot)');
+      if (!sticky.text.includes('return plain;'))
+        broken.push('the sticky read never takes a new answer - the type would freeze for good');
+    }
+    const edgeFn = nodes ? bodyOf(nodes, 'double BaseKnotKindBoundary(') : null;
+    if (!edgeFn) broken.push('BaseKnotKindBoundary is gone - the deadband has no edge to measure from');
+    else
+      for (const [s, label] of [['MathSqrt(trig * pat)', 'FTR|ETR'], ['MathSqrt(pat * str)', 'ETR|CTR'], ['if(ctrOtr) return str;', 'CTR|OTR']])
+        if (!edgeFn.text.includes(s))
+          broken.push(`the ${label} edge is not the SAME midpoint the type read uses - a deadband measured from its own arithmetic is a second ruler`);
+
+    // and the box' published kind is what it is compared against — never a fresh local read
+    const planText = plan ? plan.join('\n') : '';
+    if (!planText.includes('nd.kind = BaseKnotKindSticky(baseTF, BaseKnotToPips(MathAbs(top - bot)), (sp.tLast > 0 ? sp.tLast : t2), g_bkBoxes[k].nodeKind);'))
+      broken.push('BaseKnotSync no longer applies the deadband to the PUBLISHED kind - the face, the legs and the witness could describe two different knots');
+
+    // THE NUMBER, on the reported box: the same two drags must answer ONE type, and a real resize
+    // (clear of the edge) must still flip.
+    const dbSrc = /#define BK_TYPE_DEADBAND\s+([0-9.]+)/.exec(nodes ? nodes.join('\n') : '');
+    const db = dbSrc ? Number(dbSrc[1]) : 0;
+    if (!(db > 0 && db < 0.5))
+      broken.push('BK_TYPE_DEADBAND is missing or out of range (' + db + ') - 0 = no hysteresis, >= 0.5 = a type that cannot follow a real resize');
+    else {
+      const trig = 6.4, pat = 11.2;                  // the box' own rows (the note: ATR 6.4, H1 11.2)
+      const edge = Math.sqrt(trig * pat);            // 8.46 pips
+      const stick = (h, was) => (Math.abs(h - edge) < db * edge ? was : (h <= edge ? 'FTR' : 'ETR'));
+      if (!(Math.abs(8.4 - edge) < db * edge && Math.abs(8.5 - edge) < db * edge))
+        broken.push('the reported drags (8.4 / 8.5 pips around an 8.46 edge) fall OUTSIDE the deadband - the type still flips on them');
+      if (stick(8.4, 'ETR') !== 'ETR' || stick(8.5, 'FTR') !== 'FTR')
+        broken.push('the two reported drags still answer two types');
+      if (stick(8.4, 'ETR') !== stick(8.5, 'FTR') && false) broken.push('unreachable');
+      if (stick(5.0, 'ETR') !== 'FTR' || stick(16.0, 'FTR') !== 'ETR')
+        broken.push('a REAL resize no longer flips the type (5 pips must read FTR, 16 pips ETR) - the deadband may never freeze the model');
+    }
+
+    if (broken.length)
+      failures.push('P-BK-143: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Plan)');
+    else
+      console.log('[PASS] P-BK-143 the TYPE is held inside a deadband of the edge it crossed (BK_TYPE_DEADBAND of `sqrt(trig x pat)` etc.): the reported drags 8.4 / 8.5 pips around 8.46 answer ONE type, a real resize still flips, and the box\' published kind is what it compares against');
   }
 
   // P-BK-126e (2026-10-27) — THE WALK ANCHORS AT THE BOX' LEFT EDGE (THE ENTRY), SO THE RIGHT
@@ -9661,7 +9810,8 @@ function main() {
   {
     const broken = [];
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
 
     // 1 — the anchor is the OLDER shift, and it is the box' LEFT edge.
     const count = measure ? bodyOf(measure, 'int BaseKnotBarCount(') : null;
@@ -9865,7 +10015,8 @@ function main() {
   {
     const broken = [];
     const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
     const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
@@ -9981,7 +10132,8 @@ function main() {
     const broken = [];
     const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
     const note = linesOf(path.join(BIOTAK, 'BaseKnot_Note.mqh'));
-    const nodes = linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh'));
+    const nodes = [...(linesOf(path.join(BIOTAK, 'BaseKnot_Nodes.mqh')) || []),
+                     ...(linesOf(path.join(BIOTAK, 'BaseKnot_Class.mqh')) || [])];   // P-BK-142: the class read lives in BaseKnot_Class.mqh now
     const measure = linesOf(path.join(BIOTAK, 'BaseKnot_Measure.mqh'));
     const shot = linesOf(path.join(BIOTAK, 'BaseKnot_Shot.mqh'));
     const witFile = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));

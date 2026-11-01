@@ -114,8 +114,10 @@
 //--- (that line is the measured band of docs/bk-dataset.md §15: the same 12 candles from 08:55 to
 //--- 09:50 with the exit at 09:55, one answer for 99 right edges.)
 //--- READ IT THIS WAY (the whole method):
-//---   * `nodeTF` is `still * readTF / 3`, capped at `cap` (P-BK-126d's one division) — the
-//---     arithmetic is on the line, so nothing has to be trusted;
+//---   * `span` is `still * readTF` — the base's own minutes — and `nodeTF` is the LARGEST
+//---     rung whose three candles fit inside it, capped at `cap` (P-BK-142: `raw=` on the line
+//---     is the un-rounded `span / 3` P-BK-126d used to ship, printed beside it so a reader can
+//---     see the rounding rather than trust it);
 //---   * `still` is the candles whose BODIES sat inside the band between `entry` (the box' LEFT
 //---     edge candle — P-BK-126e's anchor, NOT counted) and `exit` (the candle that CLOSED
 //---     outside it, counted); `bars` is that same run's life;
@@ -181,7 +183,8 @@ void BaseKnotKnotWitness(const string id,
                      " still=" + IntegerToString(still) +
                      " bars=" + IntegerToString(bars) +
                      " readTF=" + BaseKnotTFName(readUsed) +
-                     " nodeTF=" + BaseKnotTFName(nodeTF) +
+                     " span=" + IntegerToString(still * readUsed) +
+                     " nodeTF=" + BaseKnotTFName(nodeTF) + " (raw=" + IntegerToString(still * readUsed / 3) + "m)" +
                      " cap=" + IntegerToString(BK_KNOT_TF_MAX) +
                      " h=" + DoubleToString(BaseKnotToPips(MathAbs(top - bot)), 1) +
                      " type=" + BaseKnotNodeShort(kind) + " hop=" + IntegerToString(hop) +

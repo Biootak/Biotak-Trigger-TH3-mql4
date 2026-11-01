@@ -708,6 +708,31 @@ One function over the ceiling stays whole and never grows.
   a neighbour's number, and never be scaled by a ratio under 1. The ladder's ATR is one number per
   (TF, anchor) — never the box' height — or the plan drifts while the box sits still
   (P-BK-79/128). Gate: `P-BK-130` / `P-BK-131`, mutations `-a..-e` / `-a..-c`.
+- **The TYPE is held inside a DEADBAND of its own edge (P-BK-143, 2026-11-01).** One box, one
+  drag, two screenshots: `TRex 2.8 | Trigger 7.5 | Pricicle 14 | Classic 34` then `1.5 | 4 | 8 | 18`
+  — FTR became ETR and the entry, the stop and every target went with it. The flushed witness
+  named the input: `still=7 nodeTF=M15 span=105 hop=0` on EVERY frame, only `h` breathed
+  (8.1 / 8.4 / 8.5 / 8.7 pips), and the edge `sqrt(6.4 x 11.2) = 8.46` sat under the box. Moving
+  the edge is not a fix — any threshold is one the next drag crosses. So a PUBLISHED type is
+  replaced only when the box is clear of the edge it crossed by `BK_TYPE_DEADBAND` (0.12) of that
+  edge, measured from the SAME midpoints the type read uses (`BaseKnotKindBoundary`), never from
+  its own arithmetic. A fresh box (no published type) answers the plain read, and a jump across a
+  whole band is taken as the new knot it is. Gate: `P-BK-143`, mutation `P-BK-143-a`.
+- **The knot's TIME is a LADDER RUNG, never `span/3` itself (P-BK-142, 2026-11-01).**
+  `spanMin / 3` is a continuous function of an integer count, so ONE more in-band candle walks
+  the knot's time by `readTF / 3` (5 minutes on M15) and an off-ladder answer (70, 105, 215)
+  names no candles at all — the type then prints blank (`hop=-1 type=`) and the card has no
+  legs. Three screenshots of ONE box (EURUSD M15, 24 pips, band `1.11331..1.11575`) read
+  `24 Bars · 2h` / `14 Bars · 1h10m` / `12 Bars · H1` and the card moved with them
+  (`TRex 3.6|9.6|18|43` / `2.7|7.2|14|33` / `5.5|14.5|27|65`). MEASURED on the terminal's own
+  `EURUSD15.hst`, the same box jittered by ±2 candles per edge and ±0.5 pip per band side
+  (1 650 states): `spanMin/3` answers **41 distinct times**, the rung **8**. The answer is the
+  largest rung whose THREE candles still fit the base's own span (`3 x rung <= bars x readTF`),
+  walked on the ladder's one owner (`BaseKnotNextTFMin`), capped at D1 — so 24 / 14 / 12 M15
+  candles all read H1, 48 read H4, and every name still means «سه کندل درجا زدن». It ROUNDS
+  the count's answer; it never re-counts and never re-buckets (P-BK-126d holds). The `[BK-KNOT]`
+  line prints `span=` and `raw=` beside the rung, so the rounding is visible. Gate: `P-BK-142`,
+  mutation `P-BK-142-a`.
 - **The owner's tolerance is HALF THE ATR STEP, not a fixed percentage (P-BK-141, 2026-11-01).**
   The owner rung is the rung the box is nearest `3 x ATR` of, so the edge to a neighbour is the
   geometric midpoint `3 x sqrt(aNeighbour / aThis)`. MEASURED on his own EURUSD M15 ATR table

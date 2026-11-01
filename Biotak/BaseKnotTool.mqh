@@ -246,6 +246,7 @@
 #include "BaseKnot_Ability.mqh"     // P-BK-125: the (TF, anchor) table + the stop's rung (split out of Nodes, P-SIZE-1500)
 #include "BaseKnot_Measure.mqh"
 #include "BaseKnot_Nodes.mqh"
+#include "BaseKnot_Class.mqh"   // P-BK-142: the knot's time — the ladder's walk, the base's count, the rung (split out of Nodes, P-SIZE-1500)
 #include "BaseKnot_Note.mqh"   // P-BK-104/109: the note's own text fields (their one writer is below)
 #include "BaseKnot_Plan.mqh"
 #include "BaseKnot_Drag.mqh"

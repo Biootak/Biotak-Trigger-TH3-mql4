@@ -5665,6 +5665,32 @@ MUTATIONS = [
     #--- P-BK-135 (2026-10-28) - THE FACTOR BELONGS TO THE PAIR. MEASURED on his 2h20m ETR box:
     #--- the geometry wrote `g` onto the stop only (142.5 / 80.5 = 1.77) while the plan's law is
     #--- 8/3. Each entry puts one half of the one-ruler law back; the owning gate must fail.
+    #--- P-BK-143 (2026-11-01) - THE TYPE HAS A DEADBAND. One drag read FTR then ETR on one box
+    #--- (`h` 8.4 / 8.5 around an 8.46 edge, still/nodeTF/hop identical). The mutation removes the
+    #--- hold; the numeric pin in the gate must fail on the two reported drags.
+    {
+        "id": "P-BK-143-a",
+        "gate": "regression",
+        "rule": "the type is held inside a deadband of the edge it crossed",
+        "what": "no hysteresis - a 0.1-pip drag re-types the knot and re-prices the whole card (FTR 1.5|4|8|18 vs ETR 2.8|7.5|14|34)",
+        "file": "Biotak/BaseKnot_Nodes.mqh",
+        "find": "   if(edge > 0.0 && MathAbs(h - edge) < BK_TYPE_DEADBAND * edge) return was;",
+        "replace": "   if(false) return was;   // MUTATION: no deadband, the published type is not held",
+        "expect": "[FAIL] P-BK-143",
+    },
+    #--- P-BK-142 (2026-11-01) - THE KNOT'S TIME IS A LADDER RUNG. Three screenshots of ONE box
+    #--- read 24 / 14 / 12 bars -> 2h / 1h10m / H1 and the card moved with them. The mutation puts
+    #--- `spanMin / 3` back as the answer; the numeric pin below must fail on it.
+    {
+        "id": "P-BK-142-a",
+        "gate": "regression",
+        "rule": "the knot's time is the largest ladder rung whose three candles fit",
+        "what": "`spanMin / 3` answers again - 24 / 14 / 12 M15 candles read 120m / 70m / H1 for one box",
+        "file": "Biotak/BaseKnot_Class.mqh",
+        "find": "   if(rung > 0) nodeTF = rung;                    // M1 always fits (bars >= 3, tfMin >= 1)",
+        "replace": "   if(false) nodeTF = rung;   // MUTATION: ship the un-rounded span/3 again",
+        "expect": "[FAIL] P-BK-142",
+    },
     {
         "id": "P-BK-141-a",
         "gate": "regression",

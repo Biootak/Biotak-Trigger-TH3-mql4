@@ -1216,7 +1216,7 @@ void BaseKnotSync(const string id)
    // candle the note's number is counted to, so the two can never describe different bars.
    BaseKnotNodeRead((sp.tLast > 0 ? sp.tLast : t2), top, bot, baseTF,
                     sp.tExit, g_bkBoxes[k].storyT, nd);   // P-BK-79: the SAME anchor the pump keyed its rows on
-   g_bkBoxes[k].nodeKind = nd.kind;   // published → the pump's gate compares against this
+   g_bkBoxes[k].nodeKind = nd.kind = BaseKnotKindSticky(baseTF, BaseKnotToPips(MathAbs(top - bot)), (sp.tLast > 0 ? sp.tLast : t2), g_bkBoxes[k].nodeKind);   // P-BK-143: the TYPE is held inside the deadband of the edge it crossed (Nodes; measurement + law there) — and it is published from HERE, so the face, the legs and the witness read one answer
    // P-BK-46 — THE BREAK'S STORY NAMES THE SIDE (BaseKnotNodeDir), and the answer
    // is PUBLISHED (registry + chart GV) because the pump's price-follow must not
    // flip a knot whose trade is already named by what price DID.
