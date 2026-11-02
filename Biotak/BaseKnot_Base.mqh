@@ -1074,33 +1074,74 @@ void BaseKnotSelectBox(const string id)
 #define BK_EDGE_R "_R"
 void BaseKnotStyleBox(const string box)   // fill layer + drag handle + (P-BK-74) the border itself
 {
-   if(BoxFillVisible())
-   {
-      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxFillRenderColor());
-      ObjectSetInteger(0, box, OBJPROP_FILL, true);
-      ObjectSetInteger(0, box, OBJPROP_BACK, true);          // the fill belongs behind the candles (zone-like)
-      ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);  // a fill's own edge is flat — the ink that reads is the FILL
-      ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
-   }
-   else
-   {
-      // P-BK-74 — THE RECTANGLE **IS** THE BOX, MetaTrader's own way. Its own
-      // outline wears the border ink/style/width the user set, so the object the
-      // terminal draws is the object the user sees — one object, not a visible
-      // cover for four trend-line children (BKEDGE-OFF below).
-      // FILL false = HOLLOW and BACK false = FOREGROUND are the terminal's own
-      // defaults for its Rectangle tool («باکس پیش فرض بدون fill باشه و
-      // بگراندش غیر فعال باشه») and the two properties its OBJ_RECTANGLE example
-      // sets as `fill` and `back`; the docs' own `RectangleCreate()` ships them
-      // false. Nothing here is a workaround any more: the rectangle renders its
-      // border because it IS a rectangle, exactly as the terminal renders its own.
-      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
-      ObjectSetInteger(0, box, OBJPROP_FILL, false);
-      ObjectSetInteger(0, box, OBJPROP_BACK, false);
-      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
-      ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
-   }
-   ObjectSetInteger(0, box, OBJPROP_ZORDER, Z_BOX_FILL);   // single source — Commit no longer sets it separately
+   // P-BK-147 (2026-11-01, user: «بیس نات سریع سلکت بودنش چرا میره خودکار»): EVERY
+   // WRITE BELOW IS GUARDED ON THE PROPERTY'S OWN ANSWER.
+   // `BaseKnotStyleBox` is NOT a once-per-gesture call: `BaseKnotSync` runs it, and
+   // the 500 ms pump Syncs a box whenever its node story or its EngSL epoch moves.
+   // Six unguarded writes per box per beat is how a box selected by P-BK-146's press
+   // lost its five edit markers again without the user touching anything — MT4
+   // re-applies an object it is told to restyle, and a re-applied object is not the
+   // selected one any more. Same properties, same pixels, same heal; a box that
+   // already wears the live look now costs six reads and ZERO writes.
+   //
+   // The two branches below are the LOOK, not the write: BKEDGE-OFF's ruling stands.
+   // P-BK-74 — THE RECTANGLE **IS** THE BOX, MetaTrader's own way. Its own outline
+   // wears the border ink/style/width the user set, so the object the terminal draws
+   // is the object the user sees — one object, not a visible cover for four
+   // trend-line children. FILL false = HOLLOW and BACK false = FOREGROUND are the
+   // terminal's own defaults for its Rectangle tool («باکس پیش فرض بدون fill باشه و
+   // بگراندش غیر فعال باشه») and the two properties its OBJ_RECTANGLE example sets as
+   // `fill` and `back`; the docs' own `RectangleCreate()` ships them false. Nothing
+   // here is a workaround any more: the rectangle renders its border because it IS a
+   // rectangle, exactly as the terminal renders its own. For a FILL the ink is the
+   // FILL itself, it sits BEHIND the candles (zone-like) and its own edge is flat.
+   bool fill = BoxFillVisible();
+   color wantClr   = fill ? GetBoxFillRenderColor() : GetBoxBorderRenderColor();
+   long  wantFill  = (fill ? 1 : 0);
+   long  wantBack  = (fill ? 1 : 0);
+   long  wantStyle = (fill ? STYLE_SOLID : inpBoxBorderStyle);
+   long  wantWidth = (fill ? 1 : inpBoxBorderWidth);
+   if((color)ObjectGetInteger(0, box, OBJPROP_COLOR) != wantClr)
+      ObjectSetInteger(0, box, OBJPROP_COLOR, wantClr);
+   if(ObjectGetInteger(0, box, OBJPROP_FILL) != wantFill)
+      ObjectSetInteger(0, box, OBJPROP_FILL, wantFill);
+   if(ObjectGetInteger(0, box, OBJPROP_BACK) != wantBack)
+      ObjectSetInteger(0, box, OBJPROP_BACK, wantBack);
+   if(ObjectGetInteger(0, box, OBJPROP_STYLE) != wantStyle)
+      ObjectSetInteger(0, box, OBJPROP_STYLE, wantStyle);
+   if(ObjectGetInteger(0, box, OBJPROP_WIDTH) != wantWidth)
+      ObjectSetInteger(0, box, OBJPROP_WIDTH, wantWidth);
+   if(ObjectGetInteger(0, box, OBJPROP_ZORDER) != Z_BOX_FILL)
+      ObjectSetInteger(0, box, OBJPROP_ZORDER, Z_BOX_FILL);   // single source — Commit no longer sets it separately
+}
+// P-BK-147 (2026-11-01, user: «بیس نات سریع سلکت بودنش چرا میره خودکار»): THE BOX'S
+// LOOK WRITES ARE ONE GUARDED OWNER.
+// `BaseKnotSync` is NOT a once-per-gesture call: the 500 ms pump Syncs a box whenever
+// its node story or its EngSL epoch moves (BaseKnot_Drag.mqh:621/688/696), and until
+// here every one of those beats wrote TIMEFRAMES, the six look properties and
+// SELECTABLE onto EVERY box unconditionally. MT4 re-applies an object it is told to
+// restyle, and a re-applied object is not the selected one any more — so the five edit
+// markers P-BK-26 keeps, and P-BK-146's press grants, went away a beat after the press,
+// with the user touching nothing. The values, the heal and the pixels are unchanged: a
+// box that drifted is still re-styled. A box that already wears the look now costs
+// reads and ZERO writes, and keeps its selection.
+// The witness is the residue question, on the flushed channel (DEBUG LOOP law 3), so
+// the next «بازم رفت» report names the write instead of arguing about it.
+void BaseKnotApplyBoxLook(const string box, const string id, const long tfMask, const bool locked)
+{
+   long tfHave  = ObjectGetInteger(0, box, OBJPROP_TIMEFRAMES);
+   long selHave = ObjectGetInteger(0, box, OBJPROP_SELECTABLE);
+   long selWant = (locked ? 0 : 1);
+   bool wasSel  = (bool)ObjectGetInteger(0, box, OBJPROP_SELECTED);
+   if(tfHave != tfMask)
+      ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
+   BaseKnotStyleBox(box);   // fill layer + drag handle — the VISIBLE border is the box' own outline
+   if(selHave != selWant)
+      ObjectSetInteger(0, box, OBJPROP_SELECTABLE, selWant);   // lock heal: handle follows the registry
+   if(wasSel && !(bool)ObjectGetInteger(0, box, OBJPROP_SELECTED))
+      DrawStripDiagEmit("[BK-SELSWEEP] box=" + id + " markers lost: tf=" +
+                        (tfHave != tfMask ? "1" : "0") + " sel=" + (selHave != selWant ? "1" : "0") +
+                        " look=guarded");
 }
 // True when the BOX rect currently shows the live look (heal check).
 bool BaseKnotFillHealed(const string box)

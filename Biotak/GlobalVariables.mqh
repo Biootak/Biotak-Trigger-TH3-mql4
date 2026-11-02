@@ -1,4 +1,4 @@
-﻿  #ifndef GLOBAL_VARIABLES_MQH
+  #ifndef GLOBAL_VARIABLES_MQH
 #define GLOBAL_VARIABLES_MQH
 
 // Core State
@@ -40,6 +40,7 @@ static int  g_triggerPressReached= 0;   // trigger bands this render reached for
 static double g_dailyClosePriceForTH = EMPTY_VALUE;
 bool g_redrawTHLevelsNeeded = true;
 bool g_forceClearOnNextDraw = false;
+
 // P-PERF-38d: "this chart already carries our ladder, handed over by the
 // instance a timeframe change unloaded" â€” resolved ONCE per instance at the end
 // of OnInitHandler (ResolveTopologyAdoption, EventHandlers) and read in three

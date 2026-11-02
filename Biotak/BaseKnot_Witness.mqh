@@ -235,4 +235,31 @@ void BaseKnotNoteWitness()
                      " plate=" + IntegerToString(ObjectFind(0, BaseKnotCornerPlateName()) >= 0 ? 1 : 0));
 }
 
+// P-BK-148 (2026-11-02, user: «این بیس نات هم سلکت بودنش سریع خودکارمیره تجربه
+// کاربری بدی داره درستش کن») — THE SELECTION'S RESIDUE QUESTION, ONE BOOL PER BOX PER
+// BEAT. MEASURED on the live frame (`biotak_diag_EURUSD_134362571361933142.txt`, one
+// gesture): `[BK] drag latch box=60_11227125 sel=1 selectable=1` and then
+// `[drawstrip] click closed on "THLevels_BK_60_11227125_BOX"` — the knot's press had
+// just selected the box and the strip's close spent a deselect on a name its own open
+// refuses to select. Beside it, `BaseKnotSync` wrote the box' TOOLTIP unguarded on
+// every beat, the one property P-BK-147's guard list did not cover. Both writers are
+// closed (BaseKnot_Plan / DrawStrip_Router); THIS line is what answers «بازم رفت» next
+// time instead of an argument: it names the box and the beat the flag went 1 -> 0, on
+// the flushed channel (DEBUG LOOP law 3). Cost: ONE read per box per 500 ms beat; a
+// selection that legitimately ends on an outside click (P-BK-63) is user-paced.
+void BaseKnotSelDropWatch()
+{
+   static string watched = "";
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
+      if(box == "" || ObjectFind(0, box) < 0) continue;
+      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) { watched = g_bkBoxes[i].id; continue; }
+      if(watched != g_bkBoxes[i].id) continue;
+      watched = "";
+      DrawStripDiagEmit("[BK-SELDROP] box=" + g_bkBoxes[i].id +
+                        " — selected at the last beat, not now (no press of ours in between)");
+   }
+}
+
 #endif // BASE_KNOT_WITNESS_MQH

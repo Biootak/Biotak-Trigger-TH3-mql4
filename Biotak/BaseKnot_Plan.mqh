@@ -1142,9 +1142,10 @@ void BaseKnotSync(const string id)
    int tfMin = g_bkBoxes[k].tfMin;
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
    long tfMask = BaseKnotTFMask(tfMin);
-   ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
-   BaseKnotStyleBox(box);   // fill layer + drag handle — the VISIBLE border is the 4 edges below
-   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, !g_bkBoxes[k].locked);   // lock heal: handle follows the registry
+   // P-BK-147 (2026-11-01): the look writes are ONE guarded owner now — an unguarded
+   // write re-applies the object, and MT4's re-applied object is not the selected one,
+   // so the markers P-BK-146's press granted vanished on the next 500 ms pump beat.
+   BaseKnotApplyBoxLook(box, id, tfMask, g_bkBoxes[k].locked);
    // P-BK-46/50: the trade's own numbers are computed BELOW, right after the node read
    // — the knot's TYPE decides which edge the entry sits on and its CLASS (its own
    // TF) decides what R is measured in (and which TF's plan the targets come from),
@@ -1184,6 +1185,7 @@ void BaseKnotSync(const string id)
    int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF); if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;   // P-BK-126b: THE THREE STAND-STILL CANDLES DECIDE THE KNOT'S TIME and the ATR owner is the FALLBACK only (P-BK-114 read it first, so the M5 band — 119.9 / 34.6 = 3.47 — beat the three M30 candles the user drew: 119.2 pips = 99.4 % of the box, 32m already 123.4; docs/bk-dataset.md §11)
    g_bkBoxes[k].baseTFMin = baseTF;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces
    g_bkBoxes[k].storyT = sp.tLast; if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);   // P-BK-41: the same story the pump re-reads; P-ANCHOR-LAST: the active owner follows the story it just published
+   BaseKnotLegRowAsk(baseTF, g_bkBoxes[k].storyT, g_bkBoxes[k].nodeKind, BaseKnotBoxHop(k));   // P-BK-149: the rows just keyed are ASKED before the read below — a cold one painted is the jump
    g_bkBoxes[k].exitT  = sp.tExit;   // P-BK-81: the base's OWN exit candle — the ONE candle the
                                      //          direction is read from, published so the pump's
                                      //          own read cannot land on a different one
@@ -1269,7 +1271,16 @@ void BaseKnotSync(const string id)
                        BaseKnotCalcTip(dir, top, bot, entry, sl, offPips, offIsHunt, hPips, riskTag);   // P-BK-93: the arithmetic, off the legs the lines were drawn with
    string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, tpTip, sp,
                                    riskTag, BaseKnotNodeLine(nd, top, bot), entryLine, entryLine2);
-   ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
+   //--- P-BK-148 (2026-11-02, user: «این بیس نات هم سلکت بودنش سریع خودکارمیره»): THE
+   //--- TOOLTIP IS A WRITE LIKE EVERY OTHER ONE. P-BK-147 guarded the six look
+   //--- properties and TIMEFRAMES/SELECTABLE; this STRING write was left unguarded and
+   //--- it re-applies the box on EVERY Sync — the pump Syncs at 500 ms whenever the node
+   //--- read or the EngSL epoch moves (MEASURED on the live frame: `[P-BK-107] type=`
+   //--- then `type=ETR` on the same box one beat apart), so a box the user had just
+   //--- selected lost its five edit markers without him touching anything. Same law,
+   //--- same pixels: one read, zero writes while the sentence does not move.
+   if(ObjectGetString(0, box, OBJPROP_TOOLTIP) != tip)
+      ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
    // BKEDGE-OFF (P-BK-74): the visible border is the BOX' OWN outline now — the
    // rectangle wears the border ink in BaseKnotStyleBox, so there is nothing to
    // draw beside it. The four trend-line children are retired in place: the

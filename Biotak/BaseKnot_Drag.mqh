@@ -558,7 +558,7 @@ void BaseKnotSyncBadges()
    // change): a selection, a mode change, a pushed slot or a box that left this TF are all
    // noticed here, without a second event path of its own. NOTHING is written while nothing
    // changed — steady state is a compare (see BaseKnotNoteCornerRefresh).
-   BaseKnotNoteCornerRefresh();
+   BaseKnotNoteCornerRefresh(); BaseKnotSelDropWatch();   // P-BK-148: the note's keeper and the selection's residue question, one per-beat slot
    if(BaseKnotSessionActive()) BaseKnotReassertLock(true);   // P-BK-14: pump drift-heal (timer path, tick-less charts)
    if(s_bkDragLock && g_bkState == BK_IDLE &&
       UILeftButtonUp() &&          // the ONE button owner (P-UI-73): both MQL4

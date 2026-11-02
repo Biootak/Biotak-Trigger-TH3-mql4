@@ -363,15 +363,35 @@ void DeleteHTFCandles()
    // HTF_BOX_BOTH mode `_F` is created whenever `_B` is (see the `baseName + "_F"`
    // / `baseName + "_B"` pair in DrawHTFCandleCore), so the four names checked cover
    // all three box modes plus both wicks.
+   // P-DEL-BULK (2026-11-01, user: «اندیکاتور هنگ میکنه… ببین کجا نشتی داریم»):
+   // THE PURGE IS OURS, SO IT DECLARES ITSELF. MEASURED in the live journal of
+   // 2026-11-01: ONE HTF toggle ran 3,175 `[drawstrip] DELFLUSH obj="BiotakHTF_*"`
+   // events from 20:51:06.295 to 20:51:08.126 — 1.831 s of the chart thread spent
+   // on the delete events of a wipe WE asked for (2,580 more at 21:33, 795 at 20:52).
+   // The cost per event is 0.58 ms, and an unsuppressed delete is read as a HAND
+   // delete: it pays the cascade (four name scans + a `GlobalVariableCheck`), a
+   // journal write, a `FileFlush` and a repaint decision. A 200-candle family is
+   // five names per candle, so the toggle is a 1,000-event storm three times over.
+   // P-UI-21 already ruled on this shape («ONE suppress window around every bulk
+   // below») and every other bulk door obeys it; this was the door that did not.
+   // The window closes 250 ms after the LAST delete, exactly like the level wipe.
+   g_suppressDeleteEvents = true;
    if(g_HTFDrawnCount > 0)
    {
       HTFDeleteIndices(0, g_HTFDrawnCount);
       g_HTFDrawnCount = 0;
-      if(!HTFAnyBoxesExist()) return;   // family fully accounted for — no wipe
+      if(!HTFAnyBoxesExist())   // family fully accounted for — no wipe
+      {
+         g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+         g_suppressDeleteEvents = false;
+         return;
+      }
    }
 
    ObjectsDeleteAll(0, g_HTFPrefix);
    g_HTFDrawnCount = 0;   // nothing of ours is on the chart any more
+   g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+   g_suppressDeleteEvents = false;
 }
 
 // P-PERF-47: the SINGLE definition of HTFDeleteIndices now lives ABOVE this

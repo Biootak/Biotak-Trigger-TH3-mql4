@@ -8,6 +8,7 @@
 // P-SIZE-1500 (2026-10-04): the two owners that drifted back over the ceiling were
 // split along seams they already had. ORDER IS THE COMPILER'S: MQL4 resolves a call
 // top-down, so each new half is included ABOVE the file that calls it.
+#include "EventHandlers_Perf.mqh"        // P-SIZE-1500 (2026-11-01): the event-budget ledger (P_P4_*, P4EventName, P4ReportSlow, P4MsTag) — every file below calls it
 #include "EventHandlers_CustomPrice.mqh"      // the custom price line (was the tail of Init)
 #include "EventHandlers_Init.mqh"
 #include "EventHandlers_Calc.mqh"

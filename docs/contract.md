@@ -39,6 +39,10 @@ Include order is ownership: `ConstantsAndEnums` → `UtilityFunctions` → `Draw
 - object text truncates at **63 chars**: wrap one logical line into a family of objects.
 - the object list is user-facing: chrome wears `OBJPROP_HIDDEN`; every created name is
   deleted by the same surface's destroy.
+- **a restyle RE-APPLIES the object, and a re-applied object is not the selected one.**
+  Writing a property that already holds that value still drops `OBJPROP_SELECTED`'s edit
+  markers, so any look write on a repeating path (pump, timer, sweep) is guarded on the
+  property's own answer — same values, same heal, zero writes at rest (P-BK-147).
 
 ## 3. Appearance (the dirt list, hunted proactively — not only when reported)
 
@@ -84,6 +88,149 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
   render branch is a priced mask (never a delete) and whose F show re-asserts the family
   through that same walk. Editing any of it is allowed; changing what a DIFFERENT surface
   sees is not — and the gate is a guard, not a freeze (see §9).
+
+- **A bulk delete is OURS, so it declares itself (P-DEL-BULK).** MT4 answers a
+  `CHARTEVENT_OBJECT_DELETE` per object, and every listener pays its read for each one:
+  MEASURED 2026-11-01, one HTF toggle delivered **3,175** delete events over **1.831 s**
+  (~0.58 ms each) and that one witness is **42,808** of the day's 134,417 journal lines.
+  So a path that removes more than a name arms the suppress window on BOTH of its exits
+  (P-UI-21: `g_suppressDeleteEvents` + `GetTickCount() + 250`, the level wipe's own
+  idiom), and a listener does the work a hand delete needs only for a delete the window
+  does not cover — its own close and its child heals stay answered for every delete, and
+  the repaint comes from the caller that asked for the purge, never from the event.
+  Gate: `P-DEL-BULK`, mutations `-a..-d`.
+
+- **A create is priced before the work and after it (P-COPY).** A native copy is a BURST of
+  individually-cheap events, and the whole-event ledger sees neither: it prints only past
+  40 ms and once per 2 s, and its `Print` lands in the journal — a RAM cache (P-DRAW-126)
+  that dies with a killed terminal. MEASURED 2026-11-01, the frame the reported copy-hang
+  left behind ends on the terminal's own announcement of the copy
+  (`[gest] id=7 … nm="Rectangle 37658" ours=0`) with nothing after it, and the journal held
+  no trace of the 22:47→22:58 gap. So: the create branch witnesses `in` (before the work —
+  a file ending on `in` names the stage never left), `out` (each stage's own ms) and `done`
+  (the burst total, `objs=` included), all on the flushed channel, bounded to the first
+  three creates of a burst; `P4ReportSlow` twin-writes its line there too; and the birth
+  write is guarded (`DrawStyleWriteIf`), because P-BK-147 measured that a restyle
+  RE-APPLIES the object — a copy that re-wears what it already wore costs writes and a
+  selection for nothing.
+  **A stage line goes BEFORE its work, never after (P-COPY-STAGE).** MEASURED 2026-11-02
+  07:0x, the live flushed file of the reported Ctrl+drag copy-hang ends on
+  `[P-COPY] in nm="Rectangle 1959" objs=831 style=11 grab=0` / `[P-COPY] st=style t=3217875`
+  — `style=11` is `DK_RECT`, and `terminal.exe` was gone with that line as the last byte. So
+  the event never returned from `DrawStyleApplyOnCreate`, and `st=style` names only the
+  BRANCH, not the stage inside it: a stage that announces itself after finishing answers
+  nothing when it is the stage that never finishes. `DrawStyleApplyOnCreate` is therefore
+  walked line by line — `in`, the three early exits, `pre-color / pre-width / pre-style /
+  pre-pensync / pre-pair / pre-stack / pre-fill / pre-ray / done` — each emitted BEFORE the
+  statement it fronts, and `pre-pensync` / `pre-pair` / `pre-stack` sit ahead of the three
+  child-manufacturing calls (`FibPenSync`, `DrawStylePairCoerce`, `PenStackSync`), because a
+  sync that fans out into children is a stage a create cannot be blamed for until its own
+  line is on disk. EVERY stage line carries `objs=` (`ObjectsTotal(0,-1,-1)`) and `w=` —
+  the writes that had already landed, counted by `DrawStyleWriteIf` itself and reset at the
+  branch's `in` — because the control case measured 2026-11-02 on the same file says the
+  branch is not slow by itself: `Rectangle 1956`, objs 777, ran `in → st=style → st=seen →
+  st=memo → out style=0 seen=0 memo=0 all=0 objs=777` while the very next copy,
+  `Rectangle 1959` at objs=831, printed `st=style` and nothing more. Same kind, same door
+  states, one answered in 0 ms and one never answered — so the fact that separates a stall
+  from a restyle-storm is the write count, not the stage name alone. The flag is ONE
+  declaration (`g_diagCreateTrace`, `Biotak/Toolbar_B.mqh`) armed by whoever runs the work —
+  today the queue's drain — and read by the branch; an untraced create pays one bool test.
+  A trace flag that is declared in one owner and armed in another, with no reader, is dead
+  code that hides the stage it was meant to name — that is the state this card replaced.
+  Gate: `P-COPY`, mutations `-a..-k` (the DEFER half is `-h..-k`).
+
+- **An act of unknown bound never runs inside `OnChartEvent` (P-COPY-DEFER, 2026-11-02,
+  MT4).** MEASURED on the flushed files: of nine witnessed foreign creates, eight ran the
+  whole style branch with `all=0` and `objs` UNCHANGED, and the ninth — `Rectangle 1959`,
+  objs=831, the user's Ctrl+drag copy — printed `st=style` and never printed another byte;
+  `terminal.exe` had to be killed. The branch is therefore not "slow"; it is UNBOUNDED, and
+  no MQL4 code can preempt a call once it is made. MT4 is the tree that freezes because MT4
+  is the one that hands the burst to that thread: it re-announces `CHARTEVENT_OBJECT_CREATE`
+  for every object the styling itself manufactures (MEASURED: one copied fibo built twelve
+  children, `in objs=764` … `out objs=776`; one burst window carried 421 creates), and
+  «فقط متاتریدر ۴ این مشکل رو داره» is that asymmetry, not a difference in our logic. So the
+  event keeps a NAME and the pump keeps the WORK: the create branch pushes into a bounded,
+  name-deduped ring (`COPY_STYLE_MAX 64`, a drop is witnessed `[P-COPY] q FULL`), returns in
+  one write, and `CoopPump` drains it against `COOP_BUDGET_MS` — the pump's own slice, not a
+  second clock — so between two chunks of styling the terminal always gets its paint, its
+  mouse and its title bar back. THE ORDER THAT COMES WITH IT: `DrawInkMemoPrime` re-runs
+  AFTER the deferred write, because P-DRAW-128's law is that the memo is primed after the
+  birth styling; primed at the event instead, our own restyle would be learned as the hand's
+  pick and the kind would start following MT4's factory colour. THE COST, IN PLAIN WORDS: a
+  drawing the TERMINAL made wears our memory up to one beat (≈250 ms) later instead of inside
+  its own create event — invisible for a copy (the duplicate already wears the original, so
+  the measured pass writes zero bytes), and a one-beat factory look for a hand-drawn MT4
+  object. `max[style=…]` in the burst ledger now prices the QUEUE push; the styling's own
+  price is the drain's `ms=/worst=` line.
+  **And ONE name that costs more than `COPY_STYLE_BREAKER_MS` (100) disarms the whole path
+  for the attach** — the queue empties, `[P-COPY] q BREAKER nm=… ms=…` is flushed, and no
+  further foreign create is styled. A healthy create measures `all=0`, so 100 ms for ONE
+  name is not a slow machine, it is the act that does not come back; MQL4 cannot preempt a
+  call once it is made, so the honest guarantee is to pay for it exactly once and refuse it
+  after. Nothing in MQL4 can make a blocking terminal call interruptible — this card makes
+  it non-repeatable, which is the strongest statement the platform allows.
+  **The pump is the same thread, so deferring is not enough — the work waits for the mouse
+  to leave (P-COPY-HOLD, 2026-11-02, MT4).** The deferred build froze again, and the frozen
+  file said exactly where: `[P-COPY] sb=pre-fill objs=644 w=0` is the LAST byte it ever
+  wrote, `terminal.exe` was gone, and the call after that line is `FillChildEnsure` →
+  `ObjectCreate` (Toolbar_A.mqh:1269) — our interior child, built from the pump. MT4 makes a
+  copied object **at the press** and keeps dragging it until the release, so every timer beat
+  inside that gesture runs while the terminal still holds the object under its own pointer and
+  is walking its own object list; a create there re-enters it. So the ring is drained only
+  while the left button is up: `DrawStrip_Router.mqh` notes its bit on every `MOUSE_MOVE`
+  (the same note that stores `s_dsLeftPrev`), `DrawStyleCopyMouseHeld()` is the only reader,
+  a held queue refuses the slice once per hold with `[P-COPY] q hold left=… held=…ms`, and a
+  drag re-news its own clock. **The hold expires (`COPY_STYLE_HOLD_MAX_MS` 2000) because MT4
+  emits `MOUSE_MOVE` only on movement** — a release with no move after it would otherwise
+  strand every copy un-styled for the attach, which is the fence-that-returns-early bug, not a
+  fix. THE COST, IN PLAIN WORDS: a copy wears MT4's own look for the length of the drag — the
+  look a native MT4 copy has anyway — and gets our interior, pen rows and tags on the first
+  beat after the hand is off the button.
+  **The button was the WRONG clock — the terminal's own create traffic is the window
+  (P-COPY-QUIET, 2026-11-02, MT4).** The hold shipped and the freeze came back identical:
+  `Rectangle 8117` printed `sb=in objs=644` — reachable only when the button reads UP — and
+  died at `sb=pre-fill`, the same stage and the same 644 as the 08:31 death. What the two
+  files share is the SHAPE of the gesture: objs goes 590 → 644 between the first and the
+  second traced name, i.e. ONE group copy manufactured ~54 drawings and MT4 is still
+  announcing them while our pump drains. So the ring now waits out the ANNOUNCEMENTS: every
+  push stamps `s_csqPushMs`, and the drain refuses while the ring holds more than one name
+  and the last stamp is younger than `COPY_STYLE_QUIET_MS` (400), once per wait with
+  `[P-COPY] q quiet left=… since=…ms`. A single lonely copy is never waited on (the `> 1`
+  half), so a burst tail can never strand behind an empty stamp — the hold's stuck-safe rule
+  repeated here. THE HONEST STATE: neither gate is proven to be the cause; both are windows
+  MT4 demonstrably occupies. And because both deaths sit inside ONE block whose two writes
+  were a single un-witnessed step, that block is now split: `sb=f-fillclr` and `sb=f-fill`
+  precede their own `DrawSlotWrite`, and both carry `ch=` (the interior child's own
+  `ObjectFind`) — so the next truncated file says whether the call that never returned was an
+  `ObjectCreate` (ch<0: the child did not exist yet) or a property write on a name the chart
+  already carries (ch>=0). Until that line is read, no further "fix" is shipped for this
+  stage — a second guess on the same symptom is what the user is paying for.
+  Gate: `P-COPY`, mutations `-h` (put the call back inline in the event) `-i` (un-bound the
+  drain) `-j` (drop the memo re-prime) `-k` (trip the breaker without disarming) `-l` (drain
+  regardless of the held button) `-m` (a hold with no expiry) `-n` (a hold nobody writes)
+  `-o` (work the burst mid-announcement) `-p` (never stamp the burst) `-q` (un-witness the
+  interior write).
+
+- **A wait in the interface thread IS the hang (P-HANG-01, 2026-11-02, both trees).** MQL
+  rules on it outright: «The Sleep() function can't be called for custom indicators, since
+  indicators are executed in the interface thread and should not slow it down» — and the
+  interface thread is the chart: its paint, its mouse, its `OnChartEvent` queue. The audit
+  found four retry loops that slept 100 ms between attempts, all of them tick-reachable:
+  `OnCalculate` → `UpdateBasePrice` (EventHandlers_Calc.mqh:622) → `AddBasePriceHistoryEntry`
+  → `AppendBasePriceHistoryEntry` = **200 ms per new 30-minute block**, and
+  `OnInit` / the 3 s `!g_systemInitialized` retry (EventHandlers_Calc.mqh:607) →
+  `InitializeBasePriceSystem` → Load 2×100 + Save 4×2×100 + Cleanup 2×100 **per old file**
+  = **1.0 s and up, re-armed every 3 s** while the flag stayed false. So an indicator asks
+  ONCE: a refused open records the ask (`BasePriceHistoryAskFlush`) and returns, and the
+  250 ms pump drains it (`CoopPump`, EventHandlers_Tail.mqh) as ONE whole-day rewrite from
+  the live RAM state — the pair every caller already uses (BasePrice_B.mqh:539/552) — under
+  `HIST_FLUSH_MAX_TRIES` (40 beats ≈ 10 s), after which the ask is dropped and the
+  `[P-HANG] hist DROPPED` line says so on the flushed channel. The RAM state is the source
+  of truth, so a late write is never a lost one. The ONE allow-listed wait is
+  `BasePrice_A.mqh`'s global-variable lock retry (≤5×20 ms, once per symbol per instance,
+  never per event) — and exactly one line of it, so a second copy anywhere fails the gate.
+  Ported to MT5 byte-identical (`Biotak/BasePriceHistoryManager.mqh` + `CoopPump`).
+  Gate: `P-HANG`, mutations `-a..-d`.
 
 ## 6. Gate (definition of done)
 

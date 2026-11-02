@@ -131,7 +131,22 @@ param(
     [string]$ShotSymbol = "EURUSD",
     [string]$ShotPeriod = "H1",
     [ValidateRange(10, 600)]
-    [int]$ShotTimeoutSec = 300
+    [int]$ShotTimeoutSec = 300,
+
+    #--- P-STRESS-1 (2026-11-02) — THE INDICATOR UNDER THE WORST CASES, ONE COMMAND.
+    #--- `tests/TH3_Stress_Test.mq4` drives the REAL event chain: 400 creates at three
+    #--- chart sizes, the Ctrl+copy gesture, the one heavy branch a create can reach,
+    #--- delete storms, the strip's open/close ×20, 300 mouse moves, the attach walk and
+    #--- the history file. `-Stress` compiles it, deploys it and writes MT4's
+    #--- "Configuration at Startup" file; with `-RestartTerminal` it restarts MT4 on it,
+    #--- waits for the `THStress.done` marker and prints every `[STRESS]` line as the
+    #--- verdict — `fail>0` FAILS the build. A stall is a runtime number, and no static
+    #--- gate in this repo could ever have answered «هنگ میکنه».
+    [switch]$Stress,
+    [string]$StressSymbol = "EURUSD",
+    [string]$StressPeriod = "H1",
+    [ValidateRange(30, 900)]
+    [int]$StressTimeoutSec = 240
 )
 
 # ============================================================
@@ -832,7 +847,7 @@ function Get-TerminalMql4DirsForProject {
 
 # P-LOG-2 (2026-10-01) — A DIAG FRAME BELONGS TO ONE ATTACH, SO OLD FRAMES ARE
 # DELETED, NOT LEFT BEHIND TO BE READ. The flushed diag file
-# (`<data folder>\MQL4\Files\biotak_diag_<SYMBOL>.txt`) is truncated only when a NEW
+# (`<data folder>\MQL4\Filesiotak_diag_<SYMBOL>.txt`) is truncated only when a NEW
 # attach emits its FIRST line — so between a restart and the first panel open the
 # PREVIOUS session's frame is still on disk and, by mtime, can still outrank everything
 # else a reader looks at (measured 2026-10-01 21:35: after the restart the terminal's
@@ -1085,7 +1100,9 @@ function Wait-TerminalShotLines {
     # The harness's own voice, read where MT4 writes it: <MQL4>\Logs\<date>.log,
     # UTF-16. Only lines AFTER the launch are taken (a previous run's lines are not
     # this run's answer), and the wait ends on DONE / SKIP / a failed shot.
-    param([string]$Mql4Dir, [int]$TimeoutSec, [string]$LogPath, [int]$SkipLines, [string]$Marker = "")
+    # P-STRESS-1: `Tag` is the harness's own line prefix — the strip shot prints
+    # `[STRIPSHOT]`, the stress run prints `[STRESS]`, and one reader serves both.
+    param([string]$Mql4Dir, [int]$TimeoutSec, [string]$LogPath, [int]$SkipLines, [string]$Marker = "", [string]$Tag = "[STRIPSHOT]")
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $out = @()
     $cur = $LogPath
@@ -1111,7 +1128,7 @@ function Wait-TerminalShotLines {
         if ($latest.FullName -ne $cur) { $cur = $latest.FullName; $skip = 0 }
         $all = @(Get-Content -LiteralPath $cur -Encoding Unicode -ErrorAction SilentlyContinue)
         if ($all.Count -le $skip) { continue }
-        $fresh = @($all[$skip..($all.Count - 1)] | Where-Object { $_.Contains("[STRIPSHOT]") })
+        $fresh = @($all[$skip..($all.Count - 1)] | Where-Object { $_.Contains($Tag) })
         if ($fresh.Count -gt 0) {
             $out += $fresh
             $stop = @($fresh | Where-Object {
@@ -1124,9 +1141,17 @@ function Wait-TerminalShotLines {
 }
 
 function Invoke-StripShot {
-    param([string]$Mql4Dir, [string]$Symbol, [string]$Period, [int]$TimeoutSec, [switch]$Launch)
-    $harness = "Biotak_StripShot_Test"
-    $ex4 = Join-Path $SCRIPT_ROOT "tests\$harness.ex4"
+    #--- P-STRESS-1: the SAME restart/deploy/wait/collect machinery, two harnesses.
+    #--- Every default below is the strip shot's own value, so `-Shot` behaves exactly
+    #--- as it did: the only new thing is that `-Stress` passes its own harness, marker,
+    #--- line tag and report name and says it has no PNGs to grade.
+    param([string]$Mql4Dir, [string]$Symbol, [string]$Period, [int]$TimeoutSec, [switch]$Launch,
+          [string]$Harness = "Biotak_StripShot_Test",
+          [string]$MarkerName = "StripShot.done",
+          [string]$Tag = "[STRIPSHOT]",
+          [string]$ReportName = "StripShot-census.txt",
+          [bool]$NeedPng = $true)
+    $ex4 = Join-Path $SCRIPT_ROOT "tests\$Harness.ex4"
     if (-not (Test-Path -LiteralPath $ex4)) {
         Write-Host "  [FAIL] $harness.ex4 was not built — the shot needs -Tests (or -Shot alone compiles it)." -ForegroundColor Red
         return $false
@@ -1193,11 +1218,11 @@ function Invoke-StripShot {
     $shotArgs = ("$($shotStart.Args) `"$configPath`"").Trim()
     #--- P-SHOT-1: a stale marker from an earlier run may never answer for this one —
     #--- the same rule the diag frames carry (P-LOG-2), one channel over.
-    $marker = Join-Path (Join-Path $deployDir "Files") "StripShot.done"
+    $marker = Join-Path (Join-Path $deployDir "Files") $MarkerName
     if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue }
     Start-Process -FilePath $shotStart.Exe -ArgumentList $shotArgs
-    Write-Host "  launched; waiting up to ${TimeoutSec}s for StripShot.done (the flushed marker)..." -ForegroundColor Cyan
-    $lines = @(Wait-TerminalShotLines -Mql4Dir $deployDir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip -Marker $marker)
+    Write-Host "  launched; waiting up to ${TimeoutSec}s for $MarkerName (the flushed marker)..." -ForegroundColor Cyan
+    $lines = @(Wait-TerminalShotLines -Mql4Dir $deployDir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip -Marker $marker -Tag $Tag)
 
     # the shot instance has done its job: put the user's own terminal back
     if (-not (Stop-TerminalProcesses)) { return $false }
@@ -1206,7 +1231,7 @@ function Invoke-StripShot {
 
     $shotDir = Join-Path $PROJECT_LOG_DIR "shot"
     if (-not (Test-Path -LiteralPath $shotDir)) { New-Item -ItemType Directory -Path $shotDir -Force | Out-Null }
-    $census = Join-Path $shotDir "StripShot-census.txt"
+    $census = Join-Path $shotDir $ReportName
     #--- P-SHOT-1 (2026-10-19): THE MARKER ANSWERS "DID IT FINISH", the journal lines
     #--- are kept as the record. MEASURED 2026-10-19 09:55: the run wrote all 30 PNGs and
     #--- still reported `[FAIL] the harness never reached DONE` because that verdict was
@@ -1218,30 +1243,37 @@ function Invoke-StripShot {
         if ($markerText) { $markerText = $markerText.Trim() }
     }
     if ($lines.Count -eq 0 -and -not $markerText) {
-        Write-Host "  [FAIL] neither the marker ($marker) nor a [STRIPSHOT] journal line appeared within ${TimeoutSec}s" -ForegroundColor Red
+        Write-Host "  [FAIL] neither the marker ($marker) nor a $Tag journal line appeared within ${TimeoutSec}s" -ForegroundColor Red
         Write-Host "         (the script did not run on that instance — check its Experts tab)" -ForegroundColor Yellow
         return $false
     }
     $lines | Set-Content -LiteralPath $census -Encoding UTF8
     $bad = @($lines | Where-Object { $_.Contains("FAILED") -or $_.Contains("SKIP") })
-    $done = @($lines | Where-Object { $_.Contains("DONE:") })
+    $done = @($lines | Where-Object { $_.Contains("DONE") })
     if ($markerText) { Write-Host "  marker:  $markerText" -ForegroundColor DarkGray }
     foreach ($l in $bad) { Write-Host "    $l" -ForegroundColor Yellow }
-    foreach ($tag in @("panel_paint", "panel_style", "panel_look", "panel_row")) {
-        $sum = @($lines | Where-Object { $_.Contains(" $tag objs=") })
-        if ($sum.Count -gt 0) { Write-Host "    $($sum[0])" -ForegroundColor DarkGray }
+    if ($Tag -eq "[STRIPSHOT]") {
+        foreach ($tag in @("panel_paint", "panel_style", "panel_look", "panel_row")) {
+            $sum = @($lines | Where-Object { $_.Contains(" $tag objs=") })
+            if ($sum.Count -gt 0) { Write-Host "    $($sum[0])" -ForegroundColor DarkGray }
+        }
     }
-    $png = @(Get-ChildItem -LiteralPath (Join-Path $deployDir "Files") -Filter "StripShot_*.png" -File -ErrorAction SilentlyContinue | Sort-Object Name)
-    #--- MEASURED the day this was written: a previous run's PNGs would otherwise be
-    #--- swept up as this run's (the harness overwrites them, but a state it SKIPped
-    #--- leaves the old file). Only files the terminal wrote AFTER the launch count.
-    $png = @($png | Where-Object { $shotLaunchedAt -and $_.LastWriteTime -ge $shotLaunchedAt })
-    if ($png.Count -eq 0) {
-        Write-Host "  [FAIL] no StripShot_*.png written into $deployDir\Files since this run started" -ForegroundColor Red
+    else {
+        foreach ($l in $lines) { Write-Host "    $l" -ForegroundColor DarkGray }
     }
-    foreach ($p in $png) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $shotDir $p.Name) -Force }
-    Write-Host "  census: $census  (lines=$($lines.Count))" -ForegroundColor DarkGray
-    Write-Host "  terminal PNGs: $($png.Count) -> $shotDir" -ForegroundColor Green
+    if ($NeedPng) {
+        $png = @(Get-ChildItem -LiteralPath (Join-Path $deployDir "Files") -Filter "StripShot_*.png" -File -ErrorAction SilentlyContinue | Sort-Object Name)
+        #--- MEASURED the day this was written: a previous run's PNGs would otherwise be
+        #--- swept up as this run's (the harness overwrites them, but a state it SKIPped
+        #--- leaves the old file). Only files the terminal wrote AFTER the launch count.
+        $png = @($png | Where-Object { $shotLaunchedAt -and $_.LastWriteTime -ge $shotLaunchedAt })
+        if ($png.Count -eq 0) {
+            Write-Host "  [FAIL] no StripShot_*.png written into $deployDir\Files since this run started" -ForegroundColor Red
+        }
+        foreach ($p in $png) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $shotDir $p.Name) -Force }
+        Write-Host "  terminal PNGs: $($png.Count) -> $shotDir" -ForegroundColor Green
+    }
+    Write-Host "  report: $census  (lines=$($lines.Count))" -ForegroundColor DarkGray
     if ($done.Count -eq 0 -and $markerText -notmatch '^DONE') {
         Write-Host "  [FAIL] the harness never reached DONE (no 'DONE' marker at $marker; see $census)" -ForegroundColor Red
         return $false
@@ -1249,7 +1281,7 @@ function Invoke-StripShot {
     #--- A DONE with no file behind it is the P-DRAW-06 class again (an object created,
     #--- a property written, nothing painted): green line, empty column. The shot's whole
     #--- job is the pixels, so the pixels are what it is graded on.
-    if ($png.Count -eq 0) {
+    if ($NeedPng -and $png.Count -eq 0) {
         Write-Host "  [FAIL] the harness reached DONE but wrote no StripShot_*.png into $Mql4Dir\Files" -ForegroundColor Red
         Write-Host "         (ChartScreenShot needs a visible / unminimised chart window)" -ForegroundColor Yellow
         return $false
@@ -2025,6 +2057,18 @@ if ($Tests) {
         Write-Host "  WARN: no tests\ folder to compile" -ForegroundColor Yellow
     }
 }
+elseif ($Stress) {
+    #--- P-STRESS-1: the runtime harness's one unit — the same compiler call `-Tests`
+    #--- makes, kept here so `-Stress` alone is a complete run.
+    Write-Banner "Stress: harness"
+    $stressHarness = Join-Path $SCRIPT_ROOT "tests\TH3_Stress_Test.mq4"
+    if (Test-Path -LiteralPath $stressHarness) {
+        $results["tests\TH3_Stress_Test.mq4"] = Invoke-SourceUnit -SourceFile $stressHarness -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
+    }
+    else {
+        Write-Host "  WARN: tests\TH3_Stress_Test.mq4 is missing" -ForegroundColor Yellow
+    }
+}
 elseif ($Shot) {
     # P-BUILD-10: the shot's one unit. `-Tests` already builds it, so this is only
     # for `-Shot` on its own (and it is the same compiler call either way).
@@ -2293,9 +2337,52 @@ elseif ($gateCacheDirty) {
     Write-Host "  gate cache: this tree's fingerprint recorded for the gates that PASSED" -ForegroundColor DarkGray
 }
 
+#--- P-STRESS-1: THE RUNTIME QUESTION, ASKED BY THE BUILD. Every other gate in this
+#--- repo reads SOURCES; a stall is a number only the terminal can answer. This runs
+#--- the harness that drives the real event chain (creates at 50/200/400 objects, the
+#--- Ctrl+copy gesture ten times, the one heavy create branch, delete storms, the
+#--- strip's open/close, 300 moves, the attach walk, the history file) and grades it:
+#--- `[FAIL]` on any run that reports fail>0, and on any run that never reached its
+#--- marker inside the timeout — a harness that stops answering IS the defect it was
+#--- written to find, and a silent wait would report it as "nothing happened".
+$stressRelaunched = $false
+if ($Stress) {
+    Write-Host ""
+    Write-Banner "STRESS (the indicator under the worst cases)"
+    if (-not $resolvedMql4Dir) {
+        Write-Host "  [FAIL] no MQL4 folder resolved — there is nowhere to deploy the harness." -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        $stressLaunch = ($RestartTerminal -and $allSuccess)
+        if (-not $stressLaunch) {
+            Write-Host "  prepare only (no -RestartTerminal): MT4 is left alone." -ForegroundColor DarkGray
+        }
+        $stressOk = Invoke-StripShot -Mql4Dir $resolvedMql4Dir -Symbol $StressSymbol -Period $StressPeriod `
+                                     -TimeoutSec $StressTimeoutSec -Launch:$stressLaunch `
+                                     -Harness "TH3_Stress_Test" -MarkerName "THStress.done" `
+                                     -Tag "[STRESS]" -ReportName "THStress-report.txt" -NeedPng $false
+        if ($stressLaunch -and $stressOk) { $stressRelaunched = $true }
+        if (-not $stressOk) { $allSuccess = $false }
+        if ($stressLaunch) {
+            $stressReport = Join-Path (Join-Path $PROJECT_LOG_DIR "shot") "THStress-report.txt"
+            $stressFail = @()
+            if (Test-Path -LiteralPath $stressReport) {
+                $stressFail = @(Get-Content -LiteralPath $stressReport -Encoding UTF8 |
+                                Where-Object { $_.Contains("verdict=HANG") -or $_.Contains("verdict=MIXED") })
+            }
+            $stressResult = @(Get-Content -LiteralPath $stressReport -Encoding UTF8 -ErrorAction SilentlyContinue |
+                              Where-Object { $_.Contains("RESULT fail=") })
+            if ($stressResult.Count -gt 0) { Write-Host "  $($stressResult[0])" -ForegroundColor Green }
+            foreach ($l in $stressFail) { Write-Host "  $l" -ForegroundColor Red }
+            if ($stressFail.Count -gt 0 -or $stressResult.Count -eq 0) { $allSuccess = $false }
+        }
+    }
+}
+
 #--- P-BUILD-10: THE REAL RENDER, AFTER THE GATES (a broken tree never gets shot).
 $shotRelaunched = $false
-if ($Shot) {
+if ($Shot -and -not $Stress) {
     Write-Host ""
     Write-Banner "STRIP SHOT (the terminal's own pixels)"
     if (-not $resolvedMql4Dir) {
@@ -2318,10 +2405,10 @@ if ($Shot) {
         if ($shotLaunch -and $shotOk) {
             Invoke-ProjectGate -Name "real pixels gate (strict)" -Script $shotGate -Runner "node" -Cache @{} -ExtraArgs @("--strict")
         }
-        $baPage = Join-Path $SCRIPT_ROOT "tools\before-after.py"
+        $baPage = Join-Path $SCRIPT_ROOT "toolsefore-after.py"
         if ((Test-Path -LiteralPath $baPage) -and (Get-Command python -ErrorAction SilentlyContinue)) {
             & python $baPage
-            Write-Host "  page: $(Join-Path $SCRIPT_ROOT 'tools\before-after.html')" -ForegroundColor Green
+            Write-Host "  page: $(Join-Path $SCRIPT_ROOT 'toolsefore-after.html')" -ForegroundColor Green
         }
     }
 }
@@ -2344,7 +2431,15 @@ Write-Host ""
 #--- P-BUILD-10: in `-Shot` mode this line must name the SHOT's own next step — the
 #--- harness is the deployed unit there, and "re-add the indicator" would be advice
 #--- about a different file than the one the run just built.
-if ($Shot -and $shotRelaunched) {
+if ($Stress -and $stressRelaunched) {
+    Write-Host "  NEXT: nothing — the stress run restarted the terminal on the new ex4." -ForegroundColor Yellow
+    Write-Host "        report: $(Join-Path $PROJECT_LOG_DIR 'shot')\THStress-report.txt" -ForegroundColor DarkGray
+}
+elseif ($Stress) {
+    Write-Host "  NEXT: the stress harness is deployed and the config is written; run -Stress -RestartTerminal" -ForegroundColor Yellow
+    Write-Host "        (or the terminal.exe `"build-logs\th3-shot.ini`" line above) to price the worst cases." -ForegroundColor DarkGray
+}
+elseif ($Shot -and $shotRelaunched) {
     Write-Host "  NEXT: nothing — the shot run restarted the terminal on the new ex4." -ForegroundColor Yellow
     Write-Host "        render: $(Join-Path $PROJECT_LOG_DIR 'shot')\StripShot_*.png   census: StripShot-census.txt" -ForegroundColor DarkGray
 }

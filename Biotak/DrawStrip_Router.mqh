@@ -283,9 +283,23 @@ bool DrawStripClickToggle(const string nm, const bool wasDrag)
             // never token-counted: a stale token budget ate genuine clicks for
             // ten seconds. A genuine second click after the deadline closes.
             if(DrawStripTwinSpent()) return DrawStripClickFamily();
-            if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED))
+            // P-BK-148 (2026-11-02, user: «این بیس نات هم سلکت بودنش سریع خودکارمیره»):
+            // THE CLOSE DROPS ONLY A SELECTION THE STRIP ITSELF OWNS. MEASURED on the
+            // live frame (`biotak_diag_EURUSD_134362571361933142.txt`, one gesture, the
+            // Base Knot box): `[BK] drag latch box=60_11227125 sel=1 selectable=1` and
+            // then `[drawstrip] click closed on "THLevels_BK_60_11227125_BOX"` — the
+            // knot's own press had just selected the box, and the strip spent a DESELECT
+            // on it although the strip's own open REFUSES to select such a name
+            // (`DrawStripHoldSelect` answers false for an indicator object). Two live
+            // writers owned one flag; the second one was the strip's, and the user sees
+            // the markers vanish right after he asked for them. The strip's own drawings
+            // keep the documented single-click deselect, unchanged.
+            bool dsSelWas = (bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED);
+            if(dsSelWas && !DrawIsIndicatorObject(nm))
                 ObjectSetInteger(0, nm, OBJPROP_SELECTED, false);   // single-click deselect
-            DrawStripDiagEmit("[drawstrip] click closed on \"" + nm + "\"");
+            DrawStripDiagEmit("[drawstrip] click closed on \"" + nm + "\" sel=" +
+                  (dsSelWas ? "1" : "0") + "->" +
+                  ((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED) ? "1" : "0"));
             DrawStripClose();
             DrawStripOpenerArm();   // this release's twin is spent, not a re-open
             return DrawStripClickFamily();
@@ -433,6 +447,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // press edge was equally false. One store per move is the whole fix.
       s_dsLeftPress = (tleft && !s_dsLeftPrev);
       s_dsLeftPrev = tleft;
+      //--- P-COPY-HOLD (2026-11-02): the copied object is born while this bit is still
+      //--- set, and MT4 is inside its own mouse loop. The deferred style drain reads this
+      //--- one note and will not create a child until the hand is off the button.
+      DrawStyleCopyMouseNote(tleft);
       if(s_dsLeftPress)
       {
          //--- DIAG-116 (temporary): THE EDGE ITSELF. Every witness downstream prints
@@ -915,6 +933,20 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // A deleted CHILD is its parent's business: drop the child, heal parent.
       if(BoxIsMidChild(sparam)) { string par = BoxMidParent(sparam); if(par != "" && ObjectFind(0, par) >= 0) BoxMidSync(par); return false; }
       if(FillIsChild(sparam)) { string fpar = FillChildParent(sparam); if(fpar != "" && ObjectFind(0, fpar) >= 0) FillChildSync(fpar); return false; }
+      //--- P-DEL-BULK (2026-11-01, user: «اندیکاتور هنگ میکنه… ببین کجا نشتی داریم»):
+      //--- OUR OWN BULK PURGE IS NOT A HAND DELETE. The two heals above and the
+      //--- strip's own close are answered for EVERY delete — a purge that takes the
+      //--- strip's drawing away must still close it — and then the bulk case is done:
+      //--- what is left in this branch is the family cascade (a FibPen walk per kind,
+      //--- four name scans, a `GlobalVariableCheck`), a journal write, a `FileFlush`
+      //--- and a repaint decision, and none of it can name a drawing: the suppression
+      //--- window is armed by our own bulk paths and by nothing else.
+      //--- MEASURED 2026-11-01: an HTF toggle delivered 3,175 `BiotakHTF_*` delete
+      //--- events over 1.831 s (20:51:06.295 → 20:51:08.126) at ~0.58 ms each, and
+      //--- the strip family's own purge floods 24,292 of the same events a day. The
+      //--- day's journal is 134,417 lines and 15.9 MB, and 42,808 of them are this
+      //--- one witness. Same ruling as P-UI-21 and P-DEL-PROBE, on the strip's side.
+      if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;
       //--- P-DEL-ALL (2026-10-03) — EVERYTHING A DRAWING OWNS DIES WITH IT. The
       //--- bin paths already drop each family; a NATIVE delete (Delete key, object
       //--- list) fires this event instead and must do the same, or strays stay on

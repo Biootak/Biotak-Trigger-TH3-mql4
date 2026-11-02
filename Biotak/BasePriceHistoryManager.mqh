@@ -117,6 +117,113 @@ int g_loadedHistoryFormat = 0;
 #endif
 
 //+------------------------------------------------------------------+
+//| P-HANG-01 (2026-11-02) — A LOCKED FILE IS DEFERRED, NEVER SLEPT  |
+//|                                                                  |
+//| THE DOCUMENT RULE. MQL's own reference for this function says it  |
+//| outright: «The Sleep() function can't be called for custom         |
+//| indicators, since indicators are executed in the interface thread  |
+//| and should not slow it down.» (mql5.com/en/docs/common/sleep). The  |
+//| interface thread IS the chart: it paints, it answers the mouse and  |
+//| it delivers `OnChartEvent`. This project already ruled on the same  |
+//| shape from its own measurement (P-TH3-REC-04, TH3Recorder.mqh:166 —  |
+//| «a Sleep in the press froze the terminal for a second and showed    |
+//| nothing»).                                                         |
+//|                                                                  |
+//| WHAT USED TO BE HERE. Four retry loops slept between attempts, and |
+//| all four are reachable from the tick path:                         |
+//|   `OnCalculate` → `UpdateBasePrice` (EventHandlers_Calc.mqh:622)   |
+//|      → `AddBasePriceHistoryEntry` → `AppendBasePriceHistoryEntry`  |
+//|      → 2 x Sleep(100) = 200 ms per new 30-minute block             |
+//|   `OnInit` / the 3 s `!g_systemInitialized` retry                  |
+//|      (EventHandlers_Calc.mqh:607) → `InitializeBasePriceSystem`    |
+//|      → Load 2x100 + Save 4x2x100 + Cleanup 2x100 PER OLD FILE      |
+//|      = 1.0 s and up, at attach, and again every 3 s while the flag |
+//|      stays false.                                                  |
+//| So a day file held by anything else — a second chart of the symbol,|
+//| an editor, a scanner — froze the chart thread for a second on the  |
+//| clock's own beat. That is the class this card closes: not one slow  |
+//| site, the whole class of a wait inside the interface thread.       |
+//|                                                                  |
+//| WHAT REPLACED IT — THE ASK SURVIVES, THE THREAD DOES NOT STOP.     |
+//| A refused open is no longer retried HERE. It records the ask (the  |
+//| target day) and the pump drains it at the next 250 ms beat         |
+//| (`CoopPump`, EventHandlers_Tail.mqh) — the same mechanism the      |
+//| project already owes its heavy frames to, and with the same        |
+//| argument: the RAM state (`basePriceHistory[]`) is the source of    |
+//| truth, so a late write is a LATE write, never a lost one.          |
+//|                                                                  |
+//| Why a FULL rewrite is the right drain: `SaveBasePriceHistory` is   |
+//| whole-file (temp + rename), and every caller's array is itself a    |
+//| disk+RAM merge of the same day (RebuildHistoryFromStartOfDay:      |
+//| BasePrice_B.mqh:536, Append's unstamped branch: this file), so     |
+//| re-deriving from the live state reproduces the same lines plus the  |
+//| entry the refused append already pushed into RAM                    |
+//| (AddBasePriceHistoryEntry pushes at BasePrice_A.mqh:1192-1194,      |
+//| BEFORE the persist call at 1204). Nothing new is invented here.    |
+//+------------------------------------------------------------------+
+#define HIST_FLUSH_MAX_TRIES 40          // ~10 s at the pump's 250 ms beat
+static bool  s_histFlushOwed  = false;
+static int   s_histFlushYear  = 0;
+static int   s_histFlushDay   = 0;
+static int   s_histFlushTries = 0;
+static int   s_histFlushErr   = 0;
+static int   s_histLockErr    = 0;       // the LAST refused open, for the witness
+static uint  s_histFlushFirstMs = 0;     // when this ask was armed
+static uint  s_histDeferredN  = 0;       // asks armed  (the stall this card prevents)
+static uint  s_histDrainedN   = 0;       // asks the pump completed
+static uint  s_histDroppedN   = 0;       // asks that outlived the deadline
+
+//--- the ask: refuse, remember, return. Zero waiting, zero sleeps.
+void BasePriceHistoryAskFlush(const int year, const int dayOfYear, const int err)
+{
+   if(!s_histFlushOwed)
+   {
+      s_histFlushTries = 0;
+      s_histFlushFirstMs = GetTickCount();
+      s_histDeferredN++;
+   }
+   s_histFlushOwed = true;
+   s_histFlushYear = year;
+   s_histFlushDay  = dayOfYear;
+   s_histLockErr   = err;
+}
+
+bool   BasePriceHistoryFlushPending() { return s_histFlushOwed; }
+int    BasePriceHistoryFlushErr()     { return s_histLockErr; }
+int    BasePriceHistoryFlushTries()   { return s_histFlushTries; }
+uint   BasePriceHistoryDeferredN()    { return s_histDeferredN; }
+uint   BasePriceHistoryDrainedN()     { return s_histDrainedN; }
+uint   BasePriceHistoryDroppedN()     { return s_histDroppedN; }
+uint   BasePriceHistoryFlushAgeMs()   { return (s_histFlushOwed ? GetTickCount() - s_histFlushFirstMs : 0); }
+void   BasePriceHistoryFlushTarget(int &year, int &dayOfYear)
+{
+   year = s_histFlushYear; dayOfYear = s_histFlushDay;
+}
+
+//--- the pump's bookkeeping. 0 = still owed, 1 = written, 2 = dropped (deadline).
+//--- The DEADLINE is what keeps a permanently held file from turning the refusal
+//--- into a per-beat FileOpen forever; past it the RAM state stands alone until
+//--- the next 30-minute block arms a fresh ask.
+int BasePriceHistoryFlushStep(const bool wrote)
+{
+   if(wrote)
+   {
+      s_histDrainedN++;
+      s_histFlushOwed = false;
+      s_histFlushTries = 0;
+      return 1;
+   }
+   if(++s_histFlushTries >= HIST_FLUSH_MAX_TRIES)
+   {
+      s_histDroppedN++;
+      s_histFlushOwed = false;
+      s_histFlushTries = 0;
+      return 2;
+   }
+   return 0;
+}
+
+//+------------------------------------------------------------------+
 //| Get history file path for a specific date and symbol             |
 //| Format: .biotak/history/base_price_history_SYMBOL_YYYY_DDD.txt   |
 //+------------------------------------------------------------------+
@@ -174,7 +281,8 @@ string GetHistoryFilePath(int year, int dayOfYear)
 //+------------------------------------------------------------------+
 //| Load history for a specific date                                 |
 //| Returns number of entries loaded                                 |
-//| Includes retry logic and validation                              |
+//| P-HANG-01: one attempt — a refused open returns 0, it is not slept|
+//|   through (see the deferred-flush block above)                    |
 //+------------------------------------------------------------------+
 int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
 {
@@ -183,9 +291,12 @@ int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
     // P-PERF-11: assume legacy until the file's own stamp proves otherwise.
     g_loadedHistoryFormat = 0;
 
-    // Retry logic for file locking (max 3 attempts with 100ms delay)
-    int maxRetries = 3;
-    int retryDelay = 100;
+    // P-HANG-01: ONE attempt, and a refusal is a fact we return with — never a
+    // wait. A locked file here is retried by the caller's own gate: the load runs
+    // inside InitializeBasePriceSystem, which OnCalculate re-asks every 3 s while
+    // `g_systemInitialized` is false (EventHandlers_Calc.mqh:607). That is the
+    // retry, on the terminal's clock instead of a Sleep in the interface thread.
+    int maxRetries = 1;
     
     // GOLD FIX #6: Declare fileHandle outside loop for proper cleanup
     int fileHandle = INVALID_HANDLE;
@@ -204,27 +315,15 @@ int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
             // Check if file doesn't exist (normal for first run)
             if(errorCode == 4103 || errorCode == 5019)  // ERR_CANNOT_OPEN_FILE or file not found
             {
-                if(attempt == 0)
-                {
-                    HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: No history file found for ", year, "/", dayOfYear);
-                }
+                HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: No history file found for ", year, "/", dayOfYear);
                 ArrayResize(history, 0);
                 return 0;
             }
             
-            // File might be locked - retry
-            if(attempt < maxRetries - 1)
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: File locked (error ", errorCode, "), retrying...");
-                Sleep(retryDelay);
-                continue;
-            }
-            else
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: ERROR - Failed to open file after ", maxRetries, " attempts");
-                ArrayResize(history, 0);
-                return 0;
-            }
+            s_histLockErr = errorCode;
+            HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: ERROR - File refused (error ", errorCode, ") - no wait, the init gate re-asks");
+            ArrayResize(history, 0);
+            return 0;
         }
         
         // Read all lines from file
@@ -281,11 +380,6 @@ int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
             fileHandle = INVALID_HANDLE;
         }
         
-        if(attempt > 0)
-        {
-            HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: Success after ", attempt + 1, " attempts");
-        }
-        
         HISTORY_PRINT("[BasePriceHistoryManager] LoadHistory: Loaded ", count, " valid entries from ", filePath);
         if(emptyLines > 0 || invalidLines > 0)
         {
@@ -307,130 +401,83 @@ int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
 //+------------------------------------------------------------------+
 //| Save history for a specific date                                 |
 //| Overwrites existing file with atomic write (temp file + rename)  |
-//| Includes retry logic for file locking issues                     |
+//| P-HANG-01: one attempt — a refusal ARMS the deferred flush and    |
+//|   returns; the pump at EventHandlers_Tail.mqh rewrites the day    |
 //+------------------------------------------------------------------+
 bool SaveBasePriceHistory(int year, int dayOfYear, const string &history[], int count)
 {
     string filePath = GetHistoryFilePath(year, dayOfYear);
     string tempPath = filePath + ".tmp";
     
-    // Retry logic for file locking (max 3 attempts with 100ms delay)
-    int maxRetries = 3;
-    int retryDelay = 100;  // milliseconds
-    
-    for(int attempt = 0; attempt < maxRetries; attempt++)
+    // P-HANG-01: ONE attempt. A refusal ARMS the deferred flush (the pump rewrites
+    // this day file from the live RAM state at the next 250 ms beat) and this call
+    // returns — it never waits here, because waiting here is the interface thread.
+    // Step 1: Write to temporary file
+    int fileHandle = FileOpen(tempPath, FILE_WRITE | FILE_TXT | FILE_ANSI);
+    if(fileHandle == INVALID_HANDLE)
     {
-        // Step 1: Write to temporary file
-        int fileHandle = FileOpen(tempPath, FILE_WRITE | FILE_TXT | FILE_ANSI);
-        
-        if(fileHandle == INVALID_HANDLE)
-        {
-            int errorCode = GetLastError();
-            if(attempt < maxRetries - 1)
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Temp file locked (error ", errorCode, "), retrying...");
-                Sleep(retryDelay);
-                continue;
-            }
-            else
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Failed to create temp file after ", maxRetries, " attempts");
-                return false;
-            }
-        }
-        
-        // P-PERF-11: line 1 states the format this file was written in, so the
-        // loader never has to guess (see the note at the top of this file).
-        FileWriteString(fileHandle, HistoryFileStampLine() + "\n");
-
-        // Write each entry as a line with error checking
-        bool writeSuccess = true;
-        for(int i = 0; i < count; i++)
-        {
-            // CRITICAL FIX: Check write operation success
-            if(!FileWriteString(fileHandle, history[i] + "\n"))
-            {
-                int writeError = GetLastError();
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Write failed at entry ", i, ", error=", writeError);
-                writeSuccess = false;
-                break;
-            }
-        }
-        
-        FileClose(fileHandle);
-        
-        // If write failed, cleanup and retry
-        if(!writeSuccess)
-        {
-            FileDelete(tempPath);
-            if(attempt < maxRetries - 1)
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Write failed, retrying...");
-                Sleep(retryDelay);
-                continue;
-            }
-            else
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Write failed after ", maxRetries, " attempts");
-                return false;
-            }
-        }
-        
-        // Step 2: Delete old file if exists
-        if(FileIsExist(filePath))
-        {
-            if(!FileDelete(filePath))
-            {
-                int deleteError = GetLastError();
-                if(attempt < maxRetries - 1)
-                {
-                    HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Failed to delete old file (error ", deleteError, "), retrying...");
-                    FileDelete(tempPath);  // Clean up temp file
-                    Sleep(retryDelay);
-                    continue;
-                }
-                else
-                {
-                    HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: WARNING - Could not delete old file, keeping temp file");
-                    // Continue anyway - temp file has the data
-                }
-            }
-        }
-        
-        // Step 3: Rename temp file to final name
-        if(!FileMove(tempPath, 0, filePath, FILE_REWRITE))
-        {
-            int moveError = GetLastError();
-            if(attempt < maxRetries - 1)
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Failed to rename temp file (error ", moveError, "), retrying...");
-                Sleep(retryDelay);
-                continue;
-            }
-            else
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Failed to rename temp file after ", maxRetries, " attempts");
-                return false;
-            }
-        }
-        
-        // Success
-        if(attempt > 0)
-        {
-            HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Success after ", attempt + 1, " attempts");
-        }
-        
-        HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Saved ", count, " history entries to ", filePath);
-        return true;
+        int errorCode = GetLastError();
+        HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Temp file refused (error ", errorCode, ") - deferred to the pump");
+        BasePriceHistoryAskFlush(year, dayOfYear, errorCode);
+        return false;
     }
-    
-    return false;
+
+    // P-PERF-11: line 1 states the format this file was written in, so the
+    // loader never has to guess (see the note at the top of this file).
+    FileWriteString(fileHandle, HistoryFileStampLine() + "\n");
+
+    // Write each entry as a line with error checking
+    bool writeSuccess = true;
+    int  failErr = 0;
+    for(int i = 0; i < count; i++)
+    {
+        // CRITICAL FIX: Check write operation success
+        if(!FileWriteString(fileHandle, history[i] + "\n"))
+        {
+            failErr = GetLastError();
+            HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Write failed at entry ", i, ", error=", failErr);
+            writeSuccess = false;
+            break;
+        }
+    }
+
+    FileClose(fileHandle);
+
+    // If write failed, the ask is owed to the pump, not to a wait
+    if(!writeSuccess)
+    {
+        FileDelete(tempPath);
+        HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Write refused - deferred to the pump");
+        BasePriceHistoryAskFlush(year, dayOfYear, failErr);
+        return false;
+    }
+
+    // Step 2: Delete old file if exists. A refusal is not fatal: step 3 below
+    // carries FILE_REWRITE, so the rename replaces the file either way.
+    if(FileIsExist(filePath))
+    {
+        if(!FileDelete(filePath))
+            HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: WARNING - Could not delete old file, keeping temp file");
+    }
+
+    // Step 3: Rename temp file to final name
+    if(!FileMove(tempPath, 0, filePath, FILE_REWRITE))
+    {
+        int moveError = GetLastError();
+        HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: ERROR - Failed to rename temp file (error ", moveError, ") - deferred to the pump");
+        BasePriceHistoryAskFlush(year, dayOfYear, moveError);
+        return false;
+    }
+
+    HISTORY_PRINT("[BasePriceHistoryManager] SaveHistory: Saved ", count, " history entries to ", filePath);
+    return true;
 }
 
 //+------------------------------------------------------------------+
 //| Append a single entry to history file                            |
 //| More efficient than loading, modifying, and saving entire list   |
-//| Includes retry logic for file locking issues                     |
+//| P-HANG-01: one attempt — the entry is already in the RAM state,   |
+//|   so a refusal arms the day's full rewrite instead of waiting     |
 //+------------------------------------------------------------------+
 bool AppendBasePriceHistoryEntry(int year, int dayOfYear, const string entry)
 {
@@ -466,46 +513,26 @@ bool AppendBasePriceHistoryEntry(int year, int dayOfYear, const string entry)
         return SaveBasePriceHistory(year, dayOfYear, existing, existingCount);
     }
     
-    // Retry logic for file locking (max 3 attempts with 100ms delay)
-    int maxRetries = 3;
-    int retryDelay = 100;  // milliseconds
-    
-    for(int attempt = 0; attempt < maxRetries; attempt++)
+    // P-HANG-01: ONE attempt, no wait. The entry is ALREADY in the RAM state —
+    // AddBasePriceHistoryEntry pushes it (BasePrice_A.mqh:1192-1194) before it
+    // asks for this persist — so a refusal is not a lost line: it arms the day's
+    // full rewrite, which the pump runs from that same RAM state. Zero sleeps,
+    // and the file still ends up carrying the entry.
+    int fileHandle = FileOpen(filePath, FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI);
+    if(fileHandle != INVALID_HANDLE)
     {
-        // Open file for appending
-        int fileHandle = FileOpen(filePath, FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI);
-        
-        if(fileHandle != INVALID_HANDLE)
-        {
-            // Seek to end of file
-            FileSeek(fileHandle, 0, SEEK_END);
-            
-            // Append entry with newline
-            FileWriteString(fileHandle, entry + "\n");
-            
-            FileClose(fileHandle);
-            
-            if(attempt > 0)
-            {
-                HISTORY_PRINT("[BasePriceHistoryManager] AppendEntry: Success after ", attempt + 1, " attempts");
-            }
-            
-            return true;
-        }
-        
-        // File locked or error - wait and retry
-        int errorCode = GetLastError();
-        if(attempt < maxRetries - 1)
-        {
-            HISTORY_PRINT("[BasePriceHistoryManager] AppendEntry: File locked (error ", errorCode, "), retrying in ", retryDelay, "ms...");
-            Sleep(retryDelay);
-        }
-        else
-        {
-            HISTORY_PRINT("[BasePriceHistoryManager] AppendEntry: ERROR - Failed after ", maxRetries, " attempts. Error: ", errorCode);
-        }
+        // Seek to end of file
+        FileSeek(fileHandle, 0, SEEK_END);
+
+        // Append entry with newline
+        FileWriteString(fileHandle, entry + "\n");
+        FileClose(fileHandle);
+        return true;
     }
-    
+
+    int errorCode = GetLastError();
+    HISTORY_PRINT("[BasePriceHistoryManager] AppendEntry: ERROR - File refused (error ", errorCode, ") - deferred to the pump");
+    BasePriceHistoryAskFlush(year, dayOfYear, errorCode);
     return false;
 }
 
@@ -847,30 +874,19 @@ void CleanupOldHistory(int daysToKeep = DEFAULT_DAYS_TO_KEEP)
                 HISTORY_PRINT("[BasePriceHistoryManager] CleanupOldHistory: Deleting old file: ", filename, 
                       " (", TimeToString(fileTime, TIME_DATE), ")");
                 
-                // Try to delete with retry logic
-                bool deleted = false;
-                for(int retry = 0; retry < 3; retry++)
+                // P-HANG-01: ONE delete attempt. A file that refuses today is
+                // still a candidate at the next cleanup, and a retry loop here
+                // bought 3 FileDelete calls plus 2 x Sleep(100) on the ATTACH
+                // path — per old file, in the interface thread.
+                if(FileDelete(fullPath))
                 {
-                    if(FileDelete(fullPath))
-                    {
-                        deleted = true;
-                        deletedCount++;
-                        break;
-                    }
-                    else
-                    {
-                        int errorCode = GetLastError();
-                        if(retry < 2)
-                        {
-                            HISTORY_PRINT("[BasePriceHistoryManager] CleanupOldHistory: Delete failed (error ", errorCode, "), retrying...");
-                            Sleep(100);
-                        }
-                        else
-                        {
-                            HISTORY_PRINT("[BasePriceHistoryManager] CleanupOldHistory: WARNING - Failed to delete: ", fullPath, " (error ", errorCode, ")");
-                            errorCount++;
-                        }
-                    }
+                    deletedCount++;
+                }
+                else
+                {
+                    int errorCode = GetLastError();
+                    HISTORY_PRINT("[BasePriceHistoryManager] CleanupOldHistory: WARNING - Failed to delete: ", fullPath, " (error ", errorCode, ")");
+                    errorCount++;
                 }
             }
             else

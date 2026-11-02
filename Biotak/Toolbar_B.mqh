@@ -638,12 +638,123 @@ bool DrawStylePairCoerce(const string name)
    return changed;
 }
 
-bool DrawStyleApplyOnCreate(const string name)
+//--- P-COPY-STAGE (2026-11-02): the two witnesses the style branch answers with.
+//--- Declared HERE because `DrawStyleWriteIf` is one of them — a stage line that says
+//--- `sb=pre-width` cannot tell a hang from a storm unless it also says how many writes
+//--- had already landed. The counter is reset at the branch's own `in` and is written
+//--- only on a real write, so `w=0` at every stage is the measured "nothing moved" case.
+static bool g_diagCreateTrace = false;
+static int  g_diagCreateWrites = 0;
+
+//--- P-COPY-GUARD (2026-11-01, user: «با دکمه کنترل میخوام کپی بکنم اینطوری میشه»):
+//--- write ONLY on drift. MT4's own copy (Ctrl+C / Ctrl+drag) hands the duplicate the
+//--- ORIGINAL's properties, so every write below re-applied a value the object already
+//--- wore — and P-BK-147 measured what a re-apply costs: the object leaves the
+//--- selection, and a copy arrives selected. Same ink, same width, same pixels; a
+//--- drawing that already wears the kind's memory now costs one read and zero writes.
+void DrawStyleWriteIf(const string name, const ENUM_OBJECT_PROPERTY_INTEGER prop, const long want)
 {
-   if(name == "" || DrawIsIndicatorObject(name)) return false;
+   if(ObjectGetInteger(0, name, prop, 0) == want) return;
+   if(g_diagCreateTrace) g_diagCreateWrites++;
+   ObjectSetInteger(0, name, prop, want);
+}
+
+//+------------------------------------------------------------------+
+//| P-COPY-STAGE (2026-11-02) — THE STYLE BRANCH WAS THE BLACK BOX,    |
+//| AND THE REPORT SAID ONLY "IT STOPPED HERE".                        |
+//|                                                                   |
+//| MEASURED, the live flushed file `MQL4\Files\biotak_diag_EURUSD_     |
+//| 134362571361933142.txt`, its LAST line, 07:16:47, after the user's |
+//| Ctrl-copy of a rectangle (terminal.exe gone, no frame after it):   |
+//|   [gest] id=7 t=3217875 xy=0,0 nm="Rectangle 1959" ours=0          |
+//|   [P-COPY] in nm="Rectangle 1959" objs=831 style=11 grab=0         |
+//|   [P-COPY] st=style t=3217875        <- the stage entered, never left |
+//| `style=11` is DK_RECT — the box, exactly what the report named. The |
+//| three-stage witnesses (`st=style/seen/memo`) say WHICH of the create |
+//| branch's stages we were in; nothing said which LINE of the styling   |
+//| branch we never came back from, because `g_diagCreateTrace`, the flag |
+//| the router arms for exactly that, was written and never read — a     |
+//| probe that is set and unhooked is the same blindness as no probe,    |
+//| and it is the contract's §6.13 finding («a stage with no probe is the |
+//| finding»). So the flag is declared HERE, at the owner of the branch,  |
+//| and read at every stage.                                             |
+//|                                                                    |
+//| THE LAW: a line is emitted BEFORE the stage runs, never after — so a |
+//| file whose last line is `sb=pair` names the stage that never         |
+//| returned, and `sb=done` is only reachable on the way out.            |
+//|                                                                    |
+//| COST: one bool test per stage on an untraced create (the flag is set |
+//| only by the router, only for the first three foreign creates of a    |
+//| burst), and ~7 flushes ≈ 4 ms for a traced one. Nothing per frame,   |
+//| nothing per tick, and the pixels are untouched — this adds no write. |
+//| Gate: P-COPY, mutations -e/-f/-g.                                    |
+//+------------------------------------------------------------------+
+//--- the stage witness itself; the CALL SITE guards, so an untraced create pays
+//--- a bool test and never builds a string. EVERY line carries the two numbers that
+//--- tell a stall from a storm: `objs=` (`ObjectsTotal(0,-1,-1)` — a create that
+//--- manufactures drawings is one whose count climbs between its own stage lines;
+//--- MEASURED on a copied fibo: `in objs=764` … `out objs=776`, twelve children built
+//--- inside ONE event) and `w=` — the writes that had already landed. The control case
+//--- measured 2026-11-02 is a foreign box create that ran the WHOLE branch in 0 ms with
+//--- `objs` unchanged; the hang is the one that never printed its next stage.
+void DrawStyleTrace(const string at)
+{
+   DrawStripDiagEmit("[P-COPY] sb=" + at +
+                     " objs=" + IntegerToString(ObjectsTotal(0, -1, -1)) +
+                     " w=" + IntegerToString(g_diagCreateWrites));
+}
+
+//--- the same line, plus whether the drawing's interior child is already on the chart.
+//--- One ObjectFind per traced stage line - the traced path is three names per burst.
+void DrawStyleTraceCh(const string at, const string parent)
+{
+   DrawStripDiagEmit("[P-COPY] sb=" + at +
+                     " objs=" + IntegerToString(ObjectsTotal(0, -1, -1)) +
+                     " w=" + IntegerToString(g_diagCreateWrites) +
+                     " ch=" + IntegerToString(ObjectFind(0, FillChildName(parent))));
+}
+
+//--- P-COPY-NOCREATE (2026-11-02) — A FOREIGN CREATE MAY WRITE PROPERTIES, NEVER
+//--- BIRTH AN OBJECT. MEASURED, three freezes on the user's Ctrl-drag copy, all of them
+//--- the SAME byte (`sb=pre-fill` is the last line of the flushed file, terminal.exe
+//--- gone):
+//---   08:06 `Rectangle 4936` objs=644 · 08:31 `Rectangle 8117` objs=644 ·
+//---   08:59 `Rectangle 8117` objs=644 · and the stress harness's S3 stopped 213 s
+//---   inside ONE create of `THStress_Box_B` at objs=1456.
+//--- The call after that line is `DrawSlotWrite(FILL)` -> `FillChildSync` ->
+//--- `FillChildEnsure` -> `ObjectCreate` (Toolbar_A.mqh:1269): the interior child.
+//--- THE DIFFERENCE the three files share: the first copy on a 590-object chart ran the
+//--- WHOLE branch in `all=0` (child and all); the freeze is the SECOND copy, after the
+//--- strip's own 54 objects are on the chart (590 -> 644), i.e. the create now lands on
+//--- a chart whose object list the terminal is walking. An ObjectCreate there has no
+//--- bound MQL4 can give it, and no caller can preempt it.
+//--- SO: at birth the styling writes properties only (ink, width, style, ray, font,
+//--- back) and the FILL memory is worn by the MASTER's own `OBJPROP_FILL` — one
+//--- property write, zero objects. The interior child is born the next time the drawing
+//--- is deliberately worked: the strip's open, a drag, a colour/fill pick — paths that
+//--- already call FillChildSync/FillChildEnsure and already know how to migrate a
+//--- master's own fill into the child (Toolbar_B.mqh:391). A copy arrives wearing the
+//--- source's fill, so for the reported gesture this writes nothing at all.
+//--- Gate: P-COPY-NOCREATE.
+bool DrawStyleApplyOnCreate(const string name, const bool mayCreate = true)
+{
+   if(g_diagCreateTrace) { g_diagCreateWrites = 0; DrawStyleTrace("in"); }
+   if(name == "" || DrawIsIndicatorObject(name))
+   {
+      if(g_diagCreateTrace) DrawStyleTrace("exit-ours");
+      return false;
+   }
    EDrawKind k = DrawKindOf(name);
-   if(k == DK_NONE) return false;   // a stranger: the terminal's own look, untouched
-   if(ObjectFind(0, name) < 0) return false;
+   if(k == DK_NONE)
+   {
+      if(g_diagCreateTrace) DrawStyleTrace("exit-kind");
+      return false;   // a stranger: the terminal's own look, untouched
+   }
+   if(ObjectFind(0, name) < 0)
+   {
+      if(g_diagCreateTrace) DrawStyleTrace("exit-gone");
+      return false;
+   }
    //--- P-DRAW-INK (2026-10-04) — THE INK THE KIND HAS NO MEMORY OF. Reported on a
    //--- chart whose fibos had been given a width and a look but never a colour:
    //--- «چرا رنگش پیش‌فرض که میکشم سفید هستش؟ آخرین تغییرات آبی بود». The kind's own
@@ -652,20 +763,27 @@ bool DrawStyleApplyOnCreate(const string name)
    //--- painted, never the terminal's factory white.
    color want = s_dkColor[k];
     if((int)want < 0) want = s_dkAnyClr;
+    if(g_diagCreateTrace) DrawStyleTrace("pre-color");
     if((DrawKindCaps(k) & DRAW_CAP_COLOR) != 0 && (int)want >= 0)
    {
-      ObjectSetInteger(0, name, OBJPROP_COLOR, want);
+      DrawStyleWriteIf(name, OBJPROP_COLOR, (long)want);
       if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, want);
    }
    //--- P-DRAW-INK: a kind the user has NEVER styled has exactly one thing of its own
    //--- to wear — the ink above. Its width, style, fill and ray were never chosen, so
    //--- they are left exactly as the terminal would have drawn them (P-DRAW-75).
-   if(!s_dkValid[k]) return true;
+   if(!s_dkValid[k])
+   {
+      if(g_diagCreateTrace) DrawStyleTrace("exit-unstyled");
+      return true;
+   }
+   if(g_diagCreateTrace) DrawStyleTrace("pre-width");
    if((DrawKindCaps(k) & DRAW_CAP_WIDTH) != 0)
    {
-      ObjectSetInteger(0, name, OBJPROP_WIDTH, s_dkWidth[k]);
+      DrawStyleWriteIf(name, OBJPROP_WIDTH, s_dkWidth[k]);
       if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, s_dkWidth[k]);
    }
+   if(g_diagCreateTrace) DrawStyleTrace("pre-style");
    if((DrawKindCaps(k) & DRAW_CAP_STYLE) != 0)
    {
       //--- P-UNIFY-4b: the memory is a SLOT (5/6/7 = a look). Translate ONCE, here:
@@ -675,36 +793,272 @@ bool DrawStyleApplyOnCreate(const string name)
       int mlk = (memSt > (int)STYLE_DASHDOTDOT ? DrawLookFromSlot(memSt) : 0);
       int native = (mlk > 0 ? FibPenLookNative(mlk) : memSt);
       if(native < 0 || native > (int)STYLE_DASHDOTDOT) native = (int)STYLE_SOLID;
-      ObjectSetInteger(0, name, OBJPROP_STYLE, native);
+      DrawStyleWriteIf(name, OBJPROP_STYLE, native);
       if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, native);
-      if(mlk > 0 && FibPenServesName(name)) { FibPenLookSet(name, mlk); FibPenSync(name, false); }
+      if(g_diagCreateTrace) DrawStyleTrace("pre-pensync");
+      if(mlk > 0 && FibPenServesName(name)) { FibPenLookSet(name, mlk); if(mayCreate) FibPenSync(name, false); }   // P-COPY-NOCREATE: the tag is a property, the pen's followers are objects
       else if(DrawKindHasLevels(k)) FibPenLookDrop(name);
    }
+   if(g_diagCreateTrace) DrawStyleTrace("pre-pair");
    DrawStylePairCoerce(name);   // P-DRAW-74: the remembered pair is coerced, not trusted
    //--- P-DRAW-74c: a fresh line born with a remembered THICK + DASH pair is stacked
    //--- here, at birth - otherwise it would flash a solid thick line until the next
    //--- heal pass. The sync reads the remembered width off the master and demotes it.
-   PenStackSync(name, false);
+   if(g_diagCreateTrace) DrawStyleTrace("pre-stack");
+   if(mayCreate) PenStackSync(name, false);   // P-COPY-NOCREATE: the rows are objects - a birth builds none
    //--- P-DRAW-64: the interior first (the look it was born with), then the fill
    //--- that shows it — the child is made with the colour already on the drawing.
-   if((DrawKindCaps(k) & DRAW_CAP_FILLCLR) != 0 && (int)s_dkFillClr[k] >= 0)
-      DrawSlotWrite(name, DRAW_SLOT_FILLCLR, (double)(int)s_dkFillClr[k]);
-   if((DrawKindCaps(k) & DRAW_CAP_FILL) != 0)
-      DrawSlotWrite(name, DRAW_SLOT_FILL, s_dkFill[k] ? 1.0 : 0.0);   // P-DRAW-64: routes by TYPE
+   if(g_diagCreateTrace) DrawStyleTrace("pre-fill");
+   if(!mayCreate)
+   {
+      //--- P-COPY-NOCREATE: *this* is the line both freezes died before. The remembered
+      //--- FILL is honoured by the MASTER's own property — MT4 fills the object in the
+      //--- border's ink — and the interior child waits for a deliberate act. No
+      //--- `FillChildSync`/`FillChildEnsure` on this path, ever: they ObjectCreate.
+      if((DrawKindCaps(k) & DRAW_CAP_FILL) != 0)
+         DrawStyleWriteIf(name, OBJPROP_FILL, (s_dkFill[k] ? 1 : 0));
+      if(g_diagCreateTrace) DrawStyleTrace("fill-master");
+   }
+   else
+   {
+      if((DrawKindCaps(k) & DRAW_CAP_FILLCLR) != 0 && (int)s_dkFillClr[k] >= 0)
+      {
+         if(g_diagCreateTrace) DrawStyleTraceCh("f-fillclr", name);
+         DrawSlotWrite(name, DRAW_SLOT_FILLCLR, (double)(int)s_dkFillClr[k]);
+      }
+      if((DrawKindCaps(k) & DRAW_CAP_FILL) != 0)
+      {
+         if(g_diagCreateTrace) DrawStyleTraceCh("f-fill", name);
+         DrawSlotWrite(name, DRAW_SLOT_FILL, s_dkFill[k] ? 1.0 : 0.0);   // P-DRAW-64: routes by TYPE
+      }
+   }
+   if(g_diagCreateTrace) DrawStyleTrace("pre-ray");
    if((DrawKindCaps(k) & DRAW_CAP_RAY) != 0)
    {
-      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, (s_dkRay[k] & 1) != 0);
-      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT,  (s_dkRay[k] & 2) != 0);
+      DrawStyleWriteIf(name, OBJPROP_RAY_RIGHT, ((s_dkRay[k] & 1) != 0 ? 1 : 0));
+      DrawStyleWriteIf(name, OBJPROP_RAY_LEFT,  ((s_dkRay[k] & 2) != 0 ? 1 : 0));
    }
    //--- P-DRAW-09a: and the three appended slots, on the same "last change saved"
    //--- rule — a fresh caption keeps the size the user last used for one.
    if((DrawKindCaps(k) & DRAW_CAP_FONT) != 0)
-      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, s_dkFont[k]);
+      DrawStyleWriteIf(name, OBJPROP_FONTSIZE, s_dkFont[k]);
    if((DrawKindCaps(k) & DRAW_CAP_GLYPH) != 0)
-      ObjectSetInteger(0, name, OBJPROP_ARROWCODE, s_dkGlyph[k]);
+      DrawStyleWriteIf(name, OBJPROP_ARROWCODE, s_dkGlyph[k]);
    if((DrawKindCaps(k) & DRAW_CAP_BACK) != 0)
-      ObjectSetInteger(0, name, OBJPROP_BACK, s_dkBack[k]);
+      DrawStyleWriteIf(name, OBJPROP_BACK, (s_dkBack[k] ? 1 : 0));
+   if(g_diagCreateTrace) DrawStyleTrace("done");
    return true;
+}
+
+//+------------------------------------------------------------------+
+//| P-COPY-DEFER (2026-11-02) — A FOREIGN CREATE IS A NAME, NOT A    |
+//| TASK. IT IS QUEUED AT THE EVENT AND RUNS ON THE COOPERATIVE      |
+//| PUMP, BECAUSE THE INTERFACE THREAD IS THE CHART.                  |
+//|                                                                   |
+//| WHY NOT INLINE, MEASURED (the flushed files, 2026-11-02):          |
+//|   9 foreign creates witnessed — 8 ran the whole style branch in     |
+//|   `all=0` with `objs` UNCHANGED, 1 never returned:                  |
+//|     [P-COPY] in nm="Rectangle 1959" objs=831 style=11 grab=0        |
+//|     [P-COPY] st=style t=3217875     <- the last byte of the file,   |
+//|                                       and `terminal.exe` was gone.  |
+//|   The control on the SAME chart, 1.6 s earlier:                     |
+//|     [P-COPY] in nm="Rectangle 1956" objs=777 …                      |
+//|     [P-COPY] out style=0 seen=0 memo=0 all=0 objs=777               |
+//| So the branch is not slow by itself. What is not bounded is WHERE   |
+//| it can stop: nothing an indicator runs inside OnChartEvent may be   |
+//| unbounded, because that thread paints the chart, takes the mouse    |
+//| and answers the title bar. MQL4 says it outright for `Sleep` —      |
+//| «indicators are executed in the interface thread and should not slow|
+//| it down» (P-HANG-01) — and the same law holds for a call we cannot  |
+//| bound. MT4 is the one that makes it a burst: it re-announces a      |
+//| CREATE for every object the copy's own styling manufactures, so one |
+//| Ctrl-drag is a QUEUE of events on that thread (MEASURED here: a     |
+//| copied fibo built twelve children inside one event — `in objs=764`, |
+//| `out objs=776`; and 421 creates in one burst window at 06:50).      |
+//| MT5 does not freeze on the same gesture, which is the other half of |
+//| «فقط متاتریدر ۴ این مشکل رو داره».                                  |
+//|                                                                     |
+//| THE SHAPE: the event pushes the NAME (a bounded ring, deduped, so   |
+//| the same drawing can never be queued twice) and returns; the pump,  |
+//| which already owns every other deferred act, drains it against      |
+//| `COOP_BUDGET_MS` — one slice per 250 ms beat, the rest owed to the   |
+//| next. The chart therefore gets a paint between every 12 ms of        |
+//| styling, and the title bar never has a reason to say «Not           |
+//| Responding». Cost of the event itself: one ring write.               |
+//|                                                                     |
+//| WHAT THIS CHANGES, IN PLAIN WORDS: a drawing the TERMINAL made now  |
+//| wears our memory up to one beat (≈250 ms) later instead of inside   |
+//| its own create event (P-DRAW-01). For a COPY that is invisible —    |
+//| the terminal hands the duplicate the original's properties, so the  |
+//| measured pass writes zero bytes (`all=0`, `objs` unchanged, w=0).   |
+//| For a hand-drawn MT4 object the factory look can show for one beat. |
+//| The trace rides the queue, so the `sb=` walk still names the exact  |
+//| line if a drain ever stops.                                          |
+//| Gate: P-COPY, mutations -h/-i/-j/-k/-l/-m/-n/-o/-p/-q.                   |
+//+------------------------------------------------------------------+
+#define COPY_STYLE_MAX 64
+//--- THE BREAKER: one name that costs more than this disarms foreign-create styling for
+//--- the rest of the attach. MEASURED, a healthy create is `all=0` — zero writes, zero ms —
+//--- so a hundred for ONE name is not a slow machine, it is the act that does not come
+//--- back. Nothing in MQL4 can preempt a call once it is made, so the only honest
+//--- guarantee is: pay for it ONCE, then never again, and say so on the flushed channel.
+#define COPY_STYLE_BREAKER_MS 100
+//--- THE HOLD: THE TERMINAL IS INSIDE ITS OWN MOUSE LOOP WHILE IT CREATES A COPY.
+//--- MT4 makes the copied object at the PRESS and drags it until the release, so the
+//--- create event - and every timer beat after it - runs while the terminal still holds
+//--- that object under the pointer. A child created in that window re-enters the object
+//--- list the terminal is itself walking. MEASURED 2026-11-02 08:31:19, the build that
+//--- already deferred: `[P-COPY] sb=pre-fill objs=644 w=0` is the LAST byte the flushed
+//--- file ever got, and the call after that line is `FillChildEnsure` -> `ObjectCreate`
+//--- (Toolbar_A.mqh:1269). `terminal.exe` was gone. So the name is styled only once the
+//--- hand is off the button: the copy wears MT4's own look for the length of the drag -
+//--- which is exactly what a native MT4 copy does - and gets its interior after.
+//--- STUCK-SAFE: MT4 emits MOUSE_MOVE only on movement (BiotakPanels_Build.mqh:1187), so
+//--- a release with no move after it would leave the bit held. The hold therefore expires
+//--- by the age of the last move: a drag streams moves ~109 ms apart (measured in the same
+//--- frame), and an expired hold DRAINS. The gate can delay styling, never cancel it.
+#define COPY_STYLE_HOLD_MAX_MS 2000
+static bool s_csqLeftDown = false;
+static uint s_csqLeftMs   = 0;
+static bool s_csqHoldSaid = false;
+
+//--- written by the mouse-move owner (DrawStrip_Router.mqh), read ONLY by the drain.
+void DrawStyleCopyMouseNote(const bool leftDown)
+{
+   if(leftDown) s_csqLeftMs = GetTickCount();   // a long drag re-news its own hold
+   else s_csqHoldSaid = false;
+   s_csqLeftDown = leftDown;
+}
+
+bool DrawStyleCopyMouseHeld()
+{
+   if(!s_csqLeftDown) return false;
+   return (GetTickCount() - s_csqLeftMs < COPY_STYLE_HOLD_MAX_MS);
+}
+
+//--- THE QUIET WINDOW (2026-11-02, MEASURED THE SAME DAY AFTER THE HOLD SHIPPED). The
+//--- hold did NOT stop the freeze: `Rectangle 8117` printed `sb=in objs=644` - which is
+//--- only reachable when the button reads UP - and died at `sb=pre-fill`, the same stage and
+//--- the same 644 as the 08:31 freeze. What the two files share is the SHAPE of the
+//--- gesture: objs 590 -> 644 between the first and the second traced create, i.e. MT4
+//--- manufactured ~54 drawings in ONE group copy and is announcing them one by one. The
+//--- terminal is therefore still inside its own copy loop even with the mouse released, and
+//--- that - not the button - is the window a create must not be built into. So the ring
+//--- waits until the ANNOUNCEMENTS stop arriving: quiet by push traffic, not by the mouse.
+//--- Only a BURST is waited on (`s_csqCount > 1`): one lonely copy drains on the next beat,
+//--- so the tail of a burst can never strand behind an empty stamp.
+#define COPY_STYLE_QUIET_MS 400
+static uint   s_csqPushMs     = 0;
+static bool   s_csqQuietSaid  = false;
+
+static string s_csqName[COPY_STYLE_MAX];
+static int    s_csqHead = 0;
+static int    s_csqCount = 0;
+static int    s_csqTraceLeft = 0;   // the first three of a burst stay walked
+static int    s_csqDrops = 0;
+static uint   s_csqWorstMs = 0;
+static bool   s_csqArmed = true;
+
+bool DrawStyleCopyQueueArmed() { return s_csqArmed; }
+
+void DrawStyleCopyQueuePush(const string name, const bool trace)
+{
+   if(name == "" || !s_csqArmed) return;
+   //--- THE STAMP: every announcement is the terminal saying «I am still copying» - a
+   //--- re-announcement of the same name counts too, because it is the traffic that dates
+   //--- the burst, not the name. Read only by the drain's quiet window.
+   s_csqPushMs = GetTickCount();
+   for(int i = 0; i < s_csqCount; i++)
+      if(s_csqName[(s_csqHead + i) % COPY_STYLE_MAX] == name) return;
+   if(s_csqCount >= COPY_STYLE_MAX)
+   {
+      s_csqDrops++;
+      DrawStripDiagEmit("[P-COPY] q FULL drop nm=\"" + name + "\" drops=" + IntegerToString(s_csqDrops));
+      return;
+   }
+   s_csqName[(s_csqHead + s_csqCount) % COPY_STYLE_MAX] = name;
+   s_csqCount++;
+   if(trace && s_csqTraceLeft < 3) s_csqTraceLeft++;
+}
+
+int DrawStyleCopyQueuePending() { return s_csqCount; }
+
+//--- the ONE reader. `budgetMs` is the pump's own slice, passed in so the budget
+//--- has one owner (COOP_BUDGET_MS) and this module invents no second clock.
+void DrawStyleCopyQueueDrain(const uint budgetMs)
+{
+   if(s_csqCount <= 0) return;
+   //--- THE HOLD (see COPY_STYLE_HOLD_MAX_MS): no object of ours is born while the
+   //--- terminal holds one under the pointer. One bool test per beat, one line per hold.
+   if(DrawStyleCopyMouseHeld())
+   {
+      if(!s_csqHoldSaid)
+      {
+         s_csqHoldSaid = true;
+         DrawStripDiagEmit("[P-COPY] q hold left=" + IntegerToString(s_csqCount) +
+                           " held=" + IntegerToString((int)(GetTickCount() - s_csqLeftMs)) +
+                           "ms nm=\"" + s_csqName[s_csqHead] + "\"");
+      }
+      return;
+   }
+   s_csqHoldSaid = false;
+   //--- THE QUIET WINDOW (COPY_STYLE_QUIET_MS): while MT4 is still announcing a burst, its
+   //--- own copy loop is open and a child of ours born now lands inside it. MEASURED: both
+   //--- freezes are the SECOND traced name of a 590 -> 644 group copy. One name alone is
+   //--- never waited on, so a burst tail cannot strand the ring.
+   if(s_csqCount > 1 && GetTickCount() - s_csqPushMs < COPY_STYLE_QUIET_MS)
+   {
+      if(!s_csqQuietSaid)
+      {
+         s_csqQuietSaid = true;
+         DrawStripDiagEmit("[P-COPY] q quiet left=" + IntegerToString(s_csqCount) +
+                           " since=" + IntegerToString((int)(GetTickCount() - s_csqPushMs)) +
+                           "ms nm=\"" + s_csqName[s_csqHead] + "\"");
+      }
+      return;
+   }
+   s_csqQuietSaid = false;
+   uint t0 = GetTickCount();
+   int done = 0;
+   while(s_csqCount > 0)
+   {
+      string nm = s_csqName[s_csqHead];
+      s_csqHead = (s_csqHead + 1) % COPY_STYLE_MAX;
+      s_csqCount--;
+      uint n0 = GetTickCount();
+      g_diagCreateTrace = (s_csqTraceLeft > 0);
+      if(s_csqTraceLeft > 0) s_csqTraceLeft--;
+      DrawStyleApplyOnCreate(nm, false);   // P-COPY-NOCREATE: properties only - a create never births an object
+      g_diagCreateTrace = false;
+      //--- P-DRAW-128's ORDER, restored: the memo is primed AFTER the birth styling, so
+      //--- the OBJECT_CHANGE our own deferred write fires reads back as «nothing moved».
+      //--- Primed at the event instead, it would hold MT4's factory colour and the native
+      //--- learner would learn OUR restyle as the hand's pick — the kind's memory would
+      //--- follow the terminal's default. One read per styled name, on the pump's beat.
+      DrawInkMemoPrime(nm);
+      done++;
+      uint nMs = GetTickCount() - n0;
+      if(nMs >= COPY_STYLE_BREAKER_MS)
+      {
+         s_csqArmed = false;
+         int wasLeft = s_csqCount;
+         s_csqCount = 0;
+         s_csqHead = 0;
+         s_csqTraceLeft = 0;
+         DrawStripDiagEmit("[P-COPY] q BREAKER nm=\"" + nm + "\" ms=" + IntegerToString((int)nMs) +
+                           " dropped=" + IntegerToString(wasLeft) + " left=" + IntegerToString(done) +
+                           " styled - foreign creates are not styled for the rest of this attach");
+         return;
+      }
+      if(GetTickCount() - t0 >= budgetMs) break;
+   }
+   uint ms = GetTickCount() - t0;
+   if(ms > s_csqWorstMs) s_csqWorstMs = ms;
+   DrawStripDiagEmit("[P-COPY] q drain n=" + IntegerToString(done) +
+                     " left=" + IntegerToString(s_csqCount) +
+                     " ms=" + IntegerToString((int)ms) +
+                     " worst=" + IntegerToString((int)s_csqWorstMs) +
+                     (s_csqDrops > 0 ? " drops=" + IntegerToString(s_csqDrops) : ""));
 }
 
 

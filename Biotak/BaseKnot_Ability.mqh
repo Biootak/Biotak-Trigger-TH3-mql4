@@ -334,3 +334,54 @@ double BaseKnotPairGrade(const bool isHunt, const int legTF,
    if(!BaseKnotEntryRidesStop(isHunt, legTF)) return 1.0;   // off-ladder Hunt: the pair rides the knot's own time
    return BaseKnotLegGrade(boxEngPips, legEngPips);         // a rung (or an FTR): both legs, one factor
 }
+// P-BK-149 (2026-11-02, user: «خطوط تارگت و استاپ و تی پی بیس نات ... یکبار بالا میپره بعد میاد سر جای»)
+// — A COLD (TF, BAR) ROW IS ASKED IN THE PASS THAT NEEDS IT, NEVER PAINTED AS A PLACEHOLDER.
+//
+// MEASURED on the live frame (`biotak_diag_EURUSD_134362571361933142.txt`, box 60_12664750), two
+// paints of ONE refresh: `[P-BK-135] ... off=21.5 risk=21.5 r=1.00` — 21.5 IS the box' own height,
+// the "nothing was pushed" leg — and then `[P-BK-135] ... off=10.9 risk=4.1 r=2.66`. The first Sync
+// of the beat read the (TF, bar) row before anything had asked for it, so `BaseKnotLegPair` fell to
+// the height and Entry/Stop/TP were drawn there; the next 500 ms beat had the row and moved them to
+// their real place. That is the jump, and it repeats on every new bar / class / story bar.
+//
+// THE ORDER IS THE CAUSE: the pass runs `BaseKnotEngPump()` (the ONE owner of those rows) BEFORE
+// `BaseKnotSyncBadges()`, and the pump's ask list is built from the registry — while the Sync is
+// what PUBLISHES a box' class and its story bar. A box whose identity just moved therefore reads a
+// row nobody has asked for yet. The fix asks the SAME owner, in the same pass, before the geometry
+// reads: no second measurement path, no new number — the first paint is the value the second paint
+// used to produce.
+//
+// WHICH ROW IS COLD: THE TWO THE GEOMETRY READS, NAMED BY THE GEOMETRY'S OWN OWNERS.
+// `BaseKnotLegPair` reads the class row (`tfMin`) and the STOP's rung
+// (`BaseKnotMeasureTFMin(kind, tfMin, hop)`, the same function `mTF`/`eTF` are built with at
+// Plan 1244/1246), so those are the two the guard counts. The hop is the caller's — the
+// registry's (`BaseKnotBoxHop`, what the pump's own ask list uses) BEFORE the node read and the
+// node's AFTER it, so the guard can never look at a rung the paint does not.
+//
+// COST: a warm box pays two table reads and two compares (zero writes, zero pumps); a cold beat
+// pays ONE `BaseKnotEngPump()` — the pump the 500 ms beat was going to run anyway, moved into the
+// pass that paints. The budget is two asks per 300 ms window (a purge loop Syncs every box; a
+// chart with a dozen cold knots must not pay a dozen pumps), and every spent ask writes its own
+// `[BK-149]` line, so the bound is readable off the frame instead of assumed.
+void BaseKnotLegRowAsk(const int tfMin, const datetime anchor, const int kind, const int hop)
+{
+   static uint s_askMs = 0;
+   static int  s_askN  = 0;
+   if(tfMin <= 0) return;
+   int  mTF  = BaseKnotMeasureTFMin(kind, tfMin, hop);
+   bool cold = (BaseKnotEngPips(tfMin, anchor) <= 0.0 ||
+                (mTF > 0 && mTF != tfMin && BaseKnotEngPips(mTF, anchor) <= 0.0));
+   if(!cold) return;                      // warm: the paint already has its row — nothing to ask
+   uint now = GetTickCount();
+   if(now - s_askMs >= 300) { s_askMs = now; s_askN = 0; }
+   if(s_askN >= 2) return;                // bounded: two pumps per 300 ms, whichever boxes they are
+   s_askN++;
+   double before = BaseKnotEngPips(tfMin, anchor);
+   BaseKnotEngPump();                     // P-BK-46's owner asks the rows the geometry is about to read
+   DrawStripDiagEmit("[BK-149] cold row asked tf=" + BaseKnotTFName(tfMin) +
+                     " stop=" + BaseKnotTFName(mTF) +
+                     " before=" + DoubleToString(before, 1) +
+                     " after=" + DoubleToString(BaseKnotEngPips(tfMin, anchor), 1) +
+                     " stopAfter=" + DoubleToString(BaseKnotEngPips(mTF, anchor), 1) +
+                     " ms=" + IntegerToString((int)(GetTickCount() - now)));
+}

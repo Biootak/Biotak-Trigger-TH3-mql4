@@ -476,6 +476,56 @@ void AdjustFactorValue(int direction)
 void CoopPump()
 {
    uint sliceStart = GetTickCount();
+
+   //--- P-HANG-01 (2026-11-02) — THE REFUSED HISTORY WRITE RUNS HERE, NOT AT THE
+   //--- ASK. `BasePriceHistoryAskFlush` records the target day when the terminal
+   //--- refuses a FileOpen and returns immediately; this beat does the ONE full
+   //--- rewrite from the live RAM state (`GetHistoryArray` + `SaveBasePriceHistory`
+   //--- — the same pair RebuildHistoryFromStartOfDay uses at BasePrice_B.mqh:539/552,
+   //--- so the file's content is the same set of lines, never a subset). Before this
+   //--- card the refusal was retried AT the ask with `Sleep(100)` between attempts,
+   //--- and the MQL rule is explicit that an indicator may not do that: «The Sleep()
+   //--- function can't be called for custom indicators, since indicators are executed
+   //--- in the interface thread and should not slow it down.» The interface thread is
+   //--- the chart: its own paint, its own mouse, its own event queue. So a locked
+   //--- day file used to freeze the terminal for a second at attach and again on
+   //--- every 30-minute block, and the witness for it was a `Print` — the channel
+   //--- that dies with a killed process (P-DRAW-126). The line below is bounded by
+   //--- HIST_FLUSH_MAX_TRIES beats and lands in the flushed file.
+   if(BasePriceHistoryFlushPending())
+   {
+      int hYear = 0, hDay = 0;
+      BasePriceHistoryFlushTarget(hYear, hDay);
+      string hArr[];
+      GetHistoryArray(hArr);
+      int hN = ArraySize(hArr);
+      uint hAge = BasePriceHistoryFlushAgeMs();
+      int hTries = BasePriceHistoryFlushTries();
+      uint hT0 = GetTickCount();
+      bool hWrote = (hN > 0 && SaveBasePriceHistory(hYear, hDay, hArr, hN));
+      uint hMs = GetTickCount() - hT0;
+      int hStep = BasePriceHistoryFlushStep(hWrote);
+      //--- one line per EDGE (written / dropped) and one for the first retained
+      //--- retry: a day that never locks pays nothing, a day that locks says so
+      //--- three times and no more.
+      if(hStep != 0 || hTries == 0)
+         DrawStripDiagEmit("[P-HANG] hist " + (hStep == 1 ? "drained" : (hStep == 2 ? "DROPPED" : "retained")) +
+                           " day=" + IntegerToString(hYear) + "/" + IntegerToString(hDay) +
+                           " entries=" + IntegerToString(hN) + " err=" + IntegerToString(BasePriceHistoryFlushErr()) +
+                           " tries=" + IntegerToString(hTries) + " age=" + IntegerToString((int)hAge) +
+                           "ms save=" + IntegerToString((int)hMs) + "ms");
+   }
+   //--- P-COPY-DEFER (2026-11-02) — THE STYLING OF A FOREIGN CREATE RUNS HERE, NEVER
+   //--- AT THE EVENT. MT4 re-announces CHARTEVENT_OBJECT_CREATE for every object the
+   //--- copy's own styling manufactures (MEASURED: one copied fibo built twelve children,
+   //--- `in objs=764` … `out objs=776`; one burst window carried 421 creates), and a
+   //--- Ctrl-drag of a box put an act of unknown bound on the thread that paints the
+   //--- chart — `Rectangle 1959` entered the style branch and never left it. The queue
+   //--- holds names; this beat spends at most its own slice on them and leaves the rest
+   //--- owed, so the terminal always gets a paint between two chunks of work. Cheap and
+   //--- bounded, so it sits above the sweep jobs, not below the frame rebuild.
+   if(DrawStyleCopyQueuePending() > 0)
+      DrawStyleCopyQueueDrain(COOP_BUDGET_MS);
    // P-PERF-35b: THE ORDER IS CHEAP-FIRST, AND THE JOB IDS ARE NOT THE ORDER.
    //
    // HEAVY_FRAME is id 1, so iterating the ids ran the REBUILD first: it could

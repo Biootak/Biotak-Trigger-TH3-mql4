@@ -717,6 +717,22 @@ void UpdateCustomPriceTooltip()
 static double s_ownGrabPrice = 0.0;
 static double s_ownLastWrite = 0.0;
 
+//--- P-COPY-STORM (2026-11-01): THE ONE READ THE CREATE WITNESS ASKS FOR, OWNED
+//--- HERE because `s_ownGrabPrice` is this file's.
+//--- `CustomPriceForeignDrawSeen()` does not only stamp a window: when a grab's
+//--- reference price is still held and no gesture of ours is live, it calls
+//--- `CustomPriceRestoreGrabPrice()`, whose last step is
+//--- `CustomPriceDragFrame(true)` — a FORCED `RedrawAllObjects(true)` inside the
+//--- event. That is the heaviest pass this indicator has (the day's named stalls,
+//--- 250 ms here and 3,375 ms in P-PERF-28, are that call) and it is reachable
+//--- from a drawing the user made for reasons of his own. The witness says whether
+//--- a given create took that door, so the next reproduction separates "a copy is
+//--- cheap" from "a copy repainted the whole ladder".
+bool CustomPriceGrabPending()
+{
+    return (s_ownGrabPrice > 0.0 && !g_s1DragLive && !g_s1OwnActive);
+}
+
 // P-UI-100b (2026-09-22): THE DRAW THAT LOOKED LIKE A GRAB.
 //
 // A press that lands ON the custom price line is claimed by us and P-UI-49d

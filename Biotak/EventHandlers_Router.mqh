@@ -57,6 +57,27 @@ bool FamilyPressTarget(const bool storedOn)
    return true;
 }
 
+//--- P-COPY-STORM's ledger, at FILE scope so the window can be closed from two
+//--- seats (the create that ends it, and the create that starts the next one) with
+//--- ONE emit. See the block in the create branch for the measured reason.
+static int    s_crN     = 0;
+static uint   s_crMs    = 0;
+static uint   s_crStamp = 0;
+static uint   s_crStyle = 0, s_crSeen = 0, s_crMemo = 0;
+static string s_crLast  = "";
+void P4CopyBurstDone(const string last)
+{
+   if(s_crN > 1 || s_crMs >= P_P4_EVENT_WARN_MS)
+      DrawStripDiagEmit("[P-COPY] done n=" + IntegerToString(s_crN) +
+                        " ms=" + IntegerToString((int)s_crMs) +
+                        " max[style=" + IntegerToString((int)s_crStyle) +
+                        " seen=" + IntegerToString((int)s_crSeen) +
+                        " memo=" + IntegerToString((int)s_crMemo) + "]" +
+                        " objs=" + IntegerToString(ObjectsTotal(0, -1, -1)) +
+                        " last=\"" + last + "\"");
+   s_crN = 0; s_crMs = 0; s_crStyle = 0; s_crSeen = 0; s_crMemo = 0; s_crLast = "";
+}
+
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     // BKCORNER-TOAST: the note's clock stops while the cursor is on it. One int
@@ -102,23 +123,98 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
    }
    if(id == CHARTEVENT_OBJECT_CREATE && sparam != "")
    {
+       //--- P-COPY-STORM (2026-11-01, user: «با دکمه کنترل میخوام کپی بکنم اینطوری
+       //--- میشه» + «Not Responding» در نوار عنوان): the create path had NO cost probe.
+       //--- The whole-event ledger prints one line per 2 s and only past 40 ms, so a
+       //--- burst of N cheap creates — which is exactly what a native copy is — reads
+       //--- as nothing, and the journal that would have said it is a CACHE (P-DRAW-126)
+       //--- and dies with a killed terminal. The frame the user's hang left behind is
+       //--- exactly that blind spot: the last flushed line of
+       //--- `biotak_diag_EURUSD_134380349371923766.txt` is
+       //---   [gest] id=7 t=189875156 xy=0,0 nm="Rectangle 37658" ours=0
+       //--- — the terminal announcing the copy — and NOTHING after it. So the census
+       //--- says the event reached us and cannot say which of the three stages below
+       //--- we were inside when the thread stopped.
+       //---
+       //--- THE SHAPE: one `in` line BEFORE the work (the hang witness: a file that
+       //--- ends on `in` names the stage as never-left), one `out` line after it with
+       //--- each stage's own ms, and a burst `done` line at the window edge with the
+       //--- totals and the chart size. The first three creates of a burst are traced;
+       //--- a copy of one box is one pair, and a 200-object paste is bounded to three
+       //--- pairs + one aggregate instead of 400 flushes. Cost per create otherwise:
+       //--- four GetTickCount reads and four adds.
+       //--- P-COPY-STORM-W (2026-11-02) — THE WINDOW CLOSES BEFORE THE TRACE IS
+       //--- DECIDED, AND EVERY STAGE SAYS ITS OWN NAME. MEASURED on the run that
+       //--- stalled (`MQL4\Logs\20261102.log`, EURUSD,H1):
+       //---   06:50:21.272  [P-COPY] done n=421 ms=360 max[style=16 seen=0 memo=0]
+       //---   06:50:21.275  [P-COPY] in nm="THStress_Box_B" objs=1456 style=11 grab=0
+       //---   06:53:58.295  shutdown by timeout            <- 213 s inside ONE create
+       //--- The `done` reset `s_crN` at the END of its own event, so a create arriving
+       //--- 3 ms later still read s_crN = 421 — `crTrace` was false for the ONE create
+       //--- that hung, and the three stages below had no witness at all. The head now
+       //--- closes an expired window FIRST (one ledger, one owner: `P4CopyBurstDone`),
+       //--- so a create that follows a storm is always traced.
+       //---
+       //--- AND EACH STAGE ANNOUNCES ITSELF BEFORE IT RUNS (P-LOG law: a file whose
+       //--- last line is `st=style` names the stage that never returned). A stage line
+       //--- costs one emit, and only for a traced create (the first three of a burst).
+       uint crT0 = GetTickCount();
+       if(s_crStamp == 0 || crT0 - s_crStamp >= 1000)
+       {
+          P4CopyBurstDone(s_crLast);
+          s_crStamp = crT0;
+       }
+       static uint s_crOutStyle = 0, s_crOutSeen = 0, s_crOutMemo = 0;
        int createPrefixLen = StringLen(inpObjectPrefix);
        bool createdByUs = (createPrefixLen > 0 && StringLen(sparam) >= createPrefixLen &&
                            StringSubstr(sparam, 0, createPrefixLen) == inpObjectPrefix);
+       bool crTrace = (!createdByUs && s_crN < 3);   // a foreign create, early in its burst
+       if(crTrace)
+          DrawStripDiagEmit("[P-COPY] in nm=\"" + sparam + "\" objs=" +
+                            IntegerToString(ObjectsTotal(0, -1, -1)) +
+                            " style=" + IntegerToString((int)DrawKindOf(sparam)) +
+                            " grab=" + IntegerToString(CustomPriceGrabPending() ? 1 : 0));
        if(!createdByUs)
        {
            // P-DRAW-01 (2026-09-22): AND THE USER'S OWN DRAWING IS STYLED THE MOMENT
            // IT EXISTS — «آخرین تغییرات ذخیره بشه». A fresh object wears the KIND's
            // memory before the user can see it in the terminal's own look; a kind never
            // styled is left exactly as MT4 drew it (the memory answers "untouched").
-           DrawStyleApplyOnCreate(sparam);
+           uint crA = GetTickCount();
+           //--- P-COPY-DEFER (2026-11-02): the event keeps the NAME, never the work.
+           //--- `DrawStyleApplyOnCreate` measured 0 ms on eight foreign creates and never
+           //--- returned on the ninth (`Rectangle 1959`, objs=831 — the last byte of the
+           //--- flushed file, `terminal.exe` gone). An unbounded act does not belong on
+           //--- the thread that paints the chart, so it runs on the cooperative pump.
+           if(crTrace) DrawStripDiagEmit("[P-COPY] st=queue q=" + IntegerToString(DrawStyleCopyQueuePending()));
+           DrawStyleCopyQueuePush(sparam, crTrace);
+           uint crB = GetTickCount();
+           if(crTrace) DrawStripDiagEmit("[P-COPY] st=seen");
            CustomPriceForeignDrawSeen();
+           uint crC = GetTickCount();
+           if(crB > crA) s_crStyle = (crB - crA > s_crStyle ? crB - crA : s_crStyle);
+           if(crC > crB) s_crSeen = (crC - crB > s_crSeen ? crC - crB : s_crSeen);
+           if(crTrace) { s_crOutStyle = crB - crA; s_crOutSeen = crC - crB; }
        }
        //--- P-DRAW-128 (2026-10-13): every drawing's colour is witnessed from birth —
        //--- styled (we know what it was just given) or the terminal's own (a kind we
        //--- never styled). Without this the first native change after a reload could
        //--- not be told apart from a move-drop, and the copy would wear the old colour.
+       uint crD = GetTickCount();
+       if(crTrace) DrawStripDiagEmit("[P-COPY] st=memo");
        DrawInkMemoPrime(sparam);
+       uint crE = GetTickCount();
+       if(crE > crD) s_crMemo = (crE - crD > s_crMemo ? crE - crD : s_crMemo);
+       if(crTrace && crE > crD) s_crOutMemo = crE - crD;
+       s_crMs += (GetTickCount() - crT0);
+       s_crN++;
+       s_crLast = sparam;
+       if(crTrace)
+          DrawStripDiagEmit("[P-COPY] out style=" + IntegerToString((int)s_crOutStyle) +
+                            " seen=" + IntegerToString((int)s_crOutSeen) +
+                            " memo=" + IntegerToString((int)s_crOutMemo) +
+                            " all=" + IntegerToString((int)(GetTickCount() - crT0)) +
+                            " objs=" + IntegerToString(ObjectsTotal(0, -1, -1)));
    }
 // P-TICKWRAP: the window is asked through its owner, never compared against GetTickCount()
     // directly — an absolute compare stays true forever after the 49.7-day counter wrap, and

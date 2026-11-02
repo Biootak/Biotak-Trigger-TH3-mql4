@@ -7361,7 +7361,7 @@ function main() {
       broken.push('the tap paths never reach the rows — the copy must re-form beside itself and both delete doors must drop the family (P-DRAW-74c)');
     if ((tba.match(/PenStackSync\(name, false\);/g) || []).length < 3)
       broken.push('a hover preview leaves the rows behind — previewed ink must reach the children it cannot see (P-DRAW-74c)');
-    if (!/ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);[\s\S]{0,400}?DrawStylePairCoerce\(name\);[\s\S]{0,120}?PenStackSync\(name, false\);/.test(tbb))
+    if (!/(ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);|DrawStyleWriteIf\(name, OBJPROP_STYLE, native\);)[\s\S]{0,400}?DrawStylePairCoerce\(name\);[\s\S]{0,120}?PenStackSync\(name, false\);/.test(tbb))
       broken.push('a line is born un-stacked — a remembered thick + dash pair flashes solid at birth until the 2 s heal (P-DRAW-74c)');
     if (broken.length) {
       failures.push('P-DRAW-74c: ' + broken.join('; ') + ' (Biotak/PenStack.mqh + Toolbar_A.mqh + Toolbar_B.mqh + DrawStrip_Router.mqh)');
@@ -7541,7 +7541,8 @@ function main() {
       brokenS1.push('the harness leaves no START door - a reader cannot tell "still working" from "never ran" during the two-minute bar wait (P-SHOT-1)');
     if ((hz.match(/SSMarker\("SKIP/g) || []).length < 4)
       brokenS1.push('a SKIP door leaves no marker - the build cannot tell "the harness refused this chart" from "the harness never ran" (P-SHOT-1)');
-    if (!/\$marker = Join-Path \(Join-Path \$deployDir "Files"\) "StripShot\.done"/.test(ps1))
+    if (!/\$marker = Join-Path \(Join-Path \$deployDir "Files"\) \$MarkerName/.test(ps1) ||
+        !/\[string\]\$MarkerName = "StripShot\.done"/.test(ps1))
       brokenS1.push('the build does not look for the marker where the harness writes it (<MQL4>\\Files) (P-SHOT-1)');
     if (!/if \(Test-Path -LiteralPath \$marker\) \{ Remove-Item -LiteralPath \$marker -Force/.test(ps1))
       brokenS1.push('a stale marker from an earlier run survives into the next one - an old file would answer for a new run (P-SHOT-1)');
@@ -8344,10 +8345,10 @@ function main() {
         !/if\(!DrawIsHRay\(name\) && !DrawIsPathSeg\(name\)\) s_dkStyle\[k\] = memSt;/.test(tb4))
       brokenU4.push('the writer saves the native half again - the next drawing of the kind loses Neon/Caps/Wash (P-UNIFY-4b)');
     if (!/int memSt = s_dkStyle\[k\];[\s\S]{0,160}?int mlk = \(memSt > \(int\)STYLE_DASHDOTDOT \? DrawLookFromSlot\(memSt\) : 0\);/.test(tb4) ||
-        !/if\(mlk > 0 && FibPenServesName\(name\)\) \{ FibPenLookSet\(name, mlk\); FibPenSync\(name, false\); \}/.test(tb4))
+        !/if\(mlk > 0 && FibPenServesName\(name\)\) \{ FibPenLookSet\(name, mlk\);/.test(tb4))
       brokenU4.push('birth never re-applies the tag - a remembered look dies on the first new drawing (P-UNIFY-4b)');
     if (!/int native = \(mlk > 0 \? FibPenLookNative\(mlk\) : memSt\);/.test(tb4) ||
-        !/ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);/.test(tb4) ||
+        !/(ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);|DrawStyleWriteIf\(name, OBJPROP_STYLE, native\);)/.test(tb4) ||
         !/if\(DrawKindHasLevels\(k\)\) DrawLevelsSetStyle\(name, native\);/.test(tb4))
       brokenU4.push('birth writes the slot itself to the terminal - OBJPROP_STYLE and a level set take 0..4, not 5..7 (P-UNIFY-4b)');
     if (!/\(s_dkStyle\[k\] & 0x7\) << 27/.test(tpl4) || !/s_dkStyle\[k\] = \(int\)\(\(a >> 27\) & 0x7\);/.test(tpl4))
@@ -11212,6 +11213,512 @@ function main() {
       failures.push('P-UI-225: ' + broken.join('; ') + ' (EventHandlers_CustomPrice/_Objects/_Router MT4, EventHandlers.mqh MT5)');
     else
       console.log('[PASS] P-UI-225 a SET handset is ONE click from armed on both trees: the re-arm carries no double test, SET keeps its green circle, the click that frees the line cannot set it back (350 ms stamp), and a SET rung-1 row wakes the same way');
+  }
+
+  // P-DEL-BULK (2026-11-01, user: «اندیکاتور هنگ میکنه چرا چارت و غیره ببین کجا نشتی
+  // داریم که باعث هنگ کردن میشه… کلا نباید اصلا کار به هنگ کردن بکشه») —
+  // A BULK PURGE DECLARES ITSELF, AND THE STRIP BELIEVES IT.
+  //
+  // MEASURED in the live journal of 2026-11-01: ONE HTF toggle delivered 3,175
+  // `BiotakHTF_*` CHARTEVENT_OBJECT_DELETE events from 20:51:06.295 to
+  // 20:51:08.126 — 1.831 s of the chart thread, ~0.58 ms per event (2,580 more at
+  // 21:33). The day's journal is 134,417 lines / 15.9 MB, and 42,808 lines are this
+  // one delete witness. P-UI-21 already ruled on the shape — one suppress window
+  // around every bulk — and every other bulk door obeys it; the HTF redraw was the
+  // door that never armed one, and the strip router ran its full delete cascade even
+  // for a delete the window DID cover. Two halves, one rule: the purge declares, the
+  // router skips.
+  {
+    const broken = [];
+    const htf = linesOf(path.join(BIOTAK, 'HTFCandles_Draw.mqh'));
+    const del = htf ? bodyOf(htf, 'void DeleteHTFCandles()') : null;
+    if (!del) broken.push('DeleteHTFCandles() is gone — no owner holds the purge');
+    else {
+      if (!/g_suppressDeleteEvents = true;/.test(del.text))
+        broken.push('the HTF purge no longer declares itself — 1,000 of our own deletes read as 1,000 hand deletes');
+      const arms = (del.text.match(/g_suppressDeleteEventsUntilMs = GetTickCount\(\) \+ 250;/g) || []).length;
+      if (arms < 2)
+        broken.push(`the HTF purge arms the window on ${arms} of its 2 exits — the accounted-for return leaves the flag armed and a later hand delete unheard`);
+      if (!/g_suppressDeleteEvents = false;/.test(del.text))
+        broken.push('the HTF purge never closes the window — a hand delete after a toggle is eaten for good');
+    }
+    const rout = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
+    if (!rout) broken.push('DrawStrip_Router.mqh is gone');
+    else {
+      const deleteBranch = indexOfLine(rout, 'if(id == CHARTEVENT_OBJECT_DELETE)');
+      const win = deleteBranch >= 0 ? rout.slice(deleteBranch, deleteBranch + 60) : rout;
+      const rel = (needle) => {
+        for (let i = 0; i < win.length; i++) if (win[i].includes(needle)) return i;
+        return -1;
+      };
+      const skipAt = rel('if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;');
+      if (deleteBranch < 0)
+        broken.push('the OBJECT_DELETE branch is gone from the strip router');
+      else if (skipAt < 0)
+        broken.push('the strip router answers a delete its own purge made — a name cascade, a journal write and a FileFlush, 3,175 times a toggle');
+      else {
+        const closeAt = rel('if(sparam == s_dsObj)');
+        const midAt = rel('if(BoxIsMidChild(sparam))');
+        const fillAt = rel('if(FillIsChild(sparam))');
+        if (closeAt >= 0 && closeAt > skipAt)
+          broken.push('the skip stands ABOVE the strip\'s own close — a bulk purge that takes the drawing away leaves the toolbar floating over nothing (P-DRAW-08f)');
+        if (midAt >= 0 && midAt > skipAt)
+          broken.push('the skip stands above the mid-line child heal — a purged child no longer re-syncs its parent');
+        if (fillAt >= 0 && fillAt > skipAt)
+          broken.push('the skip stands above the fill child heal — same class, the fill family');
+      }
+    }
+    if (broken.length)
+      failures.push('P-DEL-BULK: ' + broken.join('; ') + ' (HTFCandles_Draw / DrawStrip_Router)');
+    else
+      console.log('[PASS] P-DEL-BULK a bulk purge arms P-UI-21\'s window at BOTH exits and the strip router skips the work for a delete it covers — while the strip close and the two child heals still answer every delete, so the only thing silenced is the cascade + journal write a purge of our own caused');
+  }
+
+  // P-BK-147 (2026-11-01, user: «و بیس نات سریع سلکت بودنش چرا میره خودکار») —
+  // THE BOX' LOOK IS WRITTEN ONLY WHEN IT DRIFTED.
+  //
+  // `BaseKnotSync` runs on the 500 ms pump (BaseKnot_Drag.mqh:621/688/696) whenever a
+  // box' node story or EngSL epoch moves, and until here every beat wrote TIMEFRAMES,
+  // the six look properties and SELECTABLE onto EVERY box. MT4 re-applies an object it
+  // is told to restyle, and a re-applied object is not the selected one any more — so
+  // the five edit markers P-BK-26 keeps and P-BK-146's press grants vanished a beat
+  // after the press with the user touching nothing. The look is now ONE guarded owner,
+  // `BaseKnotApplyBoxLook`, and a steady-state box costs reads and ZERO writes.
+  {
+    const broken = [];
+    const base = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const style = base ? bodyOf(base, 'void BaseKnotStyleBox(const string box)') : null;
+    if (!style) broken.push('BaseKnotStyleBox is gone — the box has no look owner');
+    else {
+      for (const p of ['COLOR', 'FILL', 'BACK', 'STYLE', 'WIDTH', 'ZORDER']) {
+        const guarded = new RegExp('if\\([^\\n]*ObjectGetInteger\\(0, box, OBJPROP_' + p + '\\)[^\\n]*\\n\\s*ObjectSetInteger\\(0, box, OBJPROP_' + p + '\\b');
+        const wrote = new RegExp('ObjectSetInteger\\(0, box, OBJPROP_' + p + '\\b');
+        if (wrote.test(style.text) && !guarded.test(style.text))
+          broken.push(`BaseKnotStyleBox writes OBJPROP_${p} unguarded again — the pump re-applies the box and MT4 drops its selection`);
+      }
+    }
+    const apply = base ? bodyOf(base, 'void BaseKnotApplyBoxLook(') : null;
+    if (!apply) broken.push('BaseKnotApplyBoxLook is gone — the look has no single owner');
+    else {
+      if (!/BaseKnotStyleBox\(box\);/.test(apply.text))
+        broken.push('the look owner no longer routes through BaseKnotStyleBox — the writes would be two grids');
+      if (!/if\(tfHave != tfMask\)/.test(apply.text) || !/if\(selHave != selWant\)/.test(apply.text))
+        broken.push('TIMEFRAMES or SELECTABLE is written unguarded in the owner — the pump takes the markers back');
+      if (!/DrawStripDiagEmit\("\[BK-SELSWEEP\]/.test(apply.text))
+        broken.push('the owner lost its flushed witness — the next «بازم رفت» has nothing to name (DEBUG LOOP law 3)');
+    }
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
+    if (!sync) broken.push('BaseKnotSync is gone');
+    else {
+      if (!/BaseKnotApplyBoxLook\(box, id, tfMask, g_bkBoxes\[k\]\.locked\)/.test(sync.text))
+        broken.push('BaseKnotSync does not call the guarded owner — the pump path is back to raw writes');
+      if (/ObjectSetInteger\(0, box, OBJPROP_TIMEFRAMES/.test(sync.text) ||
+          /ObjectSetInteger\(0, box, OBJPROP_SELECTABLE/.test(sync.text) ||
+          /BaseKnotStyleBox\(box\)/.test(sync.text))
+        broken.push('BaseKnotSync writes the box look itself again — a second writer beside the owner (Touch rule item 6)');
+    }
+    if (broken.length)
+      failures.push('P-BK-147: ' + broken.join('; ') + ' (BaseKnot_Base / BaseKnot_Plan)');
+    else
+      console.log('[PASS] P-BK-147 the box\' look is ONE guarded owner: every look property, TIMEFRAMES and SELECTABLE is written only on drift, so the 500 ms pump costs a steady box zero writes and the five edit markers a press granted stay granted — [BK-SELSWEEP] is the residue witness on the flushed channel');
+  }
+
+  // P-BK-148 (2026-11-02, user: «این بیس نات هم سلکت بودنش سریع خودکارمیره تجربه
+  // کاربری بدی داره درستش کن») — THE TWO WRITERS THAT TOOK THE MARKERS WITHOUT A
+  // CLICK ARE CLOSED, AND THE RESIDUE HAS A WITNESS.
+  //
+  // MEASURED on the live frame (`biotak_diag_EURUSD_134362571361933142.txt`), one
+  // gesture on one box: `[BK] drag latch box=60_11227125 sel=1 selectable=1` and then
+  // `[drawstrip] click closed on "THLevels_BK_60_11227125_BOX"` — the knot's press had
+  // just selected the box, and the strip's close spent a DESELECT on it although the
+  // strip's own open REFUSES to select such a name (`DrawStripHoldSelect` answers false
+  // for an indicator object). Beside it, `BaseKnotSync` wrote the box' TOOLTIP
+  // unguarded on every beat — the one property P-BK-147's guard list did not cover —
+  // and the pump Syncs at 500 ms whenever the node read or the EngSL epoch moves.
+  {
+    const broken = [];
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const sync = plan ? bodyOf(plan, 'void BaseKnotSync(') : null;
+    if (!sync) broken.push('BaseKnotSync is gone');
+    else {
+      const guardedTip = /if\(ObjectGetString\(0, box, OBJPROP_TOOLTIP\) != tip\)\s*\n\s*ObjectSetString\(0, box, OBJPROP_TOOLTIP, tip\)/;
+      const rawTip = /(^|\n)\s*ObjectSetString\(0, box, OBJPROP_TOOLTIP, tip\);/;
+      if (rawTip.test(sync.text) && !guardedTip.test(sync.text))
+        broken.push('the box tooltip is written unguarded again — every Sync re-applies the box and MT4 drops the markers a press granted (P-BK-147\'s law, one property short)');
+    }
+    const router = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
+    const toggle = router ? bodyOf(router, 'bool DrawStripClickToggle(') : null;
+    if (!toggle) broken.push('DrawStripClickToggle is gone — the click toggle has no owner');
+    else {
+      if (!/if\(dsSelWas && !DrawIsIndicatorObject\(nm\)\)\s*\n\s*ObjectSetInteger\(0, nm, OBJPROP_SELECTED, false\)/.test(toggle.text))
+        broken.push('the close deselects a drawing the strip never selected again — the Base Knot box loses the markers its own press granted (journal: `[BK] drag latch … sel=1` then `click closed on "THLevels_BK_…_BOX"`)');
+      if (!/\[drawstrip\] click closed on \\"\" \+ nm \+ \"\\" sel=/.test(toggle.text))
+        broken.push('the close no longer says what it wrote — the next report cannot name the writer');
+    }
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const pump = drag ? bodyOf(drag, 'void BaseKnotSyncBadges()') : null;
+    if (!pump) broken.push('BaseKnotSyncBadges is gone — the pump has no owner');
+    else if (!/BaseKnotSelDropWatch\(\);/.test(pump.text))
+      broken.push('the per-beat pump no longer asks the selection\'s residue question — a selection that vanishes between beats goes silent again');
+    const wit = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
+    const watch = wit ? bodyOf(wit, 'void BaseKnotSelDropWatch()') : null;
+    if (!watch) broken.push('BaseKnotSelDropWatch is gone — the [BK-SELDROP] witness has no owner');
+    else if (!/\[BK-SELDROP\]/.test(watch.text))
+      broken.push('the residue witness lost its flushed line — the next report cannot name the box that dropped its markers');
+    if (broken.length)
+      failures.push('P-BK-148: ' + broken.join('; ') + ' (BaseKnot_Plan / DrawStrip_Router / BaseKnot_Drag)');
+    else
+      console.log('[PASS] P-BK-148 the markers a Base Knot press grants stay granted: the box tooltip is written only on drift, the strip\'s close spends a deselect only on a drawing it may select, and [BK-SELDROP] answers a beat-to-beat loss on the flushed channel');
+  }
+
+  // P-COPY-STORM + P-COPY-GUARD (2026-11-01, user: «موقعی که میخوام باکس کپی بکنم
+  // این هنگی رخ میده» / «با دکمه کنترل میخوام کپی بکنم ایطوری میشه از این نوع
+  // مشکلات باعث هنگی میشه اصلاً نباید باشه») — A CREATE IS PRICED, AND CHEAP.
+  //
+  // The live frame of the reported hang ends on
+  //   [gest] id=7 t=189875156 xy=0,0 nm="Rectangle 37658" ours=0
+  // with NOTHING after it, and the journal that would have carried the slow-event
+  // ledger stood still from 22:47 to 22:58 because MT4 buffers it in RAM
+  // (P-DRAW-126) and the terminal was killed. So the defect was unpriceable: the
+  // whole-event ledger only prints past 40 ms and once per 2 s — a burst of
+  // individually-cheap creates, which is exactly what a native copy is, reads as
+  // nothing. Two rules come out of that:
+  //
+  //   1. THE CREATE PATH IS WITNESSED BEFORE THE WORK AND AFTER IT, on the flushed
+  //      channel. A file that ends on `in` names the stage we never left; a file
+  //      that ends on `out` acquits it. The same law twins `[W][PERF]` onto that
+  //      channel, because a ledger nobody can read after a kill is not a ledger.
+  //   2. A COPY COSTS READS, NOT WRITES. P-BK-147 measured that MT4 re-applies an
+  //      object it is told to restyle, and a re-applied object is not the selected
+  //      one. `DrawStyleApplyOnCreate` re-applied eight properties a native copy
+  //      already wore; every one of them now goes through DrawStyleWriteIf.
+  {
+    const broken = [];
+    const rout = linesOf(path.join(BIOTAK, 'EventHandlers_Router.mqh'));
+    if (!rout) broken.push('EventHandlers_Router.mqh is gone');
+    else {
+      const txt = rout.join('\n');
+      for (const w of ['[P-COPY] in ', '[P-COPY] out ', '[P-COPY] done ']) {
+        if (!new RegExp('DrawStripDiagEmit\\("' + w.replace(/[[\]]/g, '\\$&')).test(txt))
+          broken.push(`the create path lost its "${w.trim()}" witness — a copy storm would again leave no number behind`);
+      }
+      if (!/CustomPriceGrabPending\(\)/.test(txt))
+        broken.push('the create witness no longer asks whether the create took the grab door — the one branch that can repaint the whole ladder inside an event');
+      const cp = linesOf(path.join(BIOTAK, 'EventHandlers_CustomPrice.mqh'));
+      const gb = cp ? bodyOf(cp, 'bool CustomPriceGrabPending()') : null;
+      if (!gb) broken.push('CustomPriceGrabPending is gone (EventHandlers_CustomPrice.mqh)');
+      else if (!/s_ownGrabPrice > 0\.0/.test(gb.text))
+        broken.push('CustomPriceGrabPending does not read s_ownGrabPrice — it answers for a door it cannot see');
+      const objs = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+      const perf = linesOf(path.join(BIOTAK, 'EventHandlers_Perf.mqh'));
+      const slow = perf ? bodyOf(perf, 'void P4ReportSlow(') : null;
+      if (!slow) broken.push('P4ReportSlow is gone (EventHandlers_Perf.mqh)');
+      else if (!/DrawStripDiagEmit\("\[W\]\[PERF\]/.test(slow.text))
+        broken.push('the slow-event ledger prints only into the journal — a killed terminal loses every stall it measured (DEBUG LOOP law 3)');
+      if (!objs) broken.push('EventHandlers_Objects.mqh is gone');
+    }
+    const tb = linesOf(path.join(BIOTAK, 'Toolbar_B.mqh'));
+    const apply = tb ? bodyOf(tb, 'bool DrawStyleApplyOnCreate(const string name, const bool mayCreate = true)') : null;
+    if (!apply) broken.push('DrawStyleApplyOnCreate is gone — a fresh drawing would wear the terminal\'s factory look');
+    else {
+      const bare = apply.text.match(/ObjectSetInteger\(0, name, OBJPROP_[A-Z_]+/g);
+      if (bare)
+        broken.push('DrawStyleApplyOnCreate writes ' + [...new Set(bare)].map(s => s.split('OBJPROP_')[1]).join(', ') +
+                    ' unguarded again — a copy re-applies the object and MT4 drops its selection (P-BK-147\'s law, the same class)');
+    }
+    const writeIf = tb ? bodyOf(tb, 'void DrawStyleWriteIf(') : null;
+    if (!writeIf) broken.push('DrawStyleWriteIf is gone — the guarded write has no owner');
+    else if (!/if\(ObjectGetInteger\(0, name, prop, 0\) == want\) return;/.test(writeIf.text))
+      broken.push('DrawStyleWriteIf is no longer guarded on the property\'s own answer — every create would write eight properties again');
+
+    // P-COPY-STAGE (2026-11-02) — THE STYLE BRANCH IS WALKED STAGE BY STAGE, AND A
+    // TRUNCATED FILE NAMES THE LINE THAT NEVER RETURNED.
+    //
+    // MEASURED, the user's Ctrl-copy of a box: the live flushed file's LAST line is
+    //   [P-COPY] st=style t=3217875
+    // after `in nm="Rectangle 1959" objs=831 style=11` (11 = DK_RECT), and terminal.exe
+    // is gone — the three-stage witness acquitted `seen`/`memo` and could say nothing
+    // about which LINE of DrawStyleApplyOnCreate the thread never left, because the
+    // flag the router arms for exactly that (`g_diagCreateTrace`) was WRITTEN AND NEVER
+    // READ, and not even declared: the tree did not compile
+    // (`EventHandlers_Router.mqh(185,12): error 256: 'g_diagCreateTrace' - undeclared
+    // identifier`). A probe that is set and unhooked is §6.13's finding, not a probe.
+    if (!tb) broken.push('Toolbar_B.mqh is gone');
+    else {
+      const tbTxt = tb.join('\n');
+      //--- P-COPY-DEFER: the queue itself — bound, deduped, drained on a budget, and it
+     //--- says what it did. An unbounded queue is the same defect one layer up.
+      const cqPush = bodyOf(tb, 'void DrawStyleCopyQueuePush(');
+      const cqDrain = bodyOf(tb, 'void DrawStyleCopyQueueDrain(');
+      if (!/COPY_STYLE_MAX 64/.test(tbTxt))
+        broken.push('the copy-style ring has no bound — a paste of thousands of drawings would grow a queue the pump can never empty');
+      if (!cqPush) broken.push('DrawStyleCopyQueuePush is gone — the create event has nowhere to leave the name');
+      else {
+        if (!/== name\) return;/.test(cqPush.text))
+          broken.push('the ring no longer dedupes by name — MT4 re-announces a create, so one drawing would be styled once per announcement');
+        if (!/name == "" \|\| !s_csqArmed/.test(cqPush.text))
+          broken.push('a disarmed queue still accepts names — the breaker would build a backlog of work it never runs, and the FULL witness would blame the ring');
+        if (!/DrawStripDiagEmit\("\[P-COPY\] q FULL/.test(cqPush.text))
+          broken.push('a dropped queue entry leaves no witness — a look that never lands would read as "nothing happened"');
+      }
+      if (!cqDrain) broken.push('DrawStyleCopyQueueDrain is gone — the queued names would never be styled at all');
+      else {
+        if (!/GetTickCount\(\) - t0 >= budgetMs\) break;/.test(cqDrain.text))
+          broken.push('the drain no longer stops at the pump\'s own slice — one beat could spend a whole burst on the interface thread, which is the freeze this card exists to end');
+        if (!/g_diagCreateTrace = \(s_csqTraceLeft > 0\);/.test(cqDrain.text))
+          broken.push('the drain no longer arms the stage walk — a stall inside a deferred style would name no line');
+        if (!/DrawStripDiagEmit\("\[P-COPY\] q drain/.test(cqDrain.text))
+          broken.push('the drain says nothing about what it drained — a deferred look could not be told from a lost one');
+        if (!/DrawInkMemoPrime\(nm\);/.test(cqDrain.text))
+          broken.push('the deferred style no longer re-primes the ink memo after writing — the OBJECT_CHANGE our own write fires would be learned as the hand\'s pick and the kind would follow the terminal\'s factory colour (P-DRAW-128\'s order)');
+        if (!/COPY_STYLE_BREAKER_MS 100/.test(tbTxt))
+          broken.push('the copy queue has no breaker threshold — a name that costs the chart its title bar would be paid again on the next beat');
+        if (!/nMs >= COPY_STYLE_BREAKER_MS/.test(cqDrain.text) || !/s_csqArmed = false;/.test(cqDrain.text))
+          broken.push('one expensive name no longer disarms the queue — MQL4 cannot preempt a call once it is made, so the only honest guarantee is to pay for it ONCE and refuse it after');
+        //--- P-COPY-HOLD (2026-11-02) — MT4 CREATES THE COPY WHILE ITS OWN MOUSE LOOP
+        //--- STILL HOLDS THE BUTTON, so a child born on the next timer beat re-enters the
+        //--- object list the terminal is itself walking. MEASURED on the deferred build:
+        //--- `[P-COPY] sb=pre-fill objs=644 w=0` was the LAST byte of the flushed file, the
+        //--- call after it is FillChildEnsure -> ObjectCreate, and terminal.exe was gone.
+        if (!/COPY_STYLE_HOLD_MAX_MS 2000/.test(tbTxt))
+          broken.push('the copy queue has no hold threshold — styling would run again inside the terminal\'s own create-drag');
+        if (!/if\(DrawStyleCopyMouseHeld\(\)\)/.test(cqDrain.text))
+          broken.push('the drain no longer refuses while the left button is down — the copy is styled inside MT4\'s mouse loop again, which is the measured freeze (P-COPY-HOLD)');
+        if (!/DrawStripDiagEmit\("\[P-COPY\] q hold/.test(cqDrain.text) || !/s_csqHoldSaid = true;/.test(cqDrain.text))
+          broken.push('a held queue leaves no witness — a look that lands a beat after the release would read as a lost one');
+        const cqHeld = bodyOf(tb, 'bool DrawStyleCopyMouseHeld()');
+        if (!cqHeld) broken.push('DrawStyleCopyMouseHeld is gone — nothing can answer whether the terminal is mid-drag');
+        else if (!/GetTickCount\(\) - s_csqLeftMs < COPY_STYLE_HOLD_MAX_MS/.test(cqHeld.text))
+          broken.push('the hold has no expiry — MT4 emits MOUSE_MOVE only on movement, so a release with no move after it would leave the queue held for the rest of the attach (a fence that never drains is the bug it gates)');
+        const cqNote = bodyOf(tb, 'void DrawStyleCopyMouseNote(');
+        if (!cqNote) broken.push('DrawStyleCopyMouseNote is gone — the hold has no writer and is dead code');
+        else if (!/if\(leftDown\) s_csqLeftMs = GetTickCount\(\);/.test(cqNote.text))
+          broken.push('the hold is not re-news its own clock — a drag longer than the expiry would expire mid-gesture and create into the terminal\'s mouse loop');
+      }
+      const dsr = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
+      if (!dsr) broken.push('DrawStrip_Router.mqh is gone');
+      else {
+        const dsrTxt = dsr.join('\n');
+        const iNote = dsrTxt.indexOf('DrawStyleCopyMouseNote(tleft);');
+        const iBit = dsrTxt.indexOf('bool tleft = ((mstate & 1) != 0);');
+        if (iNote < 0 || iBit < 0 || iNote < iBit)
+          broken.push('the mouse-move owner no longer notes the button AFTER reading its bit — the hold would be armed by a value it has not seen (the note must ride the same MOUSE_MOVE that s_dsLeftPrev stores, on every move, strip open or closed)');
+      }
+      const cqTailSrc = linesOf(path.join(BIOTAK, 'EventHandlers_Tail.mqh'));
+      const cqPump = cqTailSrc ? bodyOf(cqTailSrc, 'void CoopPump()') : null;
+      if (!cqPump) broken.push('CoopPump is gone (EventHandlers_Tail.mqh) — nothing drains the copy queue');
+      else if (!/DrawStyleCopyQueueDrain\(COOP_BUDGET_MS\)/.test(cqPump.text))
+        broken.push('the pump no longer drains the copy queue against its own budget — queued names would sit un-styled while the ledger says the thread is idle');
+      const decl = (tbTxt.match(/static bool g_diagCreateTrace/g) || []).length;
+      if (decl !== 1)
+        broken.push(`g_diagCreateTrace is declared ${decl} time(s) in Toolbar_B.mqh — the router writes it and the style branch must read ONE declaration (a missing one is the build error this card was found by; a second is a shadow)`);
+      const routTxt = rout ? rout.join('\n') : '';
+      // P-COPY-DEFER (2026-11-02) — THE EVENT HOLDS A NAME, THE PUMP HOLDS THE WORK.
+      // MEASURED: eight foreign creates ran the whole style branch in `all=0`; the ninth
+      // (`Rectangle 1959`, objs=831) never returned and the terminal had to be killed.
+      // An act of unknown bound must not sit on the thread that paints the chart.
+      if (/DrawStyleApplyOnCreate\(/.test(routTxt))
+        broken.push('the create branch calls DrawStyleApplyOnCreate inline again — the styling of a native copy is back on the interface thread, which is exactly the act that measured never-returning (P-COPY-DEFER)');
+      if (!/DrawStyleCopyQueuePush\(sparam, crTrace\)/.test(routTxt))
+        broken.push('the create branch no longer queues the name — a burst of MT4 create events would again be worked one-after-another inside OnChartEvent with no paint between (P-COPY-DEFER)');
+      if (/g_diagCreateTrace\s*=/.test(routTxt))
+        broken.push('the router writes the style branch\'s trace flag again — the flag belongs to the owner of the work (the branch and its drain), and an armed flag nobody resets is the dead-probe state this card was found in');
+      const t1 = tb ? bodyOf(tb, 'void DrawStyleTrace(') : null;
+      if (!t1) broken.push('DrawStyleTrace is gone — the style branch has no stage witness');
+      else {
+        if (!/DrawStripDiagEmit\("\[P-COPY\] sb="/.test(t1.text))
+          broken.push('the stage witness no longer emits on the flushed channel — a Print witness dies with the terminal it is diagnosing (DEBUG LOOP law 3)');
+        if (/[^a-zA-Z]Print\(/.test(t1.text))
+          broken.push('the stage witness writes to the journal — the buffered channel that stood still from 22:47 to 22:58 (P-DRAW-126)');
+        if (!/ObjectsTotal\(0, -1, -1\)/.test(t1.text))
+          broken.push('the stage line no longer carries objs= — a create that manufactures drawings (MEASURED: in objs=764, out objs=776, twelve children built inside ONE event) would be invisible');
+        if (!/g_diagCreateWrites/.test(t1.text))
+          broken.push('the stage line no longer carries w= — a stall and a write-storm would read the same (MEASURED control: a foreign box create ran the whole branch in 0 ms, objs unchanged, w=0)');
+      }
+      // THE COUNTER: it counts the writes that REALLY landed, and it is reset at the
+      // branch's own entry — a counter that never resets answers for the previous create.
+      const wif = tb ? bodyOf(tb, 'void DrawStyleWriteIf(') : null;
+      if (!wif || !/if\(g_diagCreateTrace\) g_diagCreateWrites\+\+;/.test(wif.text))
+        broken.push('DrawStyleWriteIf no longer counts the write it makes — the stage witness cannot say how many objects the copy had already restyled when it stopped');
+      if (!/g_diagCreateWrites = 0;[^\n]*DrawStyleTrace\("in"\)/.test(apply.text))
+        broken.push('the write counter is not reset at the style branch\'s own entry — w= would answer for an earlier create');
+      const stages = (apply.text.match(/if\(g_diagCreateTrace\) DrawStyleTrace/g) || []).length;
+      if (stages < 6)
+        broken.push(`the style branch carries ${stages} stage witness(es) (needs >= 6) — a truncated file must still name the stage that never returned`);
+      for (const s of ['"in"', '"pre-color"', '"pre-width"', '"pre-style"', '"pre-pair"', '"pre-stack"', '"pre-fill"', '"pre-ray"', '"done"']) {
+        if (!apply.text.includes('DrawStyleTrace(' + s))
+          broken.push(`the style branch lost its ${s} stage line — the walk from birth to exit is no longer complete`);
+      }
+      // THE LAW: the line is emitted BEFORE the work, so a file ending on `pre-pair`
+      // names the stage never left. Assert the order, not just the presence.
+      const iPair = apply.text.indexOf('DrawStyleTrace("pre-pair")');
+      const jPair = apply.text.indexOf('DrawStylePairCoerce(name)');
+      if (iPair < 0 || jPair < 0 || iPair > jPair)
+        broken.push('the pre-pair line no longer precedes DrawStylePairCoerce — a witness printed AFTER the work cannot name the stage that never returned');
+      const iStack = apply.text.indexOf('DrawStyleTrace("pre-stack")');
+      const jStack = apply.text.indexOf('PenStackSync(name, false)');
+      if (iStack < 0 || jStack < 0 || iStack > jStack)
+        broken.push('the pre-stack line no longer precedes PenStackSync — the child-building stage is again un-witnessed');
+      if (!/DrawStyleTrace\("done"\)[\s\S]{0,80}?return true;/.test(apply.text))
+        broken.push('the style branch no longer says it LEFT — without the done line a hung create and a healthy one read the same');
+      //--- THE FILL BLOCK: both freezes ended on `sb=pre-fill`, so the two writes inside it
+      //--- are separately witnessed and each line says whether the interior child already
+      //--- exists (ch<0 = the next call is an ObjectCreate; ch>=0 = only property writes).
+      for (const s of ['f-fillclr', 'f-fill']) {
+        const i = apply.text.indexOf(`DrawStyleTraceCh("${s}", name)`);
+        if (i < 0) broken.push(`the style branch lost its ${s} line — the fill block is one un-witnessed step again, which is exactly where the two freezes died`);
+      }
+      {
+        const iClr = apply.text.indexOf('DrawStyleTraceCh("f-fillclr", name)');
+        const jClr = apply.text.indexOf('DrawSlotWrite(name, DRAW_SLOT_FILLCLR');
+        const iFil = apply.text.indexOf('DrawStyleTraceCh("f-fill", name)');
+        const jFil = apply.text.indexOf('DrawSlotWrite(name, DRAW_SLOT_FILL,');
+        if (iClr >= 0 && jClr >= 0 && iClr > jClr)
+          broken.push('the f-fillclr line no longer precedes its DrawSlotWrite — a file ending there would name the wrong write');
+        if (iFil >= 0 && jFil >= 0 && iFil > jFil)
+          broken.push('the f-fill line no longer precedes its DrawSlotWrite — the create/write distinction the freeze needs would be lost');
+      }
+      const tch = bodyOf(tb, 'void DrawStyleTraceCh(');
+      if (!tch) broken.push('DrawStyleTraceCh is gone — no stage line can say whether the next call creates or only writes');
+      else {
+        if (/[^a-zA-Z]Print\(/.test(tch.text))
+          broken.push('DrawStyleTraceCh writes to the journal — the buffered channel that stood still for seven minutes (P-DRAW-126)');
+        if (!/ObjectFind\(0, FillChildName\(parent\)\)/.test(tch.text))
+          broken.push('the ch= probe no longer asks for the interior child — a freeze would not say whether it died in an ObjectCreate or in a property write');
+      }
+      //--- P-COPY-QUIET (2026-11-02): the mouse hold did NOT stop the second freeze —
+      //--- `sb=in objs=644` proves the button read UP — so what the ring waits on is the
+      //--- terminal's own create TRAFFIC: both deaths are the second name of a 590 -> 644
+      //--- group copy, i.e. MT4 is still announcing drawings while the pump drains.
+      if (!/COPY_STYLE_QUIET_MS 400/.test(tbTxt))
+        broken.push('the copy queue has no quiet threshold — a burst of creates would be styled while MT4 is still inside its own copy loop');
+      if (!cqPush || !/s_csqPushMs = GetTickCount\(\);/.test(cqPush.text))
+        broken.push('the push no longer stamps the burst — the quiet window would read a zero stamp and never wait (a gate that is never closed is the bug it gates)');
+      if (cqDrain && !/s_csqCount > 1 && GetTickCount\(\) - s_csqPushMs < COPY_STYLE_QUIET_MS/.test(cqDrain.text))
+        broken.push('the drain no longer waits out an announcing burst — one lonely copy and a fifty-object group paste would be worked at the same moment of terminal traffic');
+      if (cqDrain && (!/DrawStripDiagEmit\("\[P-COPY\] q quiet/.test(cqDrain.text) || !/s_csqQuietSaid = true;/.test(cqDrain.text)))
+        broken.push('a burst-wait leaves no witness — a look that lands half a second later would read as a lost one');
+      //--- P-COPY-NOCREATE (2026-11-02) — THE CREATE PATH MAY WRITE PROPERTIES, NEVER
+      //--- BIRTH AN OBJECT. MEASURED: three freezes of the user's Ctrl-drag copy end on
+      //--- the SAME byte, `sb=pre-fill` (last line of the flushed file, terminal.exe
+      //--- gone), and the call after it is FillChildSync -> FillChildEnsure ->
+      //--- ObjectCreate (Toolbar_A.mqh:1269). The first copy on a 590-object chart ran
+      //--- the whole branch in `all=0`; the freeze is the copy that lands after the
+      //--- strip's own objects are on the chart (590 -> 644, three files) or after a
+      //--- 400-create burst (stress S3, 213 s inside ONE create at objs=1456). An
+      //--- ObjectCreate has no bound MQL4 can give it, so the only honest law is: the
+      //--- birth path builds nothing and the interior is born on a deliberate act (the
+      //--- strip's open, a drag, a pick) — paths that already own FillChildSync.
+      if (!apply) broken.push('DrawStyleApplyOnCreate is gone - the birth path has no owner');
+      else {
+        if (!/const bool mayCreate = true/.test(tbTxt))
+          broken.push('DrawStyleApplyOnCreate lost its mayCreate switch — the birth path and the deliberate path would be one writer again, and the create would build objects (P-COPY-NOCREATE)');
+        if (!/if\(mayCreate\) PenStackSync\(name, false\);/.test(apply.text))
+          broken.push('the birth path builds the pen stack again — PenStackSync ObjectCreates a row per width and runs INSIDE the deferred style of a native copy (P-COPY-NOCREATE)');
+        if (!/if\(mayCreate\) FibPenSync\(name, false\)/.test(apply.text))
+          broken.push('the birth path re-converges a fibo pen again — FibPenSync builds the look\'s followers, i.e. objects, on a foreign create (P-COPY-NOCREATE)');
+        if (!/if\(!mayCreate\)[\s\S]{0,700}?DrawStyleWriteIf\(name, OBJPROP_FILL/.test(apply.text))
+          broken.push('the birth path no longer wears the remembered FILL through the master\'s own property — an unfilled look is a missing look, and the child is the object this rule forbids (P-COPY-NOCREATE)');
+        if (!/else\s*\{[\s\S]{0,900}?DrawSlotWrite\(name, DRAW_SLOT_FILL,/.test(apply.text))
+          broken.push('the interior write left the mayCreate branch — DrawSlotWrite(FILL) reaches FillChildEnsure -> ObjectCreate, the exact call the three freezes never returned from (P-COPY-NOCREATE)');
+        if (/FillChildEnsure\(/.test(apply.text) || /FillChildSync\(/.test(apply.text))
+          broken.push('DrawStyleApplyOnCreate calls a fill-child writer directly again — both of them ObjectCreate, and this branch runs on a name the terminal has just made (P-COPY-NOCREATE)');
+      }
+      if (cqDrain && !/DrawStyleApplyOnCreate\(nm, false\);/.test(cqDrain.text))
+        broken.push('the drain styles a queued copy with objects allowed again — the one caller of the birth path must pass mayCreate=false (P-COPY-NOCREATE)');
+    }
+    if (broken.length)
+      failures.push('P-COPY: ' + broken.join('; ') + ' (EventHandlers_Router / EventHandlers_Objects / Toolbar_B)');
+    else
+      console.log('[PASS] P-COPY a native create is priced before and after the work on the flushed channel (in / out / done, with the grab door named) and the slow-event ledger is twin-flushed, while the copy path writes through DrawStyleWriteIf so a fresh drawing costs reads and zero writes — the style branch is walked stage by stage (pre-color / width / style / pensync / pair / stack / fill / ray / done), each line printed BEFORE its work with the chart size and the write count riding it, and the work itself is DEFERRED: the create event queues the name (bound ring, deduped, FULL witness) and CoopPump drains it against COOP_BUDGET_MS, so no amount of styling can hold the interface thread past one slice — and one name over COPY_STYLE_BREAKER_MS disarms the path for the rest of the attach with a flushed BREAKER line, and the drain refuses while the left button is down (COPY_STYLE_HOLD_MAX_MS, noted by the mouse-move owner, expiring so a release that never moves cannot hold it forever) AND while MT4 is still announcing a burst (COPY_STYLE_QUIET_MS, stamped by every push) because MT4 creates the copy inside its own mouse loop — and the birth path writes PROPERTIES ONLY (mayCreate=false from the drain): the remembered FILL rides the master own OBJPROP_FILL, the pen stack and the fill child are NOT built there, because the call after the measured last byte `sb=pre-fill` was FillChildEnsure -> ObjectCreate (three live freezes at objs=644, and stress S3 213 s inside ONE create at objs=1456) — the interior is born on a deliberate act (the strip open, a drag, a pick), which already owns FillChildSync');
+  }
+
+  // P-HANG-01 (2026-11-02, user: «بازهم بررسی کن که دیگه اصلا هنگ در کار نباشه
+  // برای اندیکاتور ما هر جی هستش داخل پروژه متاتریدر 4 و5») —
+  // NO WAIT INSIDE THE INTERFACE THREAD.
+  //
+  // The audit found the class by name, not by guess: four retry loops slept 100 ms
+  // between attempts and ALL of them are reachable from the tick path —
+  //   OnCalculate → UpdateBasePrice (EventHandlers_Calc.mqh:622)
+  //     → AddBasePriceHistoryEntry → AppendBasePriceHistoryEntry → 2 x Sleep(100)
+  //   OnInit / the 3 s !g_systemInitialized retry (EventHandlers_Calc.mqh:607)
+  //     → InitializeBasePriceSystem → Load 2x100 + Save 4x2x100 + Cleanup 2x100
+  //       PER OLD FILE = 1.0 s and up, and again every 3 s while the flag is false.
+  // MQL rules on this outright: «The Sleep() function can't be called for custom
+  // indicators, since indicators are executed in the interface thread and should
+  // not slow it down.» The interface thread IS the chart — its paint, its mouse,
+  // its event queue. A refusal now ARMS an ask (BasePriceHistoryAskFlush) and the
+  // 250 ms pump drains it from the live RAM state, bounded by a deadline.
+  // The ONE allow-listed wait is BasePrice_A.mqh's global-variable lock retry
+  // (≤5 x 20 ms, once per symbol per instance, never per event) — and only ONE
+  // line of it, so a second copy anywhere fails this gate.
+  {
+    const broken = [];
+    const LOCK_WAIT = 'Sleep(LOCK_RETRY_DELAY_MS);';
+    const scan = ['Biotak Trigger TH3.mq4', 'Biotak Trigger TH3 Lite.mq4'];
+    for (const n of fs.readdirSync(BIOTAK))
+      if (n.endsWith('.mqh')) scan.push(path.join('Biotak', n));
+    for (const n of fs.readdirSync(path.join(BIOTAK, 'TH3')))
+      if (n.endsWith('.mqh')) scan.push(path.join(BIOTAK, 'TH3', n));
+    let lockWaits = 0;
+    const strays = [];
+    for (const rel of scan) {
+      let src;
+      try { src = fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch { continue; }
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+      for (const raw of code.split(/\r?\n/)) {
+        const t = raw.trim();
+        if (!/\bSleep\s*\(/.test(t)) continue;
+        if (rel === path.join('Biotak', 'BasePrice_A.mqh') && t === LOCK_WAIT) { lockWaits++; continue; }
+        strays.push(rel + ' -> ' + t);
+      }
+    }
+    if (strays.length)
+      broken.push('a wait is back on the interface thread: ' + strays.join(' | ') +
+                  ' — an indicator may not Sleep (MQL: «indicators are executed in the interface thread and should not slow it down»); arm the ask instead');
+    else if (lockWaits !== 1)
+      broken.push('the global-variable lock wait is no longer exactly ONE line (found ' + lockWaits +
+                  ') — the allow-list is a single bounded site, not a class');
+
+    const mgr = linesOf(path.join(BIOTAK, 'BasePriceHistoryManager.mqh'));
+    const ask = mgr ? bodyOf(mgr, 'void BasePriceHistoryAskFlush(') : null;
+    if (!ask) broken.push('BasePriceHistoryAskFlush is gone — a refused open has nowhere to be deferred to');
+    const step = mgr ? bodyOf(mgr, 'int BasePriceHistoryFlushStep(') : null;
+    if (!step) broken.push('BasePriceHistoryFlushStep is gone — the deferred ask has no deadline');
+    else if (!/HIST_FLUSH_MAX_TRIES/.test(step.text))
+      broken.push('the drain lost its deadline — a permanently held file would be re-opened every 250 ms forever');
+    for (const fn of [['bool SaveBasePriceHistory(', 3], ['bool AppendBasePriceHistoryEntry(', 1]]) {
+      const b = mgr ? bodyOf(mgr, fn[0]) : null;
+      if (!b) { broken.push(fn[0].replace(/\(.*/, '') + ' is gone'); continue; }
+      // EVERY refusal exit arms the ask: Save has three (temp refused / write
+      // refused / rename refused) and Append one. One short and that branch loses
+      // the day's data instead of writing it late.
+      const armed = (b.text.match(/BasePriceHistoryAskFlush\(/g) || []).length;
+      if (armed !== fn[1])
+        broken.push(fn[0].replace(/\(.*/, '') + ' arms the deferred flush on ' + armed + ' of its ' + fn[1] +
+                    ' refusal exits — the branch that does not is a LOST write, not a late one');
+    }
+    const load = mgr ? bodyOf(mgr, 'int LoadBasePriceHistory(') : null;
+    if (!load) broken.push('LoadBasePriceHistory is gone');
+    else if (!/int maxRetries = 1;/.test(load.text))
+      broken.push('LoadBasePriceHistory asks more than once again — the load sits on the attach path, and every extra attempt used to cost a 100 ms wait');
+
+    const tail = linesOf(EVENT_TAIL);
+    const pump = tail ? bodyOf(tail, 'void CoopPump()') : null;
+    if (!pump) broken.push('CoopPump is gone');
+    else {
+      if (!/BasePriceHistoryFlushPending\(\)/.test(pump.text))
+        broken.push('the pump no longer drains the deferred history write — the ask would sit owed and never be answered');
+      if (!/SaveBasePriceHistory\(hYear, hDay, hArr, hN\)/.test(pump.text))
+        broken.push('the drain no longer rewrites the day file from the live RAM state — a deferred write would be a partial one');
+      if (!/DrawStripDiagEmit\("\[P-HANG\] hist /.test(pump.text))
+        broken.push('the drain lost its flushed witness — a DROPPED ask would be invisible (THE DEBUG LOOP law 3)');
+    }
+    if (broken.length)
+      failures.push('P-HANG: ' + broken.join('; ') + ' (BasePriceHistoryManager / EventHandlers_Tail / BasePrice_A)');
+    else
+      console.log('[PASS] P-HANG no indicator path waits: the file-lock retries are gone and a refusal arms a deadline-bound flush the 250 ms pump drains from the live RAM state, witnessed on the flushed channel — the one allow-listed wait is the per-instance global-variable lock');
   }
 
   if (failures.length) {
