@@ -317,6 +317,11 @@ bool DrawStripClickToggle(const string nm, const bool wasDrag)
     {
         DrawStripHoldSelect();     // P-UI-113f: native anchors/settings survive the click
         DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release
+        // P-BK-159 (2026-11-02): the two calls above REFUSE an indicator object (`DrawIsIndicatorObject`
+        // at line 220), so a Base Knot box kept whatever MT4 decided — and MT4 decides "toggle",
+        // because our own press had selected it milliseconds earlier. The repair belongs HERE, in
+        // this event, not on the next 500 ms beat: one read, one write, no bare-plate frame.
+        if(DrawIsIndicatorObject(nm)) BaseKnotReselectByName(nm);
     }
     DrawStripOpenerArm();   // P-UI-113c: the click that opened it owns its twin
     DrawStripDiagEmit("[drawstrip] click opened on \"" + nm + "\" selected=" +

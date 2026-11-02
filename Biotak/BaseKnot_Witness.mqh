@@ -247,6 +247,25 @@ void BaseKnotNoteWitness()
 // time instead of an argument: it names the box and the beat the flag went 1 -> 0, on
 // the flushed channel (DEBUG LOOP law 3). Cost: ONE read per box per 500 ms beat; a
 // selection that legitimately ends on an outside click (P-BK-63) is user-paced.
+// P-BK-154 (2026-11-02, user: «این بیس نات سلکتش مشکل داره خودکار قطع میشه») — THE DROP
+// THAT HAPPENS BEFORE THE FIRST BEAT HAD NO WITNESS AT ALL.
+//
+// P-BK-148's residue question compares ONE BEAT against the LAST ONE, and its memo is only
+// written when a beat SEES the box selected (`if(sel) watched = id`). A drop inside the same
+// event — the press grants the flag, something else in that same event takes it back — is
+// therefore invisible: the box is 0 at the first beat, `watched` is still "", and the loop
+// `continue`s. The user's report is exactly that shape («سریع خودکار میره»), and it has
+// survived three fixes (P-BK-147/148) because it cannot be read off any frame.
+//
+// SO THE PRESS ITSELF ARMS THE QUESTION. `BaseKnotSelPressArm` is called at the drag latch,
+// right after `BaseKnotSelectBox` granted the flag and right beside the existing
+// `[BK] drag latch … sel=1` line — one string copy per press, zero per beat. If the first
+// beat after it finds the box NOT selected, that is the same-event drop and it writes
+// `[BK-SELDROP] … gone before the first beat after it`. The residue line below is untouched,
+// byte for byte, because P-BK-148-c is gated on its exact text.
+static string s_bkSelPressArm = "";
+void BaseKnotSelPressArm(const string id) { s_bkSelPressArm = id; }
+
 void BaseKnotSelDropWatch()
 {
    static string watched = "";
@@ -254,7 +273,29 @@ void BaseKnotSelDropWatch()
    {
       string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
       if(box == "" || ObjectFind(0, box) < 0) continue;
-      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) { watched = g_bkBoxes[i].id; continue; }
+      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) { watched = g_bkBoxes[i].id; s_bkSelPressArm = ""; continue; }
+      if(s_bkSelPressArm == g_bkBoxes[i].id)
+      {
+         s_bkSelPressArm = "";
+         DrawStripDiagEmit("[BK-SELDROP] box=" + g_bkBoxes[i].id +
+                           " — selected at the press, gone before the first beat after it (the SAME-EVENT drop)");
+         //--- P-BK-157 (2026-11-02) — THE WRITER IS THE TERMINAL, NOT US. MEASURED on the 11:44
+         //--- frame, the same three lines on every click: `[BK] drag latch … sel=1` (our press
+         //--- granted the flag), then the same-event drop, then
+         //--- `[drawstrip] click opened on "THLevels_BK_…_BOX" selected=false` — the strip reads the
+         //--- flag AFTER our grant and it is already 0, with no `[BK-SELSWEEP]` and no `[BK-156]`
+         //--- in between. So no write of ours cleared it: MT4 TOGGLES the selection of an object
+         //--- that is already selected, and our press had selected it a few milliseconds earlier —
+         //--- the terminal's own click was therefore a SECOND click. Every fix that hunted a writer
+         //--- (P-BK-147/148/156) was hunting the wrong suspect.
+         //--- THE REPAIR: put the grant back, ONCE, for the box WE just pressed (the arm), and
+         //--- read it back. No other path can reach this line — a click elsewhere sets no arm, and
+         //--- a box the user deselected on purpose was not pressed by us.
+         BaseKnotSelectBox(g_bkBoxes[i].id);   // P-BK-157: MT4 toggled the press-time grant off — put it back ONCE
+         DrawStripDiagEmit("[BK-157] re-grant box=" + g_bkBoxes[i].id + " read=" +
+                           ((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED) ? "1" : "0"));
+         continue;
+      }
       if(watched != g_bkBoxes[i].id) continue;
       watched = "";
       DrawStripDiagEmit("[BK-SELDROP] box=" + g_bkBoxes[i].id +

@@ -1114,8 +1114,8 @@ bool BaseKnotDeselectOnChartClick(const int mx, const int my)
    // same gesture, instead of at the timer's edge. Per-note, not a latch: the next commit
    // re-arms it (BaseKnotRegister).
    BaseKnotInfoDismiss();
-   string sel = BaseKnotSelectedBoxId();
-   if(sel == "") return false;   // nothing of ours is selected — only the dismissal happened
+   string sel = BaseKnotSelectedBoxId(); if(sel == "") return false;   // nothing of ours is selected — only the dismissal happened
+   if(!BaseKnotDropAllowed(sel, mx, my)) return false;   // P-BK-156: a pixel the terminal could not name is NOT "elsewhere" — and the line names the drop (owner: BaseKnot_Base)
    BaseKnotDropSelection(sel);   // P-BK-26's ONE owner: read-guarded, one write
    BaseKnotSelectionMarkersWipe(sel);
    return true;
@@ -1183,6 +1183,7 @@ void BaseKnotSync(const string id)
    datetime bs1, bs2;
    BaseKnotClassSpan(sp, t1, t2, bs1, bs2);
    int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot, baseReadTF); if(baseTF == 0 && g_bkBoxes[k].ownerTFMin > 0) baseTF = g_bkBoxes[k].ownerTFMin;   // P-BK-126b: THE THREE STAND-STILL CANDLES DECIDE THE KNOT'S TIME and the ATR owner is the FALLBACK only (P-BK-114 read it first, so the M5 band — 119.9 / 34.6 = 3.47 — beat the three M30 candles the user drew: 119.2 pips = 99.4 % of the box, 32m already 123.4; docs/bk-dataset.md §11)
+   BaseKnotEmptyWalkKeep(id, k, bars, baseTF, sp);   // P-BK-153: an empty walk keeps the previous knot (the owner is BaseKnot_Ability: P-SIZE-1500)
    g_bkBoxes[k].baseTFMin = baseTF;   // P-BK-126f/128: the witness call moved to the hop line below — it prints the TYPE and the rung the legs were read on, which only the node read below produces
    g_bkBoxes[k].storyT = sp.tLast; if(sp.tLast > 0 && g_calcAnchorOwner == id) CalcAnchorFollow(id, sp.tLast);   // P-BK-41: the same story the pump re-reads; P-ANCHOR-LAST: the active owner follows the story it just published
    BaseKnotLegRowAsk(baseTF, g_bkBoxes[k].storyT, g_bkBoxes[k].nodeKind, BaseKnotBoxHop(k));   // P-BK-149: the rows just keyed are ASKED before the read below — a cold one painted is the jump

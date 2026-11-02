@@ -461,6 +461,27 @@ static double s_bkEngHunt[BK_ENG_ROW_MAX];
 static double s_bkEngTP1[BK_ENG_ROW_MAX];
 static double s_bkEngTP2[BK_ENG_ROW_MAX];
 static double s_bkEngTP3[BK_ENG_ROW_MAX];
+//--- P-BK-150 (2026-11-02) — THE ROWS THE CURRENT PAINT IS ABOUT TO READ.
+//--- `BaseKnotLegRowAsk` (P-BK-149) pumps the table for the box it is about to draw, but the
+//--- pump's ask list is BOUNDED (`BK_ENG_ROW_MAX 48`) and walked in registry order: a box late
+//--- in the registry is never asked, so the guard's pump answers 0 for it, the fallback paints
+//--- the box' own height, and nothing later corrects it — the jump on the first look and «بعضی
+//--- جا گیر میکنه» forever after, with NO witness (the old `break` said nothing). These three
+//--- statics hand the guard's own question to the ONE owner of the list, so the box being
+//--- painted reserves its seat before the bound can cut it. 0 = no priority, which is every
+//--- bulk round: the 500 ms beat asks the registry exactly as it always did.
+static int      s_bkAskPrioTF     = 0;
+static int      s_bkAskPrioStopTF = 0;
+static datetime s_bkAskPrioAnchor = 0;
+void BaseKnotAskPriority(const int tfMin, const int stopTF, const datetime anchor)
+{
+   s_bkAskPrioTF     = (tfMin  > 0 ? tfMin  : 0);
+   s_bkAskPrioStopTF = (stopTF > 0 ? stopTF : 0);
+   s_bkAskPrioAnchor = (anchor > 0 ? anchor : 0);
+}
+//--- P-BK-150's own count: how many boxes the bound could not serve this round. The ask
+//--- function sets it, the witness line reads it, and the pump that served everyone leaves it 0.
+static int      s_bkAskStarved    = 0;
 //--- P-BK-113: the OWNER-TF ATR the note's last line prints. The owner walk
 //--- lives ABOVE this module (ATR is not a class input), so the pump pushes the
 //--- one selected box' lower rungs here; the note only reads them back.
@@ -863,6 +884,19 @@ string BaseKnotTFHuman(const int tfMin)
    if(tfMin <= 0) return BaseKnotTFName(tfMin);              // "all TFs" — the absence
    string nm = BaseKnotTFName(tfMin);
    if(nm != IntegerToString(tfMin) + "m") return nm;         // a ladder rung already reads short
+   // P-BK-155 (2026-11-02, user: «شاید بزرگ‌تر از ماهانه باشه اون‌ها رو هم باید مشخص بکنه»): A KNOT
+   // COARSER THAN A WEEK IS NAMED IN ITS OWN UNIT, not in a puddle of days. The ladder's top two
+   // rungs (W1 10080, MN 43200) already answer by name above; this is the OFF-LADDER tail the
+   // class read can legally produce (`span/3`): 2..11 months reads `nM` ("2M", "3M15d") and a year
+   // or more reads `ny` ("1y", "3y2M"). An off-ladder span UNDER two months keeps the d/h/m
+   // spelling byte for byte — "20d" is precise, and a "2w144h" is not (P-BK-129's own harness
+   // rows 700m / 235m / 20m / 2000m are untouched).
+   if(tfMin >= 525600)   // a year or more: "1y", "3y2M"
+      return IntegerToString(tfMin / 525600) + "y" +
+             (((tfMin % 525600) / 43200) > 0 ? IntegerToString((tfMin % 525600) / 43200) + "M" : "");
+   if(tfMin >= 86400)    // 2..11 months: "2M", "3M15d" — no longer "60d"
+      return IntegerToString(tfMin / 43200) + "M" +
+             (((tfMin % 43200) / 1440) > 0 ? IntegerToString((tfMin % 43200) / 1440) + "d" : "");
    int d = tfMin / 1440, h = (tfMin % 1440) / 60, m = tfMin % 60;
    string s = "";
    if(d > 0) s += IntegerToString(d) + "d";
@@ -971,6 +1005,80 @@ string BaseKnotGVTwin(const string id)
 //| retired so the box stays selected like MT4's own; kept for a         |
 //| one-line restore.                                                    |
 //+------------------------------------------------------------------+
+// P-BK-156 (2026-11-02, user: «یک کلیک می‌کنم سلکت سریع بسته می‌شه») — AN UNMEASURED PIXEL IS
+// NOT EVIDENCE OF "ELSEWHERE".
+//
+// MEASURED on the 11:40 frame, one gesture: `[BK] drag latch box=43200_19013093 sel=1` (the press
+// granted the selection) and then `[BK-SELDROP] box=43200_19013093 — selected at the last beat,
+// not now (no press of ours in between)`. That flag has exactly ONE writer — `BaseKnotDropSelection`
+// below — and its only caller is `BaseKnotDeselectOnChartClick` (grep: one call site). So the
+// selection was killed by a CHART CLICK, and the dropper's only alibi was "the pixel was not on
+// the box".
+//
+// THE HOLE: that alibi was `onBox = false` whether the answer was MEASURED or not.
+// `ChartXYToTimePrice` fails on the price axis, on the time axis, past the chart's right margin
+// and in every subwindow (`sw != 0`), and each of those failures fell through to "somewhere
+// else" — a click the terminal could not price silently spent the user's selection, which is
+// precisely the class the contract's touch rule forbids: degrade to the previous look, never to
+// nothing. So the drop is now allowed ONLY on a pixel the terminal could actually price, and the
+// line below names it either way (before the write, so a crash cannot lose it).
+//
+// NOT WIDENED: a measured click on empty chart still drops the selection (P-BK-63/P-BK-110's
+// own job), and `borderHit` is REPORTED, never a decider — the next report that says «روی نوت
+// یا خطش کلیک کردم» is answered by this number instead of another argument.
+// P-BK-158: the terminal's OWN drag heartbeat, stamped by the box-drag branch of
+// `BaseKnotOnChartEvent` (BaseKnot_Drag.mqh) — the one voice that says «a drawing is IN MOTION».
+// It lives here, not in DrawStrip, because Lite compiles this file and carries no router
+// (a `DrawStripDragLive()` call here was error 168 in the Lite unit, 2026-11-02 11:51).
+#define BK_NATIVE_DRAG_HOLD_MS 400   // the same silence window the strip's latch uses
+static uint g_bkNativeDragMs = 0;    // last OBJECT_DRAG on one of OUR boxes; 0 = never
+// P-BK-159 (2026-11-02, user: «الان یک چیز سلکت را خاموش می‌کند، بعدی روشن») — ONE WRITER, AND IT IS
+// THE LAST ONE IN THE EVENT.
+//
+// MEASURED on the 11:47/11:48 frames, every click: our press grants the selection (`[BK] drag
+// latch … sel=1`), MT4's own click on an ALREADY-selected object toggles it OFF, and P-BK-157 put it
+// back on the next 500 ms beat — so the markers blinked and the user read two writers fighting.
+// The strip cannot answer this: `DrawStripHoldSelect` REFUSES an indicator object (Router line 220),
+// and its own post-release repair poll inherits the same refusal. So the knot owns its flag, in the
+// event the terminal changed it, guarded by a read and one write.
+bool BaseKnotReselectByName(const string nm)
+{
+   if(nm == "" || ObjectFind(0, nm) < 0) return false;
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      if(BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id)) != nm) continue;
+      if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return false;   // nothing was lost
+      bool ok = ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);
+      if(ok) DrawStripDiagEmit("[BK-159] re-selected in event nm=" + nm + " id=" + g_bkBoxes[i].id);
+      return ok;
+   }
+   return false;
+}
+bool BaseKnotDropAllowed(const string sel, const int mx, const int my)
+{
+   int sw = 0; datetime ct = 0; double cp = 0;
+   bool measured = (ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0);
+   // P-BK-158 (2026-11-02) — THE RELEASE OF THE TERMINAL'S OWN DRAG IS NOT A CLICK.
+   // MEASURED on the 11:48 frame, one gesture: `[gest] xy=712,576` → `[drawstrip] press edge
+   // at 712,576` → `[drawstrip] latch blocked: native drag obj="THLevels_BK_43200_19549187_BOX"`
+   // → `[BK-156] drop box=43200_19549187 at 713,576 measured=1 borderHit=0`.
+   // The press landed ON the box; the terminal took it as a native DRAG and moved the box by
+   // ONE pixel; the release then arrived at 713,576, where BOTH of this function's hit tests say
+   // "outside" — so the dropper spent a selection the user had just made, on a gesture that never
+   // left the box. P-UI-130's own law («a drag-release never toggles») was enforced for the strip's
+   // latch and never for this drop; `DrawStripDragLive()` is the terminal's 400 ms heartbeat
+   // (DrawStrip_Router.mqh:124), the same witness the strip printed above.
+   if(g_bkNativeDragMs != 0 && GetTickCount() - g_bkNativeDragMs < BK_NATIVE_DRAG_HOLD_MS)   // P-BK-158: the terminal is moving a drawing — not a click of ours
+   {
+      DrawStripDiagEmit("[BK-158] drop vetoed box=" + sel + " at " + IntegerToString(mx) + "," + IntegerToString(my) +
+                        " — a native drag is live (P-UI-130: a drag-release never toggles)");
+      return false;
+   }
+   DrawStripDiagEmit("[BK-156] drop box=" + sel + " at " + IntegerToString(mx) + "," + IntegerToString(my) +
+                     " measured=" + IntegerToString(measured ? 1 : 0) +
+                     " borderHit=" + IntegerToString(BaseKnotBoxAtPx(mx, my) != "" ? 1 : 0));
+   return measured;
+}
 void BaseKnotDropSelection(const string id)
 {
    if(id == "") return;

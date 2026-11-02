@@ -367,21 +367,197 @@ void BaseKnotLegRowAsk(const int tfMin, const datetime anchor, const int kind, c
 {
    static uint s_askMs = 0;
    static int  s_askN  = 0;
+   //--- P-BK-152 (2026-11-02) — A ROW THE PLAN CANNOT ANSWER IS NOT ASKED EVERY BEAT.
+   //--- `TradePlanCompute` answers false for a (TF, bar) whose history is not loaded and the
+   //--- pump pushes ZEROES for it (EventHandlers_Objects 194-200 — «a cold plan pushes ZEROES»).
+   //--- 0 is the tool's own word for ABSENCE, so the guard reads the row as cold forever, and
+   //--- without this ring every Sync of that box spends one of its two asks on a full 48-row
+   //--- pump — twice per 300 ms, for the rest of the attach, for a number that will never
+   //--- arrive. Eight keys, five seconds, keyed on (TF, anchor): a new bar re-arms the row by
+   //--- itself because the anchor moved, so this is a backoff and never a cache of a stale
+   //--- value. Warm rows never reach this ring at all — zero cost per frame for a healthy box.
+   static int      s_refTF[8];
+   static datetime s_refAn[8];
+   static uint     s_refMs[8];
+   static int      s_refNext = 0;
    if(tfMin <= 0) return;
    int  mTF  = BaseKnotMeasureTFMin(kind, tfMin, hop);
    bool cold = (BaseKnotEngPips(tfMin, anchor) <= 0.0 ||
                 (mTF > 0 && mTF != tfMin && BaseKnotEngPips(mTF, anchor) <= 0.0));
    if(!cold) return;                      // warm: the paint already has its row — nothing to ask
+   datetime an = (anchor > 0 ? anchor : 0);
    uint now = GetTickCount();
+   for(int r = 0; r < 8; r++)
+      if(s_refTF[r] == tfMin && s_refAn[r] == an && s_refMs[r] != 0 &&
+         now - s_refMs[r] < 5000) return;  // refused inside the backoff: say nothing, pump nothing
    if(now - s_askMs >= 300) { s_askMs = now; s_askN = 0; }
    if(s_askN >= 2) return;                // bounded: two pumps per 300 ms, whichever boxes they are
    s_askN++;
    double before = BaseKnotEngPips(tfMin, anchor);
+   //--- P-BK-150: the two rows this paint is about to read RESERVE THEIR SEAT in the ask list
+   //--- (the bound cuts in registry order, so a late box was never asked and its pump could not
+   //--- warm it). Cleared the moment the pump returns: the bulk round asks the registry, exactly
+   //--- as before, and no other caller can inherit this box's priority.
+   BaseKnotAskPriority(tfMin, mTF, an);
    BaseKnotEngPump();                     // P-BK-46's owner asks the rows the geometry is about to read
+   BaseKnotAskPriority(0, 0, 0);
+   double after = BaseKnotEngPips(tfMin, anchor);
+   double afterStop = BaseKnotEngPips(mTF, anchor);
+   if(after <= 0.0 || (mTF > 0 && mTF != tfMin && afterStop <= 0.0))
+   {
+      int slot = s_refNext; s_refNext = (s_refNext + 1) % 8;
+      s_refTF[slot] = tfMin; s_refAn[slot] = an; s_refMs[slot] = now;
+   }
    DrawStripDiagEmit("[BK-149] cold row asked tf=" + BaseKnotTFName(tfMin) +
                      " stop=" + BaseKnotTFName(mTF) +
                      " before=" + DoubleToString(before, 1) +
-                     " after=" + DoubleToString(BaseKnotEngPips(tfMin, anchor), 1) +
-                     " stopAfter=" + DoubleToString(BaseKnotEngPips(mTF, anchor), 1) +
+                     " after=" + DoubleToString(after, 1) +
+                     " stopAfter=" + DoubleToString(afterStop, 1) +
                      " ms=" + IntegerToString((int)(GetTickCount() - now)));
+}
+// P-BK-153 (2026-11-02, user: «یکبار بالا می‌پره بعد میاد سر جای … بعضی جا هم گیر می‌کنه»)
+// — AN EMPTY WALK IS NOT A NEW KNOT.
+//
+// MEASURED on `biotak_diag_EURUSD_134362571361933142.txt` (2026-11-02 11:10), box 60_16640234,
+// three paints of one refresh:
+//   `[P-BK-135] node=H4  leg=H4  off=5.5 risk=5.5`
+//   `[BK-KNOT]  still=0 bars=0 nodeTF=all TFs type= hop=-1`
+//   `[P-BK-135] node=all TFs leg=H1 own=0 off=2.7 risk=2.7`   <-- the jump
+//   ... and back to 5.5 on the settle.
+// The lines moved 5.5 -> 2.7 -> 5.5 pips: one 500 ms beat, and the box never moved.
+//
+// WHY: when the bar walk finds nothing in the band it answers `bars = 0`, so there is no class
+// and no story bar. `BaseKnotSync` published those as ZEROES: `baseTFMin = 0` falls through to
+// `Period()` (BaseKnotEntryTFMin, Measure 693) and `storyT = 0` to the LIVE row, so the geometry
+// read THIS CHART's H1 live row instead of the knot's own (H4, its own bar) and painted it.
+// P-BK-149's guard cannot cover this case: the row it would ask for is (H1, live row), which is
+// already warm, so `cold` is false and nothing is asked.
+//
+// WHAT IT DOES: keeps the CLASS, the STORY bar and the EXIT bar the box was last DRAWN with —
+// for the GEOMETRY only. `sp.life`/`sp.still` stay the fresh (empty) numbers, so the note and
+// the `[BK-KNOT]` witness still report the truth about this moment; only the lines degrade to
+// the previous look instead of to a different knot. A box that was never classed answers here
+// immediately (`baseTFMin = 0`), so a box being DRAWN and the sizing preview keep today's read
+// byte for byte — this function is invisible until a knot has a class to keep.
+//
+// OWNER: this file, not BaseKnot_Plan — the Sync sits on the 1500-line ceiling (P-SIZE-1500),
+// and the rule is a property of the (TF, anchor) table this module already owns.
+void BaseKnotEmptyWalkKeep(const string id, const int k, const int bars,
+                           int &baseTF, BaseKnotSpan &sp)
+{
+   if(k < 0 || k >= ArraySize(g_bkBoxes)) return;
+   if(bars > 0) return;                        // the walk answered — this box has a knot now
+   if(g_bkBoxes[k].baseTFMin <= 0) return;     // never classed: nothing to keep (preview, fresh box)
+   int prevTF = g_bkBoxes[k].baseTFMin;
+   baseTF   = prevTF;
+   sp.tLast = g_bkBoxes[k].storyT;
+   sp.tExit = g_bkBoxes[k].exitT;
+   DrawStripDiagEmit("[BK-153] empty walk kept the previous knot box=" + id +
+                     " tf=" + BaseKnotTFName(prevTF) +
+                     " story=" + IntegerToString((int)sp.tLast) +
+                     " exit=" + IntegerToString((int)sp.tExit) +
+                     " bars=" + IntegerToString(bars));
+}
+
+// P-BK-46 — WHAT THE PUMP LAYERS HAVE TO COMPUTE: the (TF, ANCHOR) PAIRS the live boxes
+// call their own. A box whose class is not published yet (and the box being SIZED, which
+// has no registry row at all) answers THIS chart's TF at anchor 0, because that is the TF
+// and the row the note and the sizing preview would name. Deduped and bounded, so the
+// caller computes one EngSL per DISTINCT pair and nothing else: no box, no Eng beyond the
+// chart's own.
+// P-BK-79 (2026-09-17) — A PAIR, NOT A TF. Two boxes on the SAME TF whose bases ended on
+// DIFFERENT bars read DIFFERENT EngSL / HuntSL / TP and are typed against DIFFERENT ladder
+// THs, so a TF-keyed ask could only ever have one of them answered (the other would fall
+// to `0` — the absence — and be sized by its own height). The anchor is the box' own
+// `storyT`, the bar its story ended on, and it is the SAME value `BaseKnotNodeRead` is
+// handed, so the ask and the read cannot key different rows. `storyT <= 0` (the base has
+// not formed yet) asks the LIVE row, which is the row the sizing preview itself reads.
+int BaseKnotEngNeeds(int &mins[], datetime &anchors[])
+{
+   int chartTF = Period();
+   if(chartTF <= 0) chartTF = 1;
+   int n = 0;
+   mins[n] = chartTF; anchors[n] = 0; n++;     // the live sizing preview's own risk (P-BK-79: the LIVE row)
+   // P-BK-106b: the live row's own two upper ATRs, asked at the same live anchor, so the
+   // sizing preview can show/type against real rows as soon as the pump has them.
+   int liveUp1 = BaseKnotNextTFMin(chartTF);
+   int liveUp2 = (liveUp1 > 0 ? BaseKnotNextTFMin(liveUp1) : 0);
+   if(liveUp1 > 0) { mins[n] = liveUp1; anchors[n] = 0; n++; }
+   if(liveUp2 > 0) { mins[n] = liveUp2; anchors[n] = 0; n++; }
+   //--- P-BK-150 (2026-11-02) — THE BOX THAT IS PAINTING NOW RESERVES ITS ROWS AHEAD OF THE
+   //--- BOUND. `BaseKnotLegRowAsk` (P-BK-149) sets the pair for the box it is about to measure
+   //--- and clears it straight after the pump, so only the guard's round carries it. Deduped by
+   //--- the SAME (TF, anchor) rule as the walk below: a box whose rows are already in the list
+   //--- costs two compares and adds nothing, which is the warm case and the common one.
+   if(s_bkAskPrioTF > 0)
+   {
+      int pr[2]; pr[0] = s_bkAskPrioTF; pr[1] = s_bkAskPrioStopTF;
+      for(int p = 0; p < 2; p++)
+      {
+         if(pr[p] <= 0) continue;
+         bool pdup = false;
+         for(int j = 0; j < n; j++)
+            if(mins[j] == pr[p] && anchors[j] == s_bkAskPrioAnchor) { pdup = true; break; }
+         if(pdup) continue;
+         if(n >= BK_ENG_ROW_MAX) break;
+         mins[n] = pr[p]; anchors[n] = s_bkAskPrioAnchor; n++;
+      }
+   }
+   int starved = 0;   // P-BK-150: boxes the bound could not serve — counted, never silent
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      if(n >= BK_ENG_ROW_MAX) { starved++; continue; }   // P-BK-150: counted, then the walk goes on
+      int tf = g_bkBoxes[i].baseTFMin;
+      if(tf <= 0) tf = chartTF;                // no class published yet — the chart's own
+      datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);   // P-BK-79: the bar the story ended on
+       // P-BK-106b: THE TYPE'S THREE ROWS ARE ALL REAL NOW. The node's own ATR and the two
+       // rungs above it are each read at the box' own anchor; the √-law is only the cold
+       // fallback inside BaseKnotAbilityGet, never the answer once a real row exists. The
+       // ask list therefore carries the class, the stop's own TF (P-BK-51/83), and both
+       // upper rungs the type compares against.
+       // P-BK-125: and the FOURTH rung for an OTR box, unconditionally. The ladder read
+       // (BaseKnotLadderHopAt) needs a3 to place a box above the structure, and the stop's
+       // TF is itself one of the asked rows — asking a3 only when the hop already says 3
+       // would let the two answers chase each other (3 -> a3 warm -> hop 2 -> a3 cold -> 3).
+       // The box' TYPE is decided by h against a2 alone, so this ask never moves.
+       int asked[5];
+       asked[0] = tf;
+       asked[1] = BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf, BaseKnotBoxHop(i));
+       asked[2] = BaseKnotNextTFMin(tf);
+       asked[3] = (asked[2] > 0 ? BaseKnotNextTFMin(asked[2]) : 0);
+       asked[4] = ((g_bkBoxes[i].nodeKind == BK_NODE_OTR && asked[3] > 0) ? BaseKnotNextTFMin(asked[3]) : 0);
+       for(int a = 0; a < 5; a++)
+      {
+         if(asked[a] <= 0) continue;
+         // P-BK-79: the dedup is on the PAIR. The chart's own live row is (chartTF, 0) and
+         // the loop below finds it, so the old `asked[a] == chartTF` shortcut is subsumed —
+         // and it HAD to go: a box whose story ended on a bar asks (chartTF, storyT), which
+         // is a different row and must survive.
+         bool dup = false;
+         for(int j = 0; j < n; j++) if(mins[j] == asked[a] && anchors[j] == an) { dup = true; break; }
+         if(dup) continue;
+         if(n >= BK_ENG_ROW_MAX) break;        // bounded: the rest waits for the next round
+         mins[n] = asked[a]; anchors[n] = an; n++;
+      }
+   }
+   //--- P-BK-150's WITNESS: a full list is the stuck case, and until this line existed it left
+   //--- NO trace on any channel — a box painted forever at its own height read as «the number
+   //--- is wrong», never as «nobody asked». Bounded to one line per second like the other
+   //--- pumps' probes, so a starved chart cannot flood the flushed file.
+   s_bkAskStarved = starved;
+   if(starved > 0)
+   {
+      static uint s_fullMs = 0;
+      uint nowF = GetTickCount();
+      if(s_fullMs == 0 || nowF - s_fullMs >= 1000)
+      {
+         s_fullMs = nowF;
+         DrawStripDiagEmit("[BK-150] ask list FULL rows=" + IntegerToString(BK_ENG_ROW_MAX) +
+                           " boxes=" + IntegerToString(ArraySize(g_bkBoxes)) +
+                           " starved=" + IntegerToString(starved) +
+                           " prio=" + IntegerToString(s_bkAskPrioTF) + "/" +
+                           IntegerToString((int)s_bkAskPrioAnchor));
+      }
+   }
+   return n;
 }

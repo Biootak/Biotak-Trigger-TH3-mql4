@@ -1046,7 +1046,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
            if(BaseKnotLocked(bid)) return true;   // locked — swallow, children stay put
            // P-BK-19a: the terminal just NAMED the object it is dragging, so the
            // gesture is ITS — the cursor fallback stays off for the rest of it.
-           s_bkNativeClaim = true;
+           s_bkNativeClaim = true; g_bkNativeDragMs = GetTickCount();   // P-BK-19a owns the drag (cursor fallback off) / P-BK-158: this heartbeat feeds the deselect veto
            // P-BK-65: AND IT JUST SAID WHICH OBJECT: the BOX, not a chip. That is the
            // ground truth behind two answers this press needs — "the body-size heal may
            // run" (`s_bkBoxNamed`) and "this press is NOT a resize" (a chip gesture
@@ -1234,7 +1234,7 @@ if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
                 if(GestureGrabBlocked()) { DrawStripDiagEmit("[P-BK-146] press refused box=" + shbox); }
                 else if(ObjectFind(0, shbox) >= 0)
                 {
-                   BaseKnotSelectBox(shit);   // the grant IS the grab: MT4 takes the box on this same press
+                   BaseKnotSelectBox(shit); BaseKnotSelPressArm(shit);   // the grant IS the grab (MT4 takes the box on this same press), and P-BK-154 arms the drop question at the PRESS — a flag lost inside this same event is then witnessed (P-BK-148's memo only saw it a beat later)
                    s_bkDragId = shit;
                    s_bkDragT0 = sct; s_bkDragP0 = scp;
                    s_bkDragX0 = (int)lparam; s_bkDragY0 = (int)dparam;

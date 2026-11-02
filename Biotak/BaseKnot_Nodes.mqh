@@ -253,7 +253,7 @@ double BaseKnotRungScale(const int fromMin, const int toMin)
 // `high <= top && low >= bot` is the whole test, and it implies the close, so the box is
 // read the way the user reads it: nothing of the candle may leave the rectangle.
 #define BK_KNOT_M1_MAX 1440    // M1 bars one story may be read on (a day) — a bounded read
-#define BK_KNOT_TF_MAX 1440    // the coarsest knot the scan will name (D1)
+#define BK_KNOT_TF_MAX 5256000   // P-BK-155: the coarsest knot the scan will name (a YEAR, not D1) — a 60-bar D1 base on a monthly chart is 28,800m (20d) and used to be clamped to 1440, so the note said «D1 base» for a knot four years long
 // The rung's series is there to be read at all? (a rung == this chart's TF always is).
 // P-BK-126: no longer a gate on the count below — a knot is read off M1 whatever the
 // terminal has downloaded — kept because it is still the true statement about NATIVE series.
@@ -1118,68 +1118,7 @@ void BaseKnotStepPush(const double th)
      s_bkNodeBar = 0;   // stale: the next pump re-reads every box' two answers
   }
 double BaseKnotStepTH() { return s_bkStepTH; }
-// P-BK-46 — WHAT THE PUMP LAYERS HAVE TO COMPUTE: the (TF, ANCHOR) PAIRS the live boxes
-// call their own. A box whose class is not published yet (and the box being SIZED, which
-// has no registry row at all) answers THIS chart's TF at anchor 0, because that is the TF
-// and the row the note and the sizing preview would name. Deduped and bounded, so the
-// caller computes one EngSL per DISTINCT pair and nothing else: no box, no Eng beyond the
-// chart's own.
-// P-BK-79 (2026-09-17) — A PAIR, NOT A TF. Two boxes on the SAME TF whose bases ended on
-// DIFFERENT bars read DIFFERENT EngSL / HuntSL / TP and are typed against DIFFERENT ladder
-// THs, so a TF-keyed ask could only ever have one of them answered (the other would fall
-// to `0` — the absence — and be sized by its own height). The anchor is the box' own
-// `storyT`, the bar its story ended on, and it is the SAME value `BaseKnotNodeRead` is
-// handed, so the ask and the read cannot key different rows. `storyT <= 0` (the base has
-// not formed yet) asks the LIVE row, which is the row the sizing preview itself reads.
-int BaseKnotEngNeeds(int &mins[], datetime &anchors[])
-{
-   int chartTF = Period();
-   if(chartTF <= 0) chartTF = 1;
-   int n = 0;
-   mins[n] = chartTF; anchors[n] = 0; n++;     // the live sizing preview's own risk (P-BK-79: the LIVE row)
-   // P-BK-106b: the live row's own two upper ATRs, asked at the same live anchor, so the
-   // sizing preview can show/type against real rows as soon as the pump has them.
-   int liveUp1 = BaseKnotNextTFMin(chartTF);
-   int liveUp2 = (liveUp1 > 0 ? BaseKnotNextTFMin(liveUp1) : 0);
-   if(liveUp1 > 0) { mins[n] = liveUp1; anchors[n] = 0; n++; }
-   if(liveUp2 > 0) { mins[n] = liveUp2; anchors[n] = 0; n++; }
-   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
-   {
-      int tf = g_bkBoxes[i].baseTFMin;
-      if(tf <= 0) tf = chartTF;                // no class published yet — the chart's own
-      datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);   // P-BK-79: the bar the story ended on
-       // P-BK-106b: THE TYPE'S THREE ROWS ARE ALL REAL NOW. The node's own ATR and the two
-       // rungs above it are each read at the box' own anchor; the √-law is only the cold
-       // fallback inside BaseKnotAbilityGet, never the answer once a real row exists. The
-       // ask list therefore carries the class, the stop's own TF (P-BK-51/83), and both
-       // upper rungs the type compares against.
-       // P-BK-125: and the FOURTH rung for an OTR box, unconditionally. The ladder read
-       // (BaseKnotLadderHopAt) needs a3 to place a box above the structure, and the stop's
-       // TF is itself one of the asked rows — asking a3 only when the hop already says 3
-       // would let the two answers chase each other (3 -> a3 warm -> hop 2 -> a3 cold -> 3).
-       // The box' TYPE is decided by h against a2 alone, so this ask never moves.
-       int asked[5];
-       asked[0] = tf;
-       asked[1] = BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf, BaseKnotBoxHop(i));
-       asked[2] = BaseKnotNextTFMin(tf);
-       asked[3] = (asked[2] > 0 ? BaseKnotNextTFMin(asked[2]) : 0);
-       asked[4] = ((g_bkBoxes[i].nodeKind == BK_NODE_OTR && asked[3] > 0) ? BaseKnotNextTFMin(asked[3]) : 0);
-       for(int a = 0; a < 5; a++)
-      {
-         if(asked[a] <= 0) continue;
-         // P-BK-79: the dedup is on the PAIR. The chart's own live row is (chartTF, 0) and
-         // the loop below finds it, so the old `asked[a] == chartTF` shortcut is subsumed —
-         // and it HAD to go: a box whose story ended on a bar asks (chartTF, storyT), which
-         // is a different row and must survive.
-         bool dup = false;
-         for(int j = 0; j < n; j++) if(mins[j] == asked[a] && anchors[j] == an) { dup = true; break; }
-         if(dup) continue;
-         if(n >= BK_ENG_ROW_MAX) break;        // bounded: the rest waits for the next round
-         mins[n] = asked[a]; anchors[n] = an; n++;
-      }
-   }
-   return n;
-}
+
 // THE PUSH. The table is replaced wholesale and the EPOCH moves only when a stored
 // row (TF or value) really differs from the last round — so a warm, unchanged chart
 // pays a compare per entry and triggers no rebuild at all, while a new bar's EngSL
@@ -1217,11 +1156,26 @@ void BaseKnotEngPush(const int &mins[], const datetime &anchors[], const double 
       t3New[m] = (tp3[i] > 0.0 ? tp3[i] : 0.0);
       m++;
    }
+   //--- P-BK-151 (2026-11-02) — THE COMPARE IS BY KEY, NOT BY SEAT. Reserving a row (P-BK-150)
+   //--- can hand back the SAME set of facts in a different ORDER, and the positional compare
+   //--- below reads an order as a change: `moved` fires, the epoch moves, and the pump re-Syncs
+   //--- EVERY box for a table that says exactly what it said last round. Every reader looks its
+   //--- row up by (TF, anchor) — `BaseKnotEngPips`, `BaseKnotHuntPips`, `BaseKnotPlanTPPips`,
+   //--- `BaseKnotAbilityPush` — so the seat is not a fact and must not gate a rebuild.
+   //--- COST: at most m x m key compares per round (48 x 48 = 2304 int/double compares, one
+   //--- round per 500 ms) against ONE `TradePlanCompute` per row that the pump already pays;
+   //--- cheaper than the rebuild it refuses, and a warm chart still answers moved=false.
    bool moved = (m != s_bkEngN);
    for(int i = 0; !moved && i < m; i++)
-      if(tfNew[i] != s_bkEngTF[i] || anNew[i] != s_bkEngAnchor[i] ||
-         pNew[i] != s_bkEngPips[i] || hNew[i] != s_bkEngHunt[i] ||
-         t1New[i] != s_bkEngTP1[i] || t2New[i] != s_bkEngTP2[i] || t3New[i] != s_bkEngTP3[i]) moved = true;
+   {
+      int at = -1;
+      for(int j = 0; j < s_bkEngN; j++)
+         if(s_bkEngTF[j] == tfNew[i] && s_bkEngAnchor[j] == anNew[i]) { at = j; break; }
+      if(at < 0) { moved = true; break; }   // a key the last round did not carry at all
+      if(pNew[i]  != s_bkEngPips[at]  || hNew[i] != s_bkEngHunt[at] ||
+         t1New[i] != s_bkEngTP1[at]   || t2New[i] != s_bkEngTP2[at]  ||
+         t3New[i] != s_bkEngTP3[at]) moved = true;
+   }
    for(int i = 0; i < m; i++)
    {
       s_bkEngTF[i] = tfNew[i]; s_bkEngAnchor[i] = anNew[i];

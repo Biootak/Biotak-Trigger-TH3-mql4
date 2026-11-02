@@ -9458,8 +9458,9 @@ function main() {
       broken.push('the story end is no longer published - every later read keys a row that was never pushed');
     if (!drag || !drag.join('\n').includes('BaseKnotNodeRead((g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : t2), top, bot,'))
       broken.push('the drag reads the box at another bar than the release will - the type flips mid-gesture');
-    if (!nodes || !nodes.join('\n').includes('datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);'))
-      broken.push('the pump asks its ATR rows at another bar than the box is read at');
+    const abAsk79 = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    if (!abAsk79 || !abAsk79.join('\n').includes('datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);'))
+      broken.push('the pump asks its ATR rows at another bar than the box is read at (the ask list lives in BaseKnot_Ability since P-SIZE-1500)');
     if (!shot || !shot.join('\n').includes('datetime an = (g_bkBoxes[k].storyT > 0 ? g_bkBoxes[k].storyT : 0);'))
       broken.push('the capture reads the ladder at another bar - the picture and the row would describe two markets');
 
@@ -9542,9 +9543,10 @@ function main() {
       broken.push('the committed Sync no longer hands its hop to the geometry - the stop and its own TF part');
     if (!plan || !plan.join('\n').includes('BaseKnotBoxHop(k))'))
       broken.push('the drag path stopped asking the box\' hop - the levels jump at release');
-    if (!nodes || !nodes.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf, BaseKnotBoxHop(i))'))
-      broken.push('the pump\'s ask list is not the stop\'s rung any more - the geometry would draw a TF nobody pushed');
-    if (!nodes || !nodes.join('\n').includes('asked[4]'))
+    const abAsk125 = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+    if (!abAsk125 || !abAsk125.join('\n').includes('BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf, BaseKnotBoxHop(i))'))
+      broken.push('the pump\'s ask list is not the stop\'s rung any more - the geometry would draw a TF nobody pushed (the ask list lives in BaseKnot_Ability since P-SIZE-1500)');
+    if (!abAsk125 || !abAsk125.join('\n').includes('asked[4]'))
       broken.push('the fourth rung is no longer asked for an OTR box - the ladder read would oscillate between hop 2 and 3');
     // 5 — THE KNOT'S TIME is P-BK-79's own rule and it has its own block above; here only the
     //     one thing the new read must not break: it must be HANDED an anchor at all.
@@ -10455,6 +10457,140 @@ function main() {
       failures.push('P-BK-133: ' + broken.join('; ') + ' (BaseKnot_Nodes / BaseKnot_Measure / BaseKnot_Note / BaseKnot_Plan / BaseKnot_Shot / the harness)');
     else
       console.log('[PASS] P-BK-133 an off-ladder knot\'s own time is its rung: BaseKnotIsLadderRung walks the ONE ladder, BaseKnotMeasureTFMin keeps a time that is not a rung (his 2h20m box reads 2h20m, not H4), the pair is the own-time HuntSL/EngSL (142.5 / 53.4 - the 138 he expected) so the ratio stays 8/3, the card\'s Trigger cell prints the drawn entry, and every ladder rung / FTR keeps P-BK-132 byte-identically');
+  }
+
+  // P-BK-153 (2026-11-02) — «یکبار بالا می‌پره بعد میاد سر جای … بعضی جا هم گیر می‌کنه»: A BEAT
+  // WITH NO BASE IS NOT A NEW KNOT. The walk can answer `bars = 0` (a box being resized, a band
+  // that holds no body), and this Sync used to publish `baseTFMin = 0` + `storyT = 0`, which the
+  // geometry reads as `Period()` and the LIVE row. MEASURED on the 11:10 frame of
+  // biotak_diag_EURUSD_134362571361933142.txt, box 60_16640234: `[P-BK-135] node=H4 off=5.5
+  // risk=5.5` > `[BK-KNOT] still=0 bars=0 nodeTF=all TFs` > `[P-BK-135] node=all TFs leg=H1
+  // off=2.7 risk=2.7` > back to 5.5 — lines that jump once and come back on their own.
+  {
+    const broken = [];
+    const plan = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const text = plan ? plan.join('\n') : '';
+    if (!plan)
+      broken.push('BaseKnot_Plan.mqh is gone');
+    else {
+      const ab = linesOf(path.join(BIOTAK, 'BaseKnot_Ability.mqh'));
+      const abText = ab ? ab.join('\n') : '';
+      if (!ab || !abText.includes('void BaseKnotEmptyWalkKeep('))
+        broken.push('BaseKnotEmptyWalkKeep is gone - an empty walk republishes zeroes');
+      if (!abText.includes('if(bars > 0) return;') || !abText.includes('if(g_bkBoxes[k].baseTFMin <= 0) return;'))
+        broken.push('the empty-walk fence is gone - one beat with no base paints the chart TF\'s live row and the knot\'s targets/stop jump');
+      if (!abText.includes('sp.tLast = g_bkBoxes[k].storyT;') || !abText.includes('sp.tExit = g_bkBoxes[k].exitT;'))
+        broken.push('the fence does not keep all three keys (class, story bar, exit bar) - a kept class over a live story bar is a second cold row, i.e. the same jump');
+      if (!abText.includes('[BK-153] empty walk kept the previous knot'))
+        broken.push('the kept-knot witness is gone - the next report has no line to read (DEBUG LOOP law 3)');
+      const callAt = text.indexOf('BaseKnotEmptyWalkKeep(id, k, bars, baseTF, sp);');
+      const pubAt = text.indexOf('g_bkBoxes[k].baseTFMin = baseTF;');
+      if (callAt < 0)
+        broken.push('the Sync no longer asks the fence - the kept class never reaches the geometry');
+      else if (pubAt > 0 && callAt > pubAt)
+        broken.push('the fence runs AFTER the class is published - it would read the zeroes it is supposed to replace');
+      if (!text.includes('g_bkBoxes[k].storyT = sp.tLast;'))
+        broken.push('the story end is no longer published - P-BK-79\'s single writer is gone');
+    }
+    if (broken.length)
+      failures.push('P-BK-153: ' + broken.join('; ') + ' (BaseKnot_Plan.mqh)');
+    else
+      console.log('[PASS] P-BK-153 an empty bar walk keeps the class, the story bar and the exit bar the box was last DRAWN with: the geometry degrades to the previous look instead of repainting the chart TF\'s live row for one 500 ms beat, and the kept knot is named on the flushed channel');
+  }
+
+  // P-BK-154 (2026-11-02) — «سلکتش خودکار قطع میشه»: THE DROP INSIDE THE PRESS EVENT HAD NO
+  // WITNESS. P-BK-148's residue memo is armed only by a beat that SEES the box selected, so a
+  // flag granted and taken back inside one event reads `0` at the first beat with `watched=""`
+  // and skips in silence. The press now arms the question itself, and its answer is a line.
+  {
+    const broken = [];
+    const wit = linesOf(path.join(BIOTAK, 'BaseKnot_Witness.mqh'));
+    const drag = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const wt = wit ? wit.join('\n') : '';
+    const dg = drag ? drag.join('\n') : '';
+    if (!wt.includes('void BaseKnotSelPressArm(const string id)'))
+      broken.push('the press memo is gone - a flag lost inside the press event is silent again');
+    if (!wt.includes('gone before the first beat after it (the SAME-EVENT drop)'))
+      broken.push('the same-event drop has no witness - the next «خودکار قطع شد» is unprovable (DEBUG LOOP law 3)');
+    if (!wt.includes(' — selected at the last beat, not now (no press of ours in between)'))
+      broken.push('P-BK-148\'s residue line was reworded - the mutation that guards it would go stale');
+    if (!dg.includes('BaseKnotSelPressArm(shit);'))
+      broken.push('the drag latch no longer arms the press memo - the witness can never fire');
+    if (!wt.includes('// P-BK-157: MT4 toggled the press-time grant off'))
+      broken.push('the same-event drop is REPORTED but not repaired - MT4 toggles off the selection our own press just granted, so the click leaves no markers (P-BK-157)');
+    if (!wt.includes('[BK-157] re-grant box='))
+      broken.push('the re-grant has no read-back - a silent second write is the class this loop exists to end');
+    const iArm = dg.indexOf('BaseKnotSelPressArm(shit);');
+    const iSel = dg.indexOf('BaseKnotSelectBox(shit);');
+    if (iArm >= 0 && iSel >= 0 && iArm < iSel)
+      broken.push('the memo is armed BEFORE the grant - it would describe a press that never selected');
+    if (broken.length)
+      failures.push('P-BK-154: ' + broken.join('; ') + ' (BaseKnot_Witness / BaseKnot_Drag)');
+    else
+      console.log('[PASS] P-BK-154 a selection is armed at the PRESS and answered at the first beat after it: a flag lost inside the press event writes [BK-SELDROP] … SAME-EVENT drop, P-BK-148\'s residue line is untouched, and the arm sits after the grant');
+  }
+
+  // P-BK-159 (2026-11-02) — ONE WRITER FOR THE SELECTION, AND IT IS THE LAST ONE IN THE EVENT.
+  // MEASURED: our press grants it, MT4's own click toggles it off, and P-BK-157 put it back one
+  // beat later — «الان یک چیز سلکت را خاموش می‌کند، بعدی روشن».
+  {
+    const broken = [];
+    const rBase = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const rRtr = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh'));
+    const bt = rBase ? rBase.join('\n') : '';
+    const rt = rRtr ? rRtr.join('\n') : '';
+    if (!bt.includes('bool BaseKnotReselectByName(const string nm)'))
+      broken.push('the in-event repair is gone - the click leaves a bare plate for a whole beat');
+    if (!bt.includes('[BK-159] re-selected in event nm='))
+      broken.push('the repair has no line - a silent second writer is the class this loop exists to end');
+    if (!bt.includes('if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return false;   // nothing was lost'))
+      broken.push('the repair writes without reading the flag first - it would re-select a box the user deselected on purpose');
+    if (!bt.includes('bool ok = ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);'))
+      broken.push('the repair no longer WRITES the flag - the box stays unselected for a whole beat while its own strings still read healthy');
+    if (!rt.includes('if(DrawIsIndicatorObject(nm)) BaseKnotReselectByName(nm);'))
+      broken.push('the click family no longer repairs an indicator object - the strip REFUSES it at line 220, so nothing else would');
+    if (broken.length)
+      failures.push('P-BK-159: ' + broken.join('; ') + ' (BaseKnot_Base / DrawStrip_Router)');
+    else
+      console.log('[PASS] P-BK-159 the press grant MT4 toggles off is restored IN THE SAME EVENT (guarded read, one write, [BK-159]) instead of one beat later: one writer for the selection, no bare-plate frame');
+  }
+
+  // P-BK-156 (2026-11-02) — AN UNMEASURED PIXEL IS NOT «ELSEWHERE». MEASURED: `[BK] drag latch
+  // box=43200_19013093 sel=1` then `[BK-SELDROP] box=43200_19013093 — selected at the last beat`.
+  // The flag has ONE writer (`BaseKnotDropSelection`) and ONE caller
+  // (`BaseKnotDeselectOnChartClick`), and that caller dropped on `onBox = false` whether the
+  // pixel was MEASURED or not — a price-axis / margin / subwindow click that `ChartXYToTimePrice`
+  // cannot name used to spend the user's selection.
+  {
+    const broken = [];
+    const baseF = linesOf(path.join(BIOTAK, 'BaseKnot_Base.mqh'));
+    const planF = linesOf(path.join(BIOTAK, 'BaseKnot_Plan.mqh'));
+    const dragF = linesOf(path.join(BIOTAK, 'BaseKnot_Drag.mqh'));
+    const bt = baseF ? baseF.join('\n') : '';
+    const pt = planF ? planF.join('\n') : '';
+    const dg = dragF ? dragF.join('\n') : '';
+    if (!bt.includes('bool BaseKnotDropAllowed(const string sel, const int mx, const int my)'))
+      broken.push('BaseKnotDropAllowed is gone - the drop is decided by an unmeasured "not on the box" again');
+    if (!bt.includes('return measured;'))
+      broken.push('the drop no longer requires a MEASURED pixel - a click on the axis, the margin or a subwindow spends the selection');
+    if (!bt.includes('[BK-156] drop box='))
+      broken.push('the drop has no line - the next «سلکت رفت» cannot be read off any frame (DEBUG LOOP law 3)');
+    if (!bt.includes('g_bkNativeDragMs != 0'))
+      broken.push('P-BK-158: the native-drag veto is gone - the release of the terminal\'s own 1-px drag drops the selection (measured at 713,576 after a press on the box at 712,576)');
+    if (!dg.includes('g_bkNativeDragMs = GetTickCount();'))
+      broken.push('P-BK-158: nothing stamps the heartbeat - the veto reads a clock that never moves');
+    if (!bt.includes('#define BK_NATIVE_DRAG_HOLD_MS 400'))
+      broken.push('P-BK-158: the hold-off window is gone - one drag would veto every later click');
+    if (!bt.includes('[BK-158] drop vetoed box='))
+      broken.push('P-BK-158: the veto has no line - a dropped selection is again unreadable');
+    if (!pt.includes('if(!BaseKnotDropAllowed(sel, mx, my)) return false;'))
+      broken.push('the chart-click path no longer asks the fence - the same-event drop is back');
+    if (!pt.includes('BaseKnotDropSelection(sel);'))
+      broken.push('the ONE owner of the deselect write is gone');
+    if (broken.length)
+      failures.push('P-BK-156: ' + broken.join('; ') + ' (BaseKnot_Base / BaseKnot_Plan)');
+    else
+      console.log('[PASS] P-BK-156 a chart click drops the knot only on a pixel the terminal could PRICE, and the drop writes [BK-156] … measured=/borderHit= before the write: an axis, margin or subwindow click no longer spends the user\'s selection');
   }
 
   // P-BK-134 (2026-10-28) — ONE FENCE, ONE CLAMP: THE QUESTION ASKED THREE TIMES.
